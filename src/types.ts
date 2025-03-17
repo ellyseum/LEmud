@@ -1,11 +1,11 @@
-import { Socket } from 'net';
+import { IConnection } from './connection/interfaces/connection.interface';
 
 // Define state enum
 export enum ClientStateType {
   CONNECTING = 'connecting',
   LOGIN = 'login',
   SIGNUP = 'signup',
-  CONFIRMATION = 'confirmation', // Add this new state
+  CONFIRMATION = 'confirmation',
   AUTHENTICATED = 'authenticated'
 }
 
@@ -21,7 +21,7 @@ export interface User {
 }
 
 export interface ConnectedClient {
-  socket: Socket;
+  connection: IConnection; // Replace Socket with IConnection
   user: User | null;
   authenticated: boolean;
   buffer: string;
@@ -32,7 +32,7 @@ export interface ConnectedClient {
     password?: string;
     awaitingPassword?: boolean;
     offerSignup?: boolean;
-    transitionTo?: ClientStateType; // Added to indicate desired state transitions
+    transitionTo?: ClientStateType;
     [key: string]: any;
   };
   

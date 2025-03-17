@@ -1,7 +1,7 @@
 import { ConnectedClient } from '../types';
 
 /**
- * Writes data to the client socket, buffering if the client is currently typing
+ * Writes data to the client connection, buffering if the client is currently typing
  */
 export function writeToClient(client: ConnectedClient, data: string): void {
   if (client.isTyping) {
@@ -9,7 +9,7 @@ export function writeToClient(client: ConnectedClient, data: string): void {
     client.outputBuffer.push(data);
   } else {
     // Direct write
-    client.socket.write(data);
+    client.connection.write(data);
   }
 }
 
@@ -27,7 +27,7 @@ export function flushClientBuffer(client: ConnectedClient): void {
   if (client.outputBuffer.length > 0) {
     // Send all buffered messages
     const output = client.outputBuffer.join('');
-    client.socket.write(output);
+    client.connection.write(output);
     client.outputBuffer = [];
   }
 }
