@@ -68,17 +68,23 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
   }
 
   private convertAnsiToHtml(text: string): string {
-    // Basic conversion of ANSI color codes to HTML
-    // In a real implementation, you would want a more complete conversion
+    // More comprehensive conversion of ANSI color codes to HTML
     return text
+      .replace(/\r\n/g, '<br>')
+      .replace(/\n/g, '<br>')
       .replace(/\x1b\[0m/g, '</span>')
       .replace(/\x1b\[1m/g, '<span class="bright">')
+      .replace(/\x1b\[2m/g, '<span class="dim">')
+      .replace(/\x1b\[4m/g, '<span class="underline">')
+      .replace(/\x1b\[5m/g, '<span class="blink">')
       .replace(/\x1b\[31m/g, '<span class="red">')
       .replace(/\x1b\[32m/g, '<span class="green">')
       .replace(/\x1b\[33m/g, '<span class="yellow">')
       .replace(/\x1b\[34m/g, '<span class="blue">')
       .replace(/\x1b\[35m/g, '<span class="magenta">')
       .replace(/\x1b\[36m/g, '<span class="cyan">')
-      .replace(/\r\n/g, '<br>');
+      .replace(/\x1b\[37m/g, '<span class="white">')
+      // Handle the clear screen command
+      .replace(/\x1b\[2J\x1b\[0;0H/g, '<!-- clear -->');
   }
 }

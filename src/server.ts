@@ -1,5 +1,7 @@
 import net from 'net';
 import http from 'http';
+import path from 'path';
+import fs from 'fs';
 import { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { ConnectedClient, ClientStateType } from './types';
@@ -21,9 +23,46 @@ const stateMachine = new StateMachine(userManager);
 
 // Create the HTTP server for WebSockets
 const httpServer = http.createServer((req, res) => {
-  // We could serve a simple HTML client page here
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('WebSocket server for game connections');
+  // Serve static files from the public directory
+  const publicPath = path.join(__dirname, '..', 'public');
+  let filePath = path.join(publicPath, req.url === '/' ? 'index.html' : req.url || '');
+  
+  // Get file extension
+  const extname = String(path.extname(filePath)).toLowerCase();
+  
+  // Map file extensions to MIME types
+  const mimeTypes: {[key: string]: string} = {
+    '.html': 'text/html',
+    '.js': 'text/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+  };
+
+  // Set default content type
+  let contentType = mimeTypes[extname] || 'application/octet-stream';
+
+  // Read file and serve it
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      if(error.code === 'ENOENT') {
+        // Page not found
+        res.writeHead(404);
+        res.end('404 Not Found');
+      } else {
+        // Server error
+        res.writeHead(500);
+        res.end(`Server Error: ${error.code}`);
+      }
+    } else {
+      // Success
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
 });
 
 // Create the WebSocket server

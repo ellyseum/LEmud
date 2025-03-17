@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Emulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <span>WebSocket Terminal Client</span>
+            <div class="status">
+                <span id="connection-status" class="disconnected">Disconnected</span>
+            </div>
+        </div>
+        <div id="terminal-output" class="terminal-output"></div>
+        <div class="terminal-input-line">
+            <span class="prompt">&gt;</span>
+            <input id="terminal-input" type="text" autocomplete="off" autofocus>
+        </div>
+    </div>
+    <script src="client.js"></script>
+</body>
+</html>

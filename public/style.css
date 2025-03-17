@@ -1,0 +1,101 @@
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #1a1a1a;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    color: #f0f0f0;
+}
+
+.terminal-container {
+    width: 800px;
+    height: 500px;
+    background-color: #0f0f0f;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.terminal-header {
+    background-color: #333;
+    padding: 8px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+}
+
+.status span {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.connected {
+    background-color: #2a4;
+    color: #fff;
+}
+
+.disconnected {
+    background-color: #a42;
+    color: #fff;
+}
+
+.terminal-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.terminal-input-line {
+    display: flex;
+    padding: 10px;
+    border-top: 1px solid #333;
+    background-color: #0a0a0a;
+}
+
+.prompt {
+    color: #2a2;
+    margin-right: 8px;
+}
+
+#terminal-input {
+    flex: 1;
+    background-color: transparent;
+    border: none;
+    color: #f0f0f0;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    outline: none;
+}
+
+/* ANSI Colors */
+.terminal-output .bright { font-weight: bold; }
+.terminal-output .dim { opacity: 0.7; }
+.terminal-output .underline { text-decoration: underline; }
+.terminal-output .blink { animation: blink 1s step-end infinite; }
+.terminal-output .red { color: #f44; }
+.terminal-output .green { color: #4f4; }
+.terminal-output .yellow { color: #ff4; }
+.terminal-output .blue { color: #48f; }
+.terminal-output .magenta { color: #f4f; }
+.terminal-output .cyan { color: #4ff; }
+.terminal-output .white { color: #fff; }
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
