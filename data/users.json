@@ -1,52 +1,12 @@
 [
   {
-    "username": "abc2",
-    "password": "abc2",
-    "health": 100,
-    "maxHealth": 100,
-    "experience": 0,
-    "level": 1,
-    "joinDate": "2025-03-17T04:42:51.138Z",
-    "lastLogin": "2025-03-17T04:42:51.138Z"
-  },
-  {
-    "username": "pppppp",
-    "password": "pppp",
-    "health": 100,
-    "maxHealth": 100,
-    "experience": 0,
-    "level": 1,
-    "joinDate": "2025-03-17T04:44:43.303Z",
-    "lastLogin": "2025-03-17T04:44:43.303Z"
-  },
-  {
-    "username": "tttt",
-    "password": "tttt",
-    "health": 100,
-    "maxHealth": 100,
-    "experience": 0,
-    "level": 1,
-    "joinDate": "2025-03-17T04:57:34.922Z",
-    "lastLogin": "2025-03-17T04:57:34.922Z"
-  },
-  {
-    "username": "bobby",
+    "username": "bobby123",
     "password": "bbbb",
     "health": 100,
     "maxHealth": 100,
     "experience": 0,
     "level": 1,
-    "joinDate": "2025-03-17T05:01:15.881Z",
-    "lastLogin": "2025-03-17T05:01:15.881Z"
-  },
-  {
-    "username": "tyuyt",
-    "password": "pass1",
-    "health": 100,
-    "maxHealth": 100,
-    "experience": 0,
-    "level": 1,
-    "joinDate": "2025-03-17T05:05:12.412Z",
-    "lastLogin": "2025-03-17T05:05:12.412Z"
+    "joinDate": "2025-03-17T05:13:21.305Z",
+    "lastLogin": "2025-03-17T05:13:21.305Z"
   }
 ]

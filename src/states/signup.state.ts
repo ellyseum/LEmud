@@ -9,16 +9,23 @@ export class SignupState implements ClientState {
   constructor(private userManager: UserManager) {}
 
   enter(client: ConnectedClient): void {
-    client.stateData = {
-      maskInput: false // Start with normal echo
-    };
-    writeToClient(client, colorize('Create a username: ', 'green'));
+    // Initialize default state values if needed
+    client.stateData.maskInput = false;
+    
+    // Check if we already have a username (came from login state)
+    if (client.stateData.username) {
+      // Show the username that will be used
+      writeToClient(client, colorize(`Username: ${client.stateData.username}\r\n`, 'green'));
+      client.stateData.maskInput = true; // Enable password masking for next input
+      writeToClient(client, colorize('Create a password: ', 'green'));
+    } else {
+      // No username yet, ask for one
+      writeToClient(client, colorize('Create a username: ', 'green'));
+    }
   }
 
   handle(client: ConnectedClient, input: string): void {
-    // Remove the offerSignup handling since it's now handled in LoginState
-    
-    // If we're waiting for a username
+    // If we're waiting for a username (username not yet set)
     if (!client.stateData.username) {
       if (this.userManager.userExists(input)) {
         writeToClient(client, colorize('Username already exists. Choose another one: ', 'red'));
@@ -30,7 +37,7 @@ export class SignupState implements ClientState {
         writeToClient(client, colorize('Create a password: ', 'green'));
       }
     }
-    // If we're waiting for a password
+    // If we're waiting for a password (username is already set)
     else if (!client.stateData.password) {
       if (input.length < 4) {
         writeToClient(client, colorize('Password too short. Choose a longer one: ', 'red'));

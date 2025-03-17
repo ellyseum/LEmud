@@ -25,8 +25,9 @@ export class LoginState implements ClientState {
     // If we're offering signup (user not found)
     if (client.stateData.offerSignup) {
       if (input.toLowerCase() === 'y') {
-        // User wants to sign up, transition to signup state
-        client.stateData = { maskInput: false }; // Reset state data
+        // User wants to sign up, DO NOT reset state data - keep username
+        client.stateData.maskInput = false; // Ensure no masking for username
+        client.stateData.offerSignup = false; // Clear the offer signup flag
         client.stateData.transitionTo = ClientStateType.SIGNUP;
         return;
       } else if (input.toLowerCase() === 'n') {
