@@ -1,23 +1,52 @@
 (function() {
     // DOM Elements
-    const outputElem = document.getElementById('terminal-output');
-    const inputElem = document.getElementById('terminal-input');
+    const terminalOutput = document.getElementById('terminal-output');
     const statusElem = document.getElementById('connection-status');
     
-    // WebSocket
+    // Create cursor element
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    cursor.innerHTML = '&nbsp;';
+    
+    // State variables
     let socket = null;
     let connected = false;
-    
-    // Command history
-    const commandHistory = [];
+    let isFocused = false;
+    let lineBuffer = '';
+    let commandHistory = [];
     let historyIndex = -1;
     let currentInput = '';
+    
+    // Initialize terminal
+    function initTerminal() {
+        // Make terminal focusable
+        terminalOutput.tabIndex = 0;
+        terminalOutput.focus();
+        
+        // Add cursor to initial output
+        appendCursor();
+        
+        // Event listeners
+        terminalOutput.addEventListener('keydown', handleKeyDown);
+        terminalOutput.addEventListener('focus', () => { isFocused = true; cursor.style.display = 'inline-block'; });
+        terminalOutput.addEventListener('blur', () => { isFocused = false; cursor.style.display = 'none'; });
+        
+        // Click on terminal focuses it
+        document.querySelector('.terminal-container').addEventListener('click', () => {
+            terminalOutput.focus();
+        });
+    }
+    
+    // Append cursor to terminal output
+    function appendCursor() {
+        terminalOutput.appendChild(cursor);
+    }
     
     // Connect to WebSocket server
     function connect() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname || 'localhost';
-        const port = 8080; // WebSocket port
+        const port = 8080;
         
         socket = new WebSocket(`${protocol}//${host}:${port}`);
         
@@ -25,139 +54,258 @@
             connected = true;
             statusElem.textContent = 'Connected';
             statusElem.className = 'connected';
-            addOutput('Connected to server', 'system');
+            addOutput('Connected to server\n', 'system');
         };
         
         socket.onclose = () => {
             connected = false;
             statusElem.textContent = 'Disconnected';
             statusElem.className = 'disconnected';
-            addOutput('Disconnected from server', 'system');
+            addOutput('Disconnected from server\n', 'system');
             
-            // Attempt to reconnect after a delay
             setTimeout(() => {
                 if (!connected) {
-                    addOutput('Attempting to reconnect...', 'system');
+                    addOutput('Attempting to reconnect...\n', 'system');
                     connect();
                 }
             }, 3000);
         };
         
         socket.onerror = (error) => {
-            addOutput(`WebSocket Error: ${error.message}`, 'error');
+            addOutput(`WebSocket Error\n`, 'error');
         };
         
-        socket.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                
-                if (message.type === 'output') {
-                    addOutput(message.data);
-                    
-                    if (message.mask) {
-                        inputElem.type = 'password';
-                    } else {
-                        inputElem.type = 'text';
-                    }
-                } else if (message.type === 'mask') {
-                    inputElem.type = message.mask ? 'password' : 'text';
-                }
-            } catch (e) {
-                // If not JSON, just display as text
-                addOutput(event.data);
+        socket.onmessage = handleServerMessage;
+    }
+    
+    // Handle incoming server messages
+    function handleServerMessage(event) {
+        try {
+            const message = JSON.parse(event.data);
+            
+            if (message.type === 'output') {
+                // Handle server output
+                addOutput(message.data);
+            } else if (message.type === 'echo') {
+                // Handle server echo - actual character updates
+                handleEcho(message.char);
+            } else if (message.type === 'mask') {
+                // Password masking state - we handle this directly now
             }
-        };
+        } catch (e) {
+            // Plain text fallback
+            addOutput(event.data);
+        }
+    }
+    
+    // Handle server echo of characters
+    function handleEcho(char) {
+        if (char === '\b \b') {
+            // Remove last character from display (backspace sequence)
+            deleteLastCharacter();
+        } else if (char === '\r\n' || char === '\n') {
+            // Handle newline
+            addOutput('\n');
+            lineBuffer = '';
+        } else {
+            // Regular character - add to output
+            addOutput(char);
+            lineBuffer += char;
+        }
     }
     
     // Add output to the terminal
     function addOutput(text, className = '') {
-        const outputLine = document.createElement('div');
-        outputLine.className = className;
+        // Remove the cursor first
+        if (cursor.parentNode === terminalOutput) {
+            terminalOutput.removeChild(cursor);
+        }
         
-        // Just set the HTML directly - the WebSocketConnection will have converted
-        // ANSI codes to HTML span elements
-        outputLine.innerHTML = text;
+        // Check for clear command
+        if (text.includes('<!-- clear -->')) {
+            terminalOutput.innerHTML = '';
+            text = text.replace('<!-- clear -->', '');
+        }
         
-        outputElem.appendChild(outputLine);
+        // Process text as HTML or create text node
+        if (text.includes('<span') || text.includes('<br')) {
+            // Text contains HTML (from ANSI conversion)
+            const temp = document.createElement('div');
+            temp.innerHTML = text;
+            
+            // Add all child nodes to output
+            while (temp.firstChild) {
+                terminalOutput.appendChild(temp.firstChild);
+            }
+        } else {
+            // Simple text node
+            const textNode = document.createTextNode(text);
+            terminalOutput.appendChild(textNode);
+        }
+        
+        // Re-add cursor
+        appendCursor();
         
         // Scroll to bottom
-        outputElem.scrollTop = outputElem.scrollHeight;
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
     }
     
-    // Send input to server
-    function sendInput(text) {
+    // Delete the last character from the terminal
+    function deleteLastCharacter() {
+        // Get the last text node before the cursor
+        let lastNode = cursor.previousSibling;
+        
+        if (lastNode && lastNode.nodeType === Node.TEXT_NODE) {
+            // Text node - remove last character
+            if (lastNode.textContent.length > 0) {
+                lastNode.textContent = lastNode.textContent.slice(0, -1);
+            }
+            
+            // If empty, remove the node
+            if (lastNode.textContent === '') {
+                terminalOutput.removeChild(lastNode);
+            }
+        } else if (lastNode && lastNode.nodeType === Node.ELEMENT_NODE) {
+            // Element node (like a span) - more complex
+            if (lastNode.textContent.length > 0) {
+                // For simplicity, just remove the last character from text content
+                lastNode.textContent = lastNode.textContent.slice(0, -1);
+                
+                // If empty, remove the node
+                if (lastNode.textContent === '') {
+                    terminalOutput.removeChild(lastNode);
+                }
+            } else {
+                // Empty element, remove it
+                terminalOutput.removeChild(lastNode);
+            }
+        }
+    }
+    
+    // Send a keypress to the server
+    function sendKeypress(key, type = 'keypress') {
         if (!connected) {
-            addOutput('Not connected to server', 'error');
+            addOutput('Not connected to server\n', 'error');
             return;
         }
         
-        // Add to history if not empty
-        if (text.trim() && (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== text)) {
-            commandHistory.push(text);
-        }
-        
-        // Reset history index
-        historyIndex = -1;
-        
-        // Send as JSON
         socket.send(JSON.stringify({
-            type: 'input',
-            text: text
+            type: type,
+            key: key
         }));
-        
-        // Clear input field
-        inputElem.value = '';
     }
     
-    // Handle input events
-    inputElem.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            const text = inputElem.value;
-            sendInput(text);
-            e.preventDefault();
-        } else if (e.key === 'ArrowUp') {
-            // Navigate history up
-            if (historyIndex === -1) {
-                currentInput = inputElem.value;
-            }
-            
-            if (historyIndex < commandHistory.length - 1) {
-                historyIndex++;
-                inputElem.value = commandHistory[commandHistory.length - 1 - historyIndex];
-            }
-            
-            // Move cursor to end
-            setTimeout(() => {
-                inputElem.selectionStart = inputElem.selectionEnd = inputElem.value.length;
-            }, 0);
-            
-            e.preventDefault();
-        } else if (e.key === 'ArrowDown') {
-            // Navigate history down
-            if (historyIndex > 0) {
-                historyIndex--;
-                inputElem.value = commandHistory[commandHistory.length - 1 - historyIndex];
-            } else if (historyIndex === 0) {
+    // Handle keyboard events
+    function handleKeyDown(e) {
+        if (!isFocused) return;
+        
+        // Always prevent default to avoid browser actions
+        e.preventDefault();
+        
+        // Handle special keys
+        switch (e.key) {
+            case 'Enter':
+                // Send enter key
+                sendKeypress('\r\n', 'special');
+                
+                // Add to history if line is not empty
+                if (lineBuffer.trim() && (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== lineBuffer)) {
+                    commandHistory.push(lineBuffer);
+                }
+                
+                // Reset history index
                 historyIndex = -1;
-                inputElem.value = currentInput;
-            }
-            
-            // Move cursor to end
-            setTimeout(() => {
-                inputElem.selectionStart = inputElem.selectionEnd = inputElem.value.length;
-            }, 0);
-            
-            e.preventDefault();
+                break;
+                
+            case 'Backspace':
+                if (lineBuffer.length > 0) {
+                    // Send backspace to server
+                    sendKeypress('\b', 'special');
+                    // Update local buffer (server will echo back the result)
+                    lineBuffer = lineBuffer.substring(0, lineBuffer.length - 1);
+                }
+                break;
+                
+            case 'ArrowUp':
+                if (historyIndex === -1) {
+                    currentInput = lineBuffer;
+                }
+                
+                if (historyIndex < commandHistory.length - 1) {
+                    // Clear current line
+                    while (lineBuffer.length > 0) {
+                        sendKeypress('\b', 'special');
+                    }
+                    
+                    // Increment history index and get command
+                    historyIndex++;
+                    const command = commandHistory[commandHistory.length - 1 - historyIndex];
+                    
+                    // Send each character to server
+                    for (let i = 0; i < command.length; i++) {
+                        sendKeypress(command[i]);
+                    }
+                    
+                    // Update local buffer (characters will be echoed back)
+                    lineBuffer = command;
+                }
+                break;
+                
+            case 'ArrowDown':
+                if (historyIndex >= 0) {
+                    // Clear current line
+                    while (lineBuffer.length > 0) {
+                        sendKeypress('\b', 'special');
+                    }
+                    
+                    // Get the appropriate command
+                    let command = '';
+                    if (historyIndex === 0) {
+                        historyIndex = -1;
+                        command = currentInput;
+                    } else {
+                        historyIndex--;
+                        command = commandHistory[commandHistory.length - 1 - historyIndex];
+                    }
+                    
+                    // Send each character to server
+                    for (let i = 0; i < command.length; i++) {
+                        sendKeypress(command[i]);
+                    }
+                    
+                    // Update local buffer
+                    lineBuffer = command;
+                }
+                break;
+                
+            case 'Tab':
+                sendKeypress('\t', 'special');
+                break;
+                
+            case 'Escape':
+                sendKeypress('ESC', 'special');
+                break;
+                
+            default:
+                // Handle control keys
+                if (e.ctrlKey || e.altKey) {
+                    const ctrlKey = e.key.toLowerCase();
+                    if (ctrlKey.length === 1) {
+                        sendKeypress(`CTRL+${ctrlKey}`, 'special');
+                    }
+                } 
+                // Handle printable characters
+                else if (e.key.length === 1) {
+                    sendKeypress(e.key);
+                    lineBuffer += e.key;
+                }
+                break;
         }
-    });
+    }
     
-    // Focus input when clicking anywhere in the terminal
-    document.querySelector('.terminal-container').addEventListener('click', () => {
-        inputElem.focus();
-    });
-    
-    // Connect on load
+    // Initialize and connect
     window.addEventListener('load', () => {
+        initTerminal();
         connect();
     });
 })();

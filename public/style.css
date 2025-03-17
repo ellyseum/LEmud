@@ -59,28 +59,28 @@ body {
     word-wrap: break-word;
     font-size: 14px;
     line-height: 1.4;
+    outline: none; /* Remove focus outline */
 }
 
-.terminal-input-line {
-    display: flex;
-    padding: 10px;
-    border-top: 1px solid #333;
-    background-color: #0a0a0a;
+/* Cursor styles */
+.cursor {
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    background-color: #f0f0f0;
+    margin-bottom: -2px;
+    animation: blink-cursor 1s step-end infinite;
 }
 
-.prompt {
-    color: #2a2;
-    margin-right: 8px;
+@keyframes blink-cursor {
+    from, to { opacity: 1; }
+    50% { opacity: 0; }
 }
 
-#terminal-input {
-    flex: 1;
-    background-color: transparent;
-    border: none;
-    color: #f0f0f0;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    outline: none;
+/* Current line being edited */
+.input-line {
+    display: inline;
+    color: #fff;
 }
 
 /* ANSI Colors */

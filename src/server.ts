@@ -110,17 +110,8 @@ function setupClient(connection: IConnection): void {
   
   // Handle data from client
   connection.on('data', (data) => {
-    // For TELNET, data will be pre-processed by TelnetConnection
-    // For WebSocket, data will be the actual input message
-    
-    // For telnet-specific processing
-    if (connection.getType() === 'telnet') {
-      handleTelnetData(client, data);
-    } else {
-      // For WebSocket, we can process the input directly
-      // WebSocket clients will send complete commands
-      processInput(client, data);
-    }
+    // All connections should use the buffered approach, regardless of type
+    handleClientData(client, data);
   });
   
   // Handle client disconnect
@@ -139,8 +130,8 @@ function setupClient(connection: IConnection): void {
   });
 }
 
-// Handle TELNET-specific data processing
-function handleTelnetData(client: ConnectedClient, data: string): void {
+// Unified handler for client data (both TELNET and WebSocket)
+function handleClientData(client: ConnectedClient, data: string): void {
   // Start buffering output when user begins typing
   if (client.buffer.length === 0 && !client.isTyping) {
     client.isTyping = true;
@@ -163,8 +154,11 @@ function handleTelnetData(client: ConnectedClient, data: string): void {
     return;
   }
   
-  // Handle Enter (already normalized to \r\n by TelnetConnection)
-  if (data.includes('\r\n')) {
+  // Handle Enter (CR+LF or just CR)
+  if (data === '\r\n' || data === '\r') {
+    // Echo a newline
+    client.connection.write('\r\n');
+    
     // Process the completed line
     const line = client.buffer;
     client.buffer = ''; // Reset the buffer
@@ -180,12 +174,16 @@ function handleTelnetData(client: ConnectedClient, data: string): void {
   // Handle normal input (excluding special sequences)
   client.buffer += data;
   
-  // Update mask input state
-  if (client.stateData.maskInput) {
-    client.connection.setMaskInput(true);
+  // Echo the character if not in mask mode
+  if (!client.stateData.maskInput) {
+    client.connection.write(data);
   } else {
-    client.connection.setMaskInput(false);
+    // For masked input (passwords), echo an asterisk
+    client.connection.write('*');
   }
+  
+  // Update mask input state
+  client.connection.setMaskInput(!!client.stateData.maskInput);
 }
 
 function processInput(client: ConnectedClient, input: string): void {

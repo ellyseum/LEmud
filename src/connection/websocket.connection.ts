@@ -21,12 +21,21 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
     // Convert ANSI color codes to HTML for WebSocket clients
     const htmlData = this.convertAnsiToHtml(data);
     
-    // Send as JSON to enable client to distinguish between types of messages
-    this.ws.send(JSON.stringify({
-      type: 'output',
-      data: htmlData,
-      mask: this.maskInput
-    }));
+    // Check if this is a single character (echo)
+    if (data.length === 1 || data === '\b \b' || data === '\r\n') {
+      // Send as echo for character-by-character display
+      this.ws.send(JSON.stringify({
+        type: 'echo',
+        char: data
+      }));
+    } else {
+      // Send as normal output
+      this.ws.send(JSON.stringify({
+        type: 'output',
+        data: htmlData,
+        mask: this.maskInput
+      }));
+    }
   }
 
   end(): void {
@@ -58,8 +67,33 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
       const data = JSON.parse(message.toString());
       
       if (data.type === 'input') {
-        // Forward the input data as if it were typed
+        // Handle full input lines (backward compatibility)
         this.emit('data', data.text);
+      } 
+      else if (data.type === 'keypress') {
+        // Handle individual keypresses
+        this.emit('data', data.key);
+      }
+      else if (data.type === 'special') {
+        // Handle special keys
+        switch(data.key) {
+          case '\r\n':
+            this.emit('data', '\r\n');
+            break;
+          case '\b':
+            this.emit('data', '\b');
+            break;
+          case '\t':
+            this.emit('data', '\t');
+            break;
+          default:
+            // Other special keys can be handled as needed
+            break;
+        }
+      }
+      else if (data.type === 'history') {
+        // Don't send history navigation events to the server
+        // They're handled client-side
       }
     } catch (e) {
       // If not JSON, treat as plain text input
