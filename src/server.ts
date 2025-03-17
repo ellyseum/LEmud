@@ -9,7 +9,7 @@ import { flushClientBuffer, stopBuffering } from './utils/socketWriter';
 const PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const userManager = new UserManager();
 const clients = new Map<string, ConnectedClient>();
-const commandHandler = new CommandHandler(clients);
+const commandHandler = new CommandHandler(clients, userManager);
 const stateMachine = new StateMachine(userManager);
 
 // Create the server
