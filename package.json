@@ -1,0 +1,21 @@
+{
+  "name": "telnet-game-server",
+  "version": "1.0.0",
+  "description": "A TELNET server with user authentication and command system",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "watch": "npx nodemon --watch src --ext ts --exec ts-node src/server.ts"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.18",
+    "typescript": "^4.9.4",
+    "ts-node": "^10.9.1",
+    "nodemon": "^2.0.22"
+  }
+}
