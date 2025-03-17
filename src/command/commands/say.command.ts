@@ -1,6 +1,6 @@
 import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
-import { writeToClient } from '../../utils/socketWriter';
+import { writeToClient, writeMessageToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { formatUsername } from '../../utils/formatters';
 
@@ -27,9 +27,11 @@ export class SayCommand implements Command {
     this.clients.forEach(c => {
       if (c.authenticated && c.user) {
         if (c === client) {
+          // For the sender, use regular output
           writeToClient(c, colorize(`You say '${args}'\r\n`, 'green'));
         } else {
-          writeToClient(c, colorize(`${formatUsername(client.user!.username)} says '${args}'\r\n`, 'cyan'));
+          // For other clients, use the message writer that handles prompt management
+          writeMessageToClient(c, colorize(`${formatUsername(client.user!.username)} says '${args}'\r\n`, 'cyan'));
         }
       }
     });

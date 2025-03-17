@@ -85,7 +85,7 @@
             
             if (message.type === 'output') {
                 // Handle server output
-                addOutput(message.data);
+                addOutput(message.data, '', true);
             } else if (message.type === 'echo') {
                 // Handle server echo - actual character updates
                 handleEcho(message.char);
@@ -115,7 +115,7 @@
     }
     
     // Add output to the terminal
-    function addOutput(text, className = '') {
+    function addOutput(text, className = '', preserveSpacing = false) {
         // Remove the cursor first
         if (cursor.parentNode === terminalOutput) {
             terminalOutput.removeChild(cursor);

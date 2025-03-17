@@ -2,6 +2,7 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { colorize, colors } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
+import { writeCommandPrompt } from '../utils/promptFormatter';
 
 export class AuthenticatedState implements ClientState {
   name = ClientStateType.AUTHENTICATED;
@@ -14,7 +15,10 @@ export class AuthenticatedState implements ClientState {
     writeToClient(client, colorize(`Welcome, ${formatUsername(client.user.username)}!\r\n`, 'green'));
     writeToClient(client, colorize(`Health: ${client.user.health}/${client.user.maxHealth} | XP: ${client.user.experience} | Level: ${client.user.level}\r\n`, 'cyan'));
     writeToClient(client, colorize('Type "help" for a list of commands.\r\n', 'yellow'));
-    writeToClient(client, colorize('========================================\r\n\r\n', 'bright'));
+    writeToClient(client, colorize('========================================\r\n', 'bright'));
+    
+    // Add the command prompt showing HP status
+    writeCommandPrompt(client);
   }
 
   handle(): void {

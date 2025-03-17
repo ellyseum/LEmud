@@ -37,5 +37,7 @@ export class HealCommand implements Command {
     } else {
       writeToClient(client, colorize(`You are already at full health.\r\n`, 'yellow'));
     }
+    
+    // Command prompt will be displayed by CommandHandler after this function returns
   }
 }

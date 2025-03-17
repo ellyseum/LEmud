@@ -3,6 +3,7 @@ import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { Command } from './command.interface';
+import { writeCommandPrompt } from '../utils/promptFormatter';
 
 // Import commands
 import { SayCommand } from './commands/say.command';
@@ -50,7 +51,8 @@ export class CommandHandler {
     // Ensure input is trimmed
     const cleanInput = input.trim();
     if (cleanInput === '') {
-      // Handle empty input gracefully
+      // Handle empty input gracefully - just show prompt again
+      writeCommandPrompt(client);
       return;
     }
 
@@ -62,6 +64,9 @@ export class CommandHandler {
     const command = this.commands.get(commandName);
     if (command) {
       command.execute(client, args);
+      
+      // Display the command prompt after command execution
+      writeCommandPrompt(client);
     } else {
       writeToClient(client, colorize(`Unknown command: ${commandName}\r\n`, 'red'));
       
@@ -70,6 +75,9 @@ export class CommandHandler {
       if (helpCommand) {
         helpCommand.execute(client, '');
       }
+      
+      // Display the command prompt after command execution
+      writeCommandPrompt(client);
     }
   }
 }

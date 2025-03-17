@@ -4,6 +4,8 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { UserManager } from '../../user/userManager';
 
+// No need to import writeCommandPrompt as it's handled by the CommandHandler
+
 export class DamageCommand implements Command {
   name = 'damage';
   description = 'Take damage (for testing)';
@@ -41,5 +43,7 @@ export class DamageCommand implements Command {
     } else {
       writeToClient(client, colorize(`You avoided the damage!\r\n`, 'green'));
     }
+    
+    // Command prompt will be displayed by CommandHandler after this function returns
   }
 }

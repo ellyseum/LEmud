@@ -9,11 +9,12 @@ import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
 import { StateMachine } from './state/stateMachine';
 import { colorize } from './utils/colors';
-import { flushClientBuffer, stopBuffering } from './utils/socketWriter';
+import { flushClientBuffer, stopBuffering, writeToClient, writeMessageToClient } from './utils/socketWriter';
 import { TelnetConnection } from './connection/telnet.connection';
 import { WebSocketConnection } from './connection/websocket.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
 import { formatUsername } from './utils/formatters';
+import { writeCommandPrompt } from './utils/promptFormatter';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -236,6 +237,7 @@ function processInput(client: ConnectedClient, input: string): void {
       client.state !== ClientStateType.TRANSFER_REQUEST) {
     // Process command from authenticated user
     commandHandler.handleCommand(client, trimmedInput);
+    // Note: CommandHandler now handles displaying the prompt after commands
   } else {
     // Handle authentication via state machine
     stateMachine.handleInput(client, trimmedInput);
@@ -247,13 +249,22 @@ function processInput(client: ConnectedClient, input: string): void {
         client.connection.end();
       }, 1000); // Brief delay to ensure the error message is sent
     }
+    
+    // If user just became authenticated, show the command prompt
+    if (client.authenticated && 
+        client.state === ClientStateType.AUTHENTICATED &&
+        !client.stateData.showedInitialPrompt) {
+      client.stateData.showedInitialPrompt = true;
+      // The authenticated state will handle the initial prompt
+    }
   }
 }
 
 function broadcastSystemMessage(message: string, excludeClient?: ConnectedClient): void {
   clients.forEach(client => {
     if (client.authenticated && client !== excludeClient) {
-      client.connection.write(colorize(`>>> ${message}\r\n`, 'yellow'));
+      // Use the new message writing function that handles prompt management
+      writeMessageToClient(client, colorize(`>>> ${message}\r\n`, 'yellow'));
     }
   });
 }

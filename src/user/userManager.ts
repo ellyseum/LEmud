@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { User, ConnectedClient, ClientStateType } from '../types';
-import { writeToClient, flushClientBuffer } from '../utils/socketWriter';
+import { writeToClient, flushClientBuffer, writeMessageToClient } from '../utils/socketWriter';
 import { colorize } from '../utils/colors';
 import { standardizeUsername } from '../utils/formatters';
 
@@ -123,8 +123,12 @@ export class UserManager {
   
   // Helper method to notify a client to check their state
   private notifyClient(client: ConnectedClient): void {
-    // Force the client to process the output buffer, which will trigger state checks
-    writeToClient(client, '');
+    // For notifications, use the message writer that handles prompt management
+    if (client.authenticated && client.state === ClientStateType.AUTHENTICATED) {
+      writeMessageToClient(client, '');
+    } else {
+      writeToClient(client, '');
+    }
     flushClientBuffer(client);
   }
 

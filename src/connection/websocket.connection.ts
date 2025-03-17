@@ -103,9 +103,10 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
 
   private convertAnsiToHtml(text: string): string {
     // More comprehensive conversion of ANSI color codes to HTML
-    return text
+    let htmlData = text
       .replace(/\r\n/g, '<br>')
       .replace(/\n/g, '<br>')
+      .replace(/\r/g, '<br>') // Make sure standalone \r is also handled
       .replace(/\x1b\[0m/g, '</span>')
       .replace(/\x1b\[1m/g, '<span class="bright">')
       .replace(/\x1b\[2m/g, '<span class="dim">')
@@ -120,5 +121,7 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
       .replace(/\x1b\[37m/g, '<span class="white">')
       // Handle the clear screen command
       .replace(/\x1b\[2J\x1b\[0;0H/g, '<!-- clear -->');
+
+    return htmlData;
   }
 }
