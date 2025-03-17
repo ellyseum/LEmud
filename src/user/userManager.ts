@@ -102,4 +102,13 @@ export class UserManager {
     this.saveUsers();
     return true;
   }
+
+  public deleteUser(username: string): boolean {
+    const index = this.users.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
+    if (index === -1) return false;
+    
+    this.users.splice(index, 1);
+    this.saveUsers();
+    return true;
+  }
 }

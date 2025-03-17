@@ -5,6 +5,7 @@ export enum ClientStateType {
   CONNECTING = 'connecting',
   LOGIN = 'login',
   SIGNUP = 'signup',
+  CONFIRMATION = 'confirmation', // Add this new state
   AUTHENTICATED = 'authenticated'
 }
 

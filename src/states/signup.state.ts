@@ -49,9 +49,9 @@ export class SignupState implements ClientState {
         if (this.userManager.createUser(client.stateData.username, client.stateData.password)) {
           const user = this.userManager.getUser(client.stateData.username);
           if (user) {
+            // Set user but DON'T set authenticated flag yet
             client.user = user;
-            client.authenticated = true;
-            client.stateData.transitionTo = ClientStateType.AUTHENTICATED;
+            client.stateData.transitionTo = ClientStateType.CONFIRMATION;
           } else {
             writeToClient(client, colorize('Error creating user. Please try again.\r\n', 'red'));
             client.stateData.transitionTo = ClientStateType.LOGIN;

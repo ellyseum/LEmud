@@ -3,6 +3,7 @@ import { UserManager } from '../user/userManager';
 import { ConnectingState } from '../states/connecting.state';
 import { LoginState } from '../states/login.state';
 import { SignupState } from '../states/signup.state';
+import { ConfirmationState } from '../states/confirmation.state';
 import { AuthenticatedState } from '../states/authenticated.state';
 
 export class StateMachine {
@@ -13,6 +14,7 @@ export class StateMachine {
   private connectingState: ConnectingState;
   private loginState: LoginState;
   private signupState: SignupState;
+  private confirmationState: ConfirmationState;
   private authenticatedState: AuthenticatedState;
 
   constructor(userManager: UserManager) {
@@ -22,12 +24,14 @@ export class StateMachine {
     this.connectingState = new ConnectingState();
     this.loginState = new LoginState(userManager);
     this.signupState = new SignupState(userManager);
+    this.confirmationState = new ConfirmationState(userManager);
     this.authenticatedState = new AuthenticatedState();
     
     // Register states
     this.registerState(this.connectingState);
     this.registerState(this.loginState);
     this.registerState(this.signupState);
+    this.registerState(this.confirmationState);
     this.registerState(this.authenticatedState);
   }
 

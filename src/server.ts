@@ -131,7 +131,8 @@ function processInput(client: ConnectedClient, input: string): void {
   
   console.log(`Processing input from client in state ${client.state}: "${trimmedInput}"`);
   
-  if (client.authenticated) {
+  // Check if user is authenticated AND not in confirmation state
+  if (client.authenticated && client.state !== ClientStateType.CONFIRMATION) {
     // Process command from authenticated user
     commandHandler.handleCommand(client, trimmedInput);
   } else {
