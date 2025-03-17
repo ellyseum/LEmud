@@ -2,6 +2,7 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
+import { config } from '../config';
 
 export class LoginState implements ClientState {
   name = ClientStateType.LOGIN;
@@ -10,7 +11,8 @@ export class LoginState implements ClientState {
 
   enter(client: ConnectedClient): void {
     client.stateData = {
-      maskInput: false // Start with normal echo
+      maskInput: false, // Start with normal echo
+      passwordAttempts: 0 // Initialize password attempts counter
     }; 
     writeToClient(client, colorize('Enter your username (or "new" to sign up): ', 'cyan'));
   }
@@ -66,6 +68,9 @@ export class LoginState implements ClientState {
       return false;
     }
     
+    // Track password attempts
+    client.stateData.passwordAttempts = (client.stateData.passwordAttempts || 0) + 1;
+    
     if (this.userManager.authenticateUser(username, input)) {
       client.stateData.maskInput = false; // Disable masking after successful login
       const user = this.userManager.getUser(username);
@@ -77,7 +82,16 @@ export class LoginState implements ClientState {
         return true; // Authentication successful
       }
     } else {
-      writeToClient(client, colorize('Invalid password. Try again: ', 'red'));
+      // Check if the user has exceeded the maximum number of password attempts
+      if (client.stateData.passwordAttempts >= config.maxPasswordAttempts) {
+        writeToClient(client, colorize(`\r\nToo many failed password attempts. Disconnecting...\r\n`, 'red'));
+        // Set a flag to disconnect the client
+        client.stateData.disconnect = true;
+        return false;
+      }
+      
+      const attemptsLeft = config.maxPasswordAttempts - client.stateData.passwordAttempts;
+      writeToClient(client, colorize(`Invalid password. ${attemptsLeft} attempts remaining: `, 'red'));
       // Keep masking enabled for retrying password
     }
     return false; // Authentication failed

@@ -138,6 +138,14 @@ function processInput(client: ConnectedClient, input: string): void {
   } else {
     // Handle authentication via state machine
     stateMachine.handleInput(client, trimmedInput);
+    
+    // Check if client should be disconnected (due to too many failed attempts)
+    if (client.stateData.disconnect) {
+      setTimeout(() => {
+        console.log(`Disconnecting client due to too many failed password attempts`);
+        client.socket.end();
+      }, 1000); // Brief delay to ensure the error message is sent
+    }
   }
 }
 

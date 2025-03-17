@@ -10,7 +10,8 @@
     "watch": "npx nodemon --watch src --ext ts --exec ts-node src/server.ts"
   },
   "dependencies": {
-    "chalk": "^4.1.2"
+    "chalk": "^4.1.2",
+    "dotenv": "^16.0.3"
   },
   "devDependencies": {
     "@types/node": "^18.11.18",
