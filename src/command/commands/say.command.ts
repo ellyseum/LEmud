@@ -2,6 +2,7 @@ import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
+import { formatUsername } from '../../utils/formatters';
 
 export class SayCommand implements Command {
   name = 'say';
@@ -28,7 +29,7 @@ export class SayCommand implements Command {
         if (c === client) {
           writeToClient(c, colorize(`You say '${args}'\r\n`, 'green'));
         } else {
-          writeToClient(c, colorize(`${client.user!.username} says '${args}'\r\n`, 'cyan'));
+          writeToClient(c, colorize(`${formatUsername(client.user!.username)} says '${args}'\r\n`, 'cyan'));
         }
       }
     });

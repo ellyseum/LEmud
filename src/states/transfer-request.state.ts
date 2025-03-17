@@ -2,6 +2,7 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
+import { formatUsername } from '../utils/formatters';
 
 export class TransferRequestState implements ClientState {
   name = ClientStateType.TRANSFER_REQUEST;
@@ -23,7 +24,7 @@ export class TransferRequestState implements ClientState {
     
     // Notify user about the transfer request
     writeToClient(client, colorize('\r\n\r\n=== SESSION TRANSFER REQUEST ===\r\n', 'bright'));
-    writeToClient(client, colorize(`Someone is trying to log in as ${client.user.username} from a ${clientType}.\r\n`, 'yellow'));
+    writeToClient(client, colorize(`Someone is trying to log in as ${formatUsername(client.user.username)} from a ${clientType}.\r\n`, 'yellow'));
     writeToClient(client, colorize(`Connection details: ${ipDetails}\r\n`, 'dim'));
     writeToClient(client, colorize('Allow this connection to take over your session? (y/n): ', 'cyan'));
   }

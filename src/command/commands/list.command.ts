@@ -2,6 +2,7 @@ import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
+import { formatUsername } from '../../utils/formatters';
 
 export class ListCommand implements Command {
   name = 'list';
@@ -26,7 +27,7 @@ export class ListCommand implements Command {
         const connectionLabel = user.connectionType === 'websocket' ? 'web' : 'telnet';
         writeToClient(
           client, 
-          colorize(`- ${user.username} `, 'green') + 
+          colorize(`- ${formatUsername(user.username)} `, 'green') + 
           colorize(`[${connectionLabel}]\r\n`, 'cyan')
         );
       });

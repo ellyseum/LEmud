@@ -2,6 +2,7 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
+import { formatUsername } from '../utils/formatters';
 
 export class ConfirmationState implements ClientState {
   name = ClientStateType.CONFIRMATION;
@@ -17,7 +18,7 @@ export class ConfirmationState implements ClientState {
     
     client.stateData.maskInput = false;
     writeToClient(client, colorize('======== User Registration Complete ========\r\n', 'bright'));
-    writeToClient(client, colorize(`Username: ${client.user.username}\r\n`, 'green'));
+    writeToClient(client, colorize(`Username: ${formatUsername(client.user.username)}\r\n`, 'green'));
     writeToClient(client, colorize(`Account created on: ${client.user.joinDate.toLocaleDateString()}\r\n`, 'cyan'));
     writeToClient(client, colorize('\r\nPlease review your account details.\r\n', 'yellow'));
     writeToClient(client, colorize('Type "confirm" to complete registration or "cancel" to abort: ', 'magenta'));

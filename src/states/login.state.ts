@@ -3,6 +3,7 @@ import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
 import { config } from '../config';
+import { formatUsername, standardizeUsername } from '../utils/formatters';
 
 export class LoginState implements ClientState {
   name = ClientStateType.LOGIN;
@@ -77,17 +78,27 @@ export class LoginState implements ClientState {
     }
 
     // Normal login flow - check if user exists
-    const username = input;
-    if (this.userManager.userExists(username)) {
-      client.stateData.username = username;
+    const username = input.trim(); // Trim any whitespace
+    
+    // Prevent empty username submissions
+    if (username === '') {
+      writeToClient(client, colorize('Username cannot be empty. Please enter a username: ', 'red'));
+      return;
+    }
+    
+    // Standardize username for storage and checks
+    const standardUsername = standardizeUsername(username);
+    
+    if (this.userManager.userExists(standardUsername)) {
+      client.stateData.username = standardUsername; // Store lowercase version
       client.stateData.awaitingPassword = true;
       client.stateData.maskInput = true; // Enable password masking
       writeToClient(client, colorize('Enter your password: ', 'cyan'));
     } else {
       client.stateData.offerSignup = true;
-      client.stateData.username = username;
+      client.stateData.username = standardUsername; // Store lowercase version
       client.stateData.maskInput = false; // Ensure no masking for yes/no input
-      writeToClient(client, colorize('User does not exist. Would you like to sign up? (y/n): ', 'red'));
+      writeToClient(client, colorize(`User (${formatUsername(standardUsername)}) does not exist. Would you like to sign up? (y/n): `, 'red'));
     }
   }
   

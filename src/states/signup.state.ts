@@ -2,6 +2,7 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
+import { formatUsername, validateUsername, standardizeUsername } from '../utils/formatters';
 
 export class SignupState implements ClientState {
   name = ClientStateType.SIGNUP;
@@ -15,7 +16,7 @@ export class SignupState implements ClientState {
     // Check if we already have a username (came from login state)
     if (client.stateData.username) {
       // Show the username that will be used
-      writeToClient(client, colorize(`Username: ${client.stateData.username}\r\n`, 'green'));
+      writeToClient(client, colorize(`Username: ${formatUsername(client.stateData.username)}\r\n`, 'green'));
       client.stateData.maskInput = true; // Enable password masking for next input
       writeToClient(client, colorize('Create a password: ', 'green'));
     } else {
@@ -27,13 +28,27 @@ export class SignupState implements ClientState {
   handle(client: ConnectedClient, input: string): void {
     // If we're waiting for a username (username not yet set)
     if (!client.stateData.username) {
-      if (this.userManager.userExists(input)) {
+      // Validate the username format first
+      const validation = validateUsername(input);
+      
+      if (!validation.isValid) {
+        writeToClient(client, colorize(`${validation.message}. Please try again: `, 'red'));
+        return;
+      }
+
+      // Standardize to lowercase for storage and checks
+      const standardUsername = standardizeUsername(input);
+      
+      if (this.userManager.userExists(standardUsername)) {
         writeToClient(client, colorize('Username already exists. Choose another one: ', 'red'));
-      } else if (input.length < 3) {
+      } else if (standardUsername.length < 3) {
         writeToClient(client, colorize('Username too short. Choose a longer one: ', 'red'));
       } else {
-        client.stateData.username = input;
+        client.stateData.username = standardUsername;
         client.stateData.maskInput = true; // Enable password masking
+        
+        // Display the username in camelcase format
+        writeToClient(client, colorize(`Username set to: ${formatUsername(standardUsername)}\r\n`, 'green'));
         writeToClient(client, colorize('Create a password: ', 'green'));
       }
     }

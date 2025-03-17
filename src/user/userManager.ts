@@ -3,6 +3,7 @@ import path from 'path';
 import { User, ConnectedClient, ClientStateType } from '../types';
 import { writeToClient, flushClientBuffer } from '../utils/socketWriter';
 import { colorize } from '../utils/colors';
+import { standardizeUsername } from '../utils/formatters';
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -56,11 +57,13 @@ export class UserManager {
   }
 
   public getUser(username: string): User | undefined {
-    return this.users.find(user => user.username.toLowerCase() === username.toLowerCase());
+    const standardized = standardizeUsername(username);
+    return this.users.find(user => user.username === standardized);
   }
 
   public userExists(username: string): boolean {
-    return this.users.some(user => user.username.toLowerCase() === username.toLowerCase());
+    const standardized = standardizeUsername(username);
+    return this.users.some(user => user.username === standardized);
   }
 
   public authenticateUser(username: string, password: string): boolean {
@@ -69,23 +72,27 @@ export class UserManager {
   }
 
   public isUserActive(username: string): boolean {
-    return this.activeUserSessions.has(username.toLowerCase());
+    const standardized = standardizeUsername(username);
+    return this.activeUserSessions.has(standardized);
   }
 
   public getActiveUserSession(username: string): ConnectedClient | undefined {
-    return this.activeUserSessions.get(username.toLowerCase());
+    const standardized = standardizeUsername(username);
+    return this.activeUserSessions.get(standardized);
   }
 
   public registerUserSession(username: string, client: ConnectedClient): void {
-    this.activeUserSessions.set(username.toLowerCase(), client);
+    const standardized = standardizeUsername(username);
+    this.activeUserSessions.set(standardized, client);
     // Clear any pending transfers for this user
-    this.pendingTransfers.delete(username.toLowerCase());
+    this.pendingTransfers.delete(standardized);
   }
 
   public unregisterUserSession(username: string): void {
-    this.activeUserSessions.delete(username.toLowerCase());
+    const standardized = standardizeUsername(username);
+    this.activeUserSessions.delete(standardized);
     // Also clean up any pending transfers
-    this.pendingTransfers.delete(username.toLowerCase());
+    this.pendingTransfers.delete(standardized);
   }
 
   // Request a transfer of the session for the user
@@ -211,13 +218,23 @@ export class UserManager {
   }
 
   public createUser(username: string, password: string): boolean {
-    if (this.userExists(username)) {
+    // Standardize the username to lowercase
+    const standardized = standardizeUsername(username);
+    
+    if (this.userExists(standardized)) {
+      return false;
+    }
+    
+    // Validate username before creating
+    if (!/^[a-zA-Z]+$/.test(standardized) || 
+        standardized.length >= 13 || 
+        standardized.length < 3) {
       return false;
     }
 
     const now = new Date();
     const newUser: User = {
-      username,
+      username: standardized,
       password,
       health: 100,
       maxHealth: 100,

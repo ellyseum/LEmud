@@ -13,6 +13,7 @@ import { flushClientBuffer, stopBuffering } from './utils/socketWriter';
 import { TelnetConnection } from './connection/telnet.connection';
 import { WebSocketConnection } from './connection/websocket.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
+import { formatUsername } from './utils/formatters';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -127,8 +128,8 @@ function setupClient(connection: IConnection): void {
       // Unregister the user session
       userManager.unregisterUserSession(client.user.username);
       
-      // Notify other users
-      broadcastSystemMessage(`${client.user.username} has left the server.`, client);
+      // Notify other users with formatted username
+      broadcastSystemMessage(`${formatUsername(client.user.username)} has left the server.`, client);
     }
     clients.delete(clientId);
   });
