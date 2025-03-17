@@ -5,6 +5,7 @@ import { LoginState } from '../states/login.state';
 import { SignupState } from '../states/signup.state';
 import { ConfirmationState } from '../states/confirmation.state';
 import { AuthenticatedState } from '../states/authenticated.state';
+import { TransferRequestState } from '../states/transfer-request.state';
 
 export class StateMachine {
   private states: Map<ClientStateType, ClientState> = new Map();
@@ -16,6 +17,7 @@ export class StateMachine {
   private signupState: SignupState;
   private confirmationState: ConfirmationState;
   private authenticatedState: AuthenticatedState;
+  private transferRequestState: TransferRequestState;
 
   constructor(userManager: UserManager) {
     this.userManager = userManager;
@@ -26,6 +28,7 @@ export class StateMachine {
     this.signupState = new SignupState(userManager);
     this.confirmationState = new ConfirmationState(userManager);
     this.authenticatedState = new AuthenticatedState();
+    this.transferRequestState = new TransferRequestState(userManager);
     
     // Register states
     this.registerState(this.connectingState);
@@ -33,6 +36,7 @@ export class StateMachine {
     this.registerState(this.signupState);
     this.registerState(this.confirmationState);
     this.registerState(this.authenticatedState);
+    this.registerState(this.transferRequestState);
   }
 
   public registerState(state: ClientState): void {
@@ -64,7 +68,7 @@ export class StateMachine {
     console.log(`Handling input in state ${client.state}: "${trimmedInput}"`);
     
     // Special case for login state with password input
-    if (client.state === ClientStateType.LOGIN && client.stateData.awaitingPassword) {
+    if (client.state === ClientStateType.LOGIN && client.stateData.awaitingPassword && !client.stateData.awaitingTransferRequest) {
       if (this.loginState.handlePassword(client, trimmedInput)) {
         this.transitionTo(client, ClientStateType.AUTHENTICATED);
       }

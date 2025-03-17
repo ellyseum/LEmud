@@ -10,6 +10,11 @@ export class SayCommand implements Command {
   constructor(private clients: Map<string, ConnectedClient>) {}
 
   execute(client: ConnectedClient, args: string): void {
+    // Check for forced transitions before processing command
+    if (client.stateData.forcedTransition) {
+      return;
+    }
+
     if (!client.user) return;
 
     if (!args.trim()) {

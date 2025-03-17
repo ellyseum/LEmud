@@ -18,6 +18,39 @@ export class LoginState implements ClientState {
   }
 
   handle(client: ConnectedClient, input: string): void {
+    // Handle transfer request response
+    if (client.stateData.awaitingTransferRequest) {
+      if (input.toLowerCase() === 'y') {
+        // User wants to request a transfer
+        const username = client.stateData.username;
+        
+        // Check if username is defined before proceeding
+        if (!username) {
+          writeToClient(client, colorize('\r\nError: Username not found. Please try again.\r\n', 'red'));
+          client.stateData.transitionTo = ClientStateType.LOGIN;
+          return;
+        }
+        
+        if (this.userManager.requestSessionTransfer(username, client)) {
+          writeToClient(client, colorize('\r\nTransfer request sent. Waiting for approval...\r\n', 'yellow'));
+        } else {
+          // Something went wrong or the user is no longer active
+          writeToClient(client, colorize('\r\nError sending transfer request. The session may no longer be active.\r\n', 'red'));
+          client.stateData.transitionTo = ClientStateType.LOGIN;
+        }
+      } else {
+        // User doesn't want to transfer, just return to login
+        writeToClient(client, colorize('\r\nLogin cancelled. Please try again.\r\n', 'red'));
+        this.enter(client); // Restart login process
+      }
+      
+      // Clear awaiting flags
+      delete client.stateData.awaitingTransferRequest;
+      delete client.stateData.authenticatedPassword;
+      delete client.stateData.awaitingPassword; // Ensure this is cleared
+      return;
+    }
+
     // Handle "new" command for signup
     if (input.toLowerCase() === 'new') {
       client.stateData.transitionTo = ClientStateType.SIGNUP;
@@ -73,12 +106,31 @@ export class LoginState implements ClientState {
     
     if (this.userManager.authenticateUser(username, input)) {
       client.stateData.maskInput = false; // Disable masking after successful login
+      
+      // Check if this user is already logged in elsewhere
+      if (this.userManager.isUserActive(username)) {
+        // Ask the new login if they want to request a transfer
+        writeToClient(client, colorize('\r\n\r\nThis account is currently active in another session.\r\n', 'yellow'));
+        writeToClient(client, colorize('Would you like to request a session transfer? (y/n): ', 'cyan'));
+        
+        // Set up to handle the transfer request response
+        client.stateData.awaitingTransferRequest = true;
+        // Important fix: Clear the awaitingPassword flag so we don't handle the next input as a password
+        client.stateData.awaitingPassword = false;
+        client.stateData.authenticatedPassword = input;
+        return false; // Don't complete login yet
+      }
+      
+      // If not already logged in, proceed with normal login
       const user = this.userManager.getUser(username);
       if (user) {
         client.user = user;
         client.authenticated = true;
-        // Update last login time - username is now guaranteed to be a string
+        
+        // Update last login time and register new session
         this.userManager.updateLastLogin(username);
+        this.userManager.registerUserSession(username, client);
+        
         return true; // Authentication successful
       }
     } else {

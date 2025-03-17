@@ -11,6 +11,7 @@ import { StatsCommand } from './commands/stats.command';
 import { HealCommand } from './commands/heal.command';
 import { DamageCommand } from './commands/damage.command';
 import { HelpCommand } from './commands/help.command';
+import { QuitCommand } from './commands/quit.command';
 
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
@@ -29,7 +30,8 @@ export class CommandHandler {
       new ListCommand(this.clients),
       new StatsCommand(),
       new HealCommand(this.userManager),
-      new DamageCommand(this.userManager)
+      new DamageCommand(this.userManager),
+      new QuitCommand(this.userManager)  // Add the quit command
     ];
     
     // Register all commands

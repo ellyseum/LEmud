@@ -6,7 +6,8 @@ export enum ClientStateType {
   LOGIN = 'login',
   SIGNUP = 'signup',
   CONFIRMATION = 'confirmation',
-  AUTHENTICATED = 'authenticated'
+  AUTHENTICATED = 'authenticated',
+  TRANSFER_REQUEST = 'transfer_request'  // New state for handling session transfers
 }
 
 export interface User {
@@ -33,6 +34,8 @@ export interface ConnectedClient {
     awaitingPassword?: boolean;
     offerSignup?: boolean;
     transitionTo?: ClientStateType;
+    waitingForTransfer?: boolean; // Flag to indicate this client is waiting for transfer approval
+    transferredSession?: boolean; // Flag to indicate this session was transferred from another
     [key: string]: any;
   };
   

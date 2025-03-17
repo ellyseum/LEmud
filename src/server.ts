@@ -115,7 +115,18 @@ function setupClient(connection: IConnection): void {
   // Handle client disconnect
   connection.on('end', () => {
     console.log(`Client disconnected: ${clientId}`);
+    
+    // Check if client was in a pending transfer
+    if (client.user && client.stateData.waitingForTransfer) {
+      userManager.cancelTransfer(client.user.username);
+    }
+    
+    // Only unregister if the client is still authenticated
+    // This prevents unregistering a session that was already handed over via transfer
     if (client.user && client.authenticated) {
+      // Unregister the user session
+      userManager.unregisterUserSession(client.user.username);
+      
       // Notify other users
       broadcastSystemMessage(`${client.user.username} has left the server.`, client);
     }
@@ -124,6 +135,18 @@ function setupClient(connection: IConnection): void {
   
   connection.on('error', (err) => {
     console.error(`Error with client ${clientId}:`, err);
+    
+    // Check if client was in a pending transfer
+    if (client.user && client.stateData.waitingForTransfer) {
+      userManager.cancelTransfer(client.user.username);
+    }
+    
+    // Only unregister if the client is still authenticated
+    // This prevents unregistering a session that was already handed over via transfer
+    if (client.user && client.authenticated) {
+      userManager.unregisterUserSession(client.user.username);
+    }
+    
     clients.delete(clientId);
   });
 }
@@ -182,6 +205,15 @@ function handleClientData(client: ConnectedClient, data: string): void {
   
   // Update mask input state
   client.connection.setMaskInput(!!client.stateData.maskInput);
+
+  // After processing input, check for forced transitions
+  if (client.stateData.forcedTransition) {
+    stopBuffering(client);
+    const forcedState = client.stateData.forcedTransition;
+    delete client.stateData.forcedTransition;
+    stateMachine.transitionTo(client, forcedState);
+    return;
+  }
 }
 
 function processInput(client: ConnectedClient, input: string): void {
@@ -189,9 +221,18 @@ function processInput(client: ConnectedClient, input: string): void {
   const trimmedInput = input.trim();
   
   console.log(`Processing input from client in state ${client.state}: "${trimmedInput}"`);
+
+  // Check for forced transitions (like transfer requests)
+  if (client.stateData.forcedTransition) {
+    const forcedState = client.stateData.forcedTransition;
+    delete client.stateData.forcedTransition;
+    stateMachine.transitionTo(client, forcedState);
+    return;
+  }
   
   // Check if user is authenticated AND not in confirmation state
-  if (client.authenticated && client.state !== ClientStateType.CONFIRMATION) {
+  if (client.authenticated && client.state !== ClientStateType.CONFIRMATION && 
+      client.state !== ClientStateType.TRANSFER_REQUEST) {
     // Process command from authenticated user
     commandHandler.handleCommand(client, trimmedInput);
   } else {
