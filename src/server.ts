@@ -82,9 +82,7 @@ const telnetServer = net.createServer((socket) => {
   const connection = new TelnetConnection(socket);
   console.log(`TELNET client connected: ${connection.getId()}`);
   
-  // Configure TELNET options: disable local echo
-  socket.write(Buffer.from([255, 251, 1])); // IAC WILL ECHO - server will handle echo
-  
+  // TelnetConnection class now handles all the TELNET negotiation
   setupClient(connection);
 });
 
@@ -174,7 +172,7 @@ function handleClientData(client: ConnectedClient, data: string): void {
   // Handle normal input (excluding special sequences)
   client.buffer += data;
   
-  // Echo the character if not in mask mode
+  // Echo the character if not in mask mode - this is where all echoing should occur
   if (!client.stateData.maskInput) {
     client.connection.write(data);
   } else {
