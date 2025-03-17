@@ -2,7 +2,7 @@ import net from 'net';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
-import { WebSocketServer } from 'ws';
+import { Server as SocketIOServer } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import { ConnectedClient, ClientStateType } from './types';
 import { UserManager } from './user/userManager';
@@ -11,7 +11,7 @@ import { StateMachine } from './state/stateMachine';
 import { colorize } from './utils/colors';
 import { flushClientBuffer, stopBuffering, writeToClient, writeMessageToClient } from './utils/socketWriter';
 import { TelnetConnection } from './connection/telnet.connection';
-import { WebSocketConnection } from './connection/websocket.connection';
+import { SocketIOConnection } from './connection/socketio.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
 import { formatUsername } from './utils/formatters';
 import { writeCommandPrompt } from './utils/promptFormatter';
@@ -23,7 +23,7 @@ const clients = new Map<string, ConnectedClient>();
 const commandHandler = new CommandHandler(clients, userManager);
 const stateMachine = new StateMachine(userManager);
 
-// Create the HTTP server for WebSockets
+// Create the HTTP server for Socket.IO
 const httpServer = http.createServer((req, res) => {
   // Serve static files from the public directory
   const publicPath = path.join(__dirname, '..', 'public');
@@ -67,15 +67,19 @@ const httpServer = http.createServer((req, res) => {
   });
 });
 
-// Create the WebSocket server
-const wsServer = new WebSocketServer({ server: httpServer });
+// Create the Socket.IO server
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-// Handle WebSocket connections
-wsServer.on('connection', (ws) => {
-  const clientId = uuidv4();
-  console.log(`WebSocket client connected: ${clientId}`);
+// Handle Socket.IO connections
+io.on('connection', (socket) => {
+  console.log(`Socket.IO client connected: ${socket.id}`);
   
-  const connection = new WebSocketConnection(ws, clientId);
+  const connection = new SocketIOConnection(socket);
   setupClient(connection);
 });
 
@@ -275,7 +279,7 @@ telnetServer.listen(TELNET_PORT, () => {
 });
 
 httpServer.listen(WS_PORT, () => {
-  console.log(`WebSocket server running on port ${WS_PORT}`);
+  console.log(`Socket.IO server running on port ${WS_PORT}`);
 });
 
 console.log(`Make sure you have the following state files configured correctly:`);

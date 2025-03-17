@@ -42,64 +42,44 @@
         terminalOutput.appendChild(cursor);
     }
     
-    // Connect to WebSocket server
+    // Connect to Socket.IO server
     function connect() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname || 'localhost';
-        const port = 8080;
+        // Connect to Socket.IO server
+        socket = io();
         
-        socket = new WebSocket(`${protocol}//${host}:${port}`);
-        
-        socket.onopen = () => {
+        socket.on('connect', () => {
             connected = true;
             statusElem.textContent = 'Connected';
             statusElem.className = 'connected';
             addOutput('Connected to server\n', 'system');
-        };
+        });
         
-        socket.onclose = () => {
+        socket.on('disconnect', () => {
             connected = false;
             statusElem.textContent = 'Disconnected';
             statusElem.className = 'disconnected';
             addOutput('Disconnected from server\n', 'system');
-            
-            setTimeout(() => {
-                if (!connected) {
-                    addOutput('Attempting to reconnect...\n', 'system');
-                    connect();
-                }
-            }, 3000);
-        };
+        });
         
-        socket.onerror = (error) => {
-            addOutput(`WebSocket Error\n`, 'error');
-        };
+        socket.on('connect_error', (error) => {
+            addOutput(`Connection Error: ${error.message}\n`, 'error');
+        });
         
-        socket.onmessage = handleServerMessage;
+        // Handle server messages
+        socket.on('output', handleOutput);
+        socket.on('echo', handleEcho);
+        socket.on('mask', handleMask);
     }
     
-    // Handle incoming server messages
-    function handleServerMessage(event) {
-        try {
-            const message = JSON.parse(event.data);
-            
-            if (message.type === 'output') {
-                // Handle server output
-                addOutput(message.data, '', true);
-            } else if (message.type === 'echo') {
-                // Handle server echo - actual character updates
-                handleEcho(message.char);
-            } else if (message.type === 'mask') {
-                // Password masking state - we handle this directly now
-            }
-        } catch (e) {
-            // Plain text fallback
-            addOutput(event.data);
-        }
+    // Handle server output messages
+    function handleOutput(message) {
+        addOutput(message.data);
     }
     
     // Handle server echo of characters
-    function handleEcho(char) {
+    function handleEcho(message) {
+        const char = message.char;
+        
         if (char === '\b \b') {
             // Remove last character from display (backspace sequence)
             deleteLastCharacter();
@@ -114,8 +94,13 @@
         }
     }
     
+    // Handle mask state changes
+    function handleMask(message) {
+        // This is handled by the server input handling
+    }
+    
     // Add output to the terminal
-    function addOutput(text, className = '', preserveSpacing = false) {
+    function addOutput(text, className = '') {
         // Remove the cursor first
         if (cursor.parentNode === terminalOutput) {
             terminalOutput.removeChild(cursor);
@@ -189,10 +174,11 @@
             return;
         }
         
-        socket.send(JSON.stringify({
-            type: type,
-            key: key
-        }));
+        if (type === 'special') {
+            socket.emit('special', { key: key });
+        } else {
+            socket.emit('keypress', key);
+        }
     }
     
     // Handle keyboard events
