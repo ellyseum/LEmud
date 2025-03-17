@@ -129,6 +129,8 @@ function processInput(client: ConnectedClient, input: string): void {
   // Trim whitespace from beginning and end of input
   const trimmedInput = input.trim();
   
+  console.log(`Processing input from client in state ${client.state}: "${trimmedInput}"`);
+  
   if (client.authenticated) {
     // Process command from authenticated user
     commandHandler.handleCommand(client, trimmedInput);
@@ -149,4 +151,9 @@ function broadcastSystemMessage(message: string, excludeClient?: ConnectedClient
 // Start the server
 server.listen(PORT, () => {
   console.log(`TELNET server running on port ${PORT}`);
+  console.log(`Make sure you have the following state files configured correctly:`);
+  console.log(` - connecting.state.ts`);
+  console.log(` - login.state.ts`);
+  console.log(` - signup.state.ts`);
+  console.log(` - authenticated.state.ts`);
 });

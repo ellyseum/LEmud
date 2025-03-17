@@ -25,7 +25,15 @@ export interface ConnectedClient {
   authenticated: boolean;
   buffer: string;
   state: ClientStateType;
-  stateData: Record<string, any>; // For storing state-specific data like maskInput flag
+  stateData: {
+    maskInput?: boolean;
+    username?: string;
+    password?: string;
+    awaitingPassword?: boolean;
+    offerSignup?: boolean;
+    transitionTo?: ClientStateType; // Added to indicate desired state transitions
+    [key: string]: any;
+  };
   
   // For output buffering
   isTyping: boolean;
