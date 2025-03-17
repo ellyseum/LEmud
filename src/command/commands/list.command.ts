@@ -10,17 +10,25 @@ export class ListCommand implements Command {
   constructor(private clients: Map<string, ConnectedClient>) {}
 
   execute(client: ConnectedClient, args: string): void {
-    // List all authenticated users
-    const users = Array.from(this.clients.values())
+    // List all authenticated users with their connection types
+    const onlineUsers = Array.from(this.clients.values())
       .filter(c => c.authenticated && c.user)
-      .map(c => c.user!.username);
+      .map(c => ({
+        username: c.user!.username,
+        connectionType: c.connection.getType()
+      }));
 
     writeToClient(client, colorize('=== Online Users ===\r\n', 'magenta'));
-    if (users.length === 0) {
+    if (onlineUsers.length === 0) {
       writeToClient(client, colorize('No users online.\r\n', 'yellow'));
     } else {
-      users.forEach(username => {
-        writeToClient(client, colorize(`- ${username}\r\n`, 'green'));
+      onlineUsers.forEach(user => {
+        const connectionLabel = user.connectionType === 'websocket' ? 'web' : 'telnet';
+        writeToClient(
+          client, 
+          colorize(`- ${user.username} `, 'green') + 
+          colorize(`[${connectionLabel}]\r\n`, 'cyan')
+        );
       });
     }
     writeToClient(client, colorize('===================\r\n', 'magenta'));
