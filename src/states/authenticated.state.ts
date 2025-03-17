@@ -3,9 +3,15 @@ import { colorize, colors } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 import { writeCommandPrompt } from '../utils/promptFormatter';
+import { RoomManager } from '../room/roomManager';
 
 export class AuthenticatedState implements ClientState {
   name = ClientStateType.AUTHENTICATED;
+  private roomManager: RoomManager;
+
+  constructor() {
+    this.roomManager = new RoomManager();
+  }
 
   enter(client: ConnectedClient): void {
     if (!client.user) return;
@@ -16,6 +22,21 @@ export class AuthenticatedState implements ClientState {
     writeToClient(client, colorize(`Health: ${client.user.health}/${client.user.maxHealth} | XP: ${client.user.experience} | Level: ${client.user.level}\r\n`, 'cyan'));
     writeToClient(client, colorize('Type "help" for a list of commands.\r\n', 'yellow'));
     writeToClient(client, colorize('========================================\r\n', 'bright'));
+    
+    // Ensure user is placed in a room if they don't have one
+    if (!client.user.currentRoomId) {
+      client.user.currentRoomId = this.roomManager.getStartingRoomId();
+    }
+    
+    // Show the room description when user enters the game
+    const room = this.roomManager.getRoom(client.user.currentRoomId);
+    if (room) {
+      // Add the player to the room
+      room.addPlayer(client.user.username);
+      
+      // Show room description
+      writeToClient(client, colorize(room.getDescription(), 'cyan'));
+    }
     
     // Add the command prompt showing HP status
     writeCommandPrompt(client);

@@ -13,14 +13,20 @@ import { HealCommand } from './commands/heal.command';
 import { DamageCommand } from './commands/damage.command';
 import { HelpCommand } from './commands/help.command';
 import { QuitCommand } from './commands/quit.command';
+import { RoomManager } from '../room/roomManager';
+import { LookCommand } from './commands/look.command';
+import { MoveCommand } from './commands/move.command';
 
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
+  private commandAliases: Map<string, string> = new Map(); // Add map for command aliases
+  private roomManager: RoomManager;
 
   constructor(
     private clients: Map<string, ConnectedClient>,
     private userManager: UserManager
   ) {
+    this.roomManager = new RoomManager();
     this.registerCommands();
   }
 
@@ -32,13 +38,41 @@ export class CommandHandler {
       new StatsCommand(),
       new HealCommand(this.userManager),
       new DamageCommand(this.userManager),
-      new QuitCommand(this.userManager)  // Add the quit command
+      new QuitCommand(this.userManager),
+      new LookCommand(this.roomManager),
+      new MoveCommand(this.roomManager)
     ];
     
     // Register all commands
     commands.forEach(cmd => {
       this.commands.set(cmd.name, cmd);
     });
+    
+    // Register command aliases
+    this.commandAliases.set('l', 'look'); // Add 'l' as an alias for 'look'
+    
+    // Register direction shortcuts
+    const moveCommand = commands.find(cmd => cmd.name === 'move') as MoveCommand;
+    
+    if (moveCommand) {
+      // Register direction aliases as separate commands
+      const directions = [
+        'north', 'south', 'east', 'west',
+        'northeast', 'northwest', 'southeast', 'southwest',
+        'up', 'down',
+        'n', 's', 'e', 'w',
+        'ne', 'nw', 'se', 'sw',
+        'u', 'd'
+      ];
+      
+      directions.forEach(direction => {
+        this.commands.set(direction, {
+          name: direction,
+          description: `Move ${direction}`,
+          execute: (client, _) => moveCommand.execute(client, direction)
+        });
+      });
+    }
     
     // Help command needs to be added after others since it needs access to all commands
     const helpCommand = new HelpCommand(this.commands);
@@ -51,7 +85,8 @@ export class CommandHandler {
     // Ensure input is trimmed
     const cleanInput = input.trim();
     if (cleanInput === '') {
-      // Handle empty input gracefully - just show prompt again
+      // Do a brief look when user hits enter with no command
+      this.roomManager.briefLookRoom(client);
       writeCommandPrompt(client);
       return;
     }
@@ -61,7 +96,16 @@ export class CommandHandler {
     const args = parts.slice(1).join(' ').trim(); // Also trim arguments
 
     // Find and execute command
-    const command = this.commands.get(commandName);
+    let command = this.commands.get(commandName);
+    
+    // Check aliases if command not found directly
+    if (!command && this.commandAliases.has(commandName)) {
+      const aliasedCommand = this.commandAliases.get(commandName);
+      if (aliasedCommand) {
+        command = this.commands.get(aliasedCommand);
+      }
+    }
+    
     if (command) {
       command.execute(client, args);
       

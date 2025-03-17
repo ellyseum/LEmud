@@ -245,7 +245,8 @@ export class UserManager {
       experience: 0,
       level: 1,
       joinDate: now,
-      lastLogin: now
+      lastLogin: now,
+      currentRoomId: 'start' // Set default starting room
     };
 
     this.users.push(newUser);

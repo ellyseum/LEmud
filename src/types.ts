@@ -19,6 +19,7 @@ export interface User {
   level: number;
   joinDate: Date;
   lastLogin: Date;
+  currentRoomId: string; // Add this field to track user's current room
 }
 
 export interface ConnectedClient {
