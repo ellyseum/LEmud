@@ -26,6 +26,10 @@ export interface ConnectedClient {
   buffer: string;
   state: ClientStateType;
   stateData: Record<string, any>; // For storing state-specific data like maskInput flag
+  
+  // For output buffering
+  isTyping: boolean;
+  outputBuffer: string[];
 }
 
 export type StateHandler = (client: ConnectedClient, input: string) => void;

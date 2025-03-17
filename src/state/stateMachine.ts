@@ -1,6 +1,7 @@
 import { ConnectedClient, ClientState, ClientStateType } from '../types';
 import { colorize, colors, rainbow } from '../utils/colors';
 import { UserManager } from '../user/userManager';
+import { writeToClient } from '../utils/socketWriter';
 
 export class StateMachine {
   private states: Map<ClientStateType, ClientState> = new Map();
@@ -32,7 +33,7 @@ export class StateMachine {
         client.stateData = {
           maskInput: false // Start with normal echo
         }; 
-        client.socket.write(colorize('Enter your username (or "new" to sign up): ', 'cyan'));
+        writeToClient(client, colorize('Enter your username (or "new" to sign up): ', 'cyan'));
       },
       handle: (client: ConnectedClient, input: string) => {
         if (input.toLowerCase() === 'new') {
@@ -45,12 +46,12 @@ export class StateMachine {
           client.stateData.username = username;
           client.stateData.awaitingPassword = true;
           client.stateData.maskInput = true; // Enable password masking
-          client.socket.write(colorize('Enter your password: ', 'cyan'));
+          writeToClient(client, colorize('Enter your password: ', 'cyan'));
         } else {
           client.stateData.offerSignup = true;
           client.stateData.username = username;
           client.stateData.maskInput = false; // Ensure no masking for yes/no input
-          client.socket.write(colorize('User does not exist. Would you like to sign up? (y/n): ', 'red'));
+          writeToClient(client, colorize('User does not exist. Would you like to sign up? (y/n): ', 'red'));
         }
       }
     });
@@ -62,7 +63,7 @@ export class StateMachine {
         client.stateData = {
           maskInput: false // Start with normal echo
         };
-        client.socket.write(colorize('Create a username: ', 'green'));
+        writeToClient(client, colorize('Create a username: ', 'green'));
       },
       handle: (client: ConnectedClient, input: string) => {
         // If we're coming from "user doesn't exist" in login state
@@ -71,13 +72,13 @@ export class StateMachine {
             client.stateData = {
               maskInput: false
             }; // Reset state data
-            client.socket.write(colorize('Create a username: ', 'green'));
+            writeToClient(client, colorize('Create a username: ', 'green'));
             return;
           } else if (input.toLowerCase() === 'n') {
             this.transitionTo(client, ClientStateType.LOGIN);
             return;
           } else {
-            client.socket.write(colorize('Please enter y or n: ', 'red'));
+            writeToClient(client, colorize('Please enter y or n: ', 'red'));
             return;
           }
         }
@@ -85,19 +86,19 @@ export class StateMachine {
         // If we're waiting for a username
         if (!client.stateData.username) {
           if (this.userManager.userExists(input)) {
-            client.socket.write(colorize('Username already exists. Choose another one: ', 'red'));
+            writeToClient(client, colorize('Username already exists. Choose another one: ', 'red'));
           } else if (input.length < 3) {
-            client.socket.write(colorize('Username too short. Choose a longer one: ', 'red'));
+            writeToClient(client, colorize('Username too short. Choose a longer one: ', 'red'));
           } else {
             client.stateData.username = input;
             client.stateData.maskInput = true; // Enable password masking
-            client.socket.write(colorize('Create a password: ', 'green'));
+            writeToClient(client, colorize('Create a password: ', 'green'));
           }
         }
         // If we're waiting for a password
         else if (!client.stateData.password) {
           if (input.length < 4) {
-            client.socket.write(colorize('Password too short. Choose a longer one: ', 'red'));
+            writeToClient(client, colorize('Password too short. Choose a longer one: ', 'red'));
           } else {
             client.stateData.password = input;
             client.stateData.maskInput = false; // Disable masking after password input
@@ -110,11 +111,11 @@ export class StateMachine {
                 client.authenticated = true;
                 this.transitionTo(client, ClientStateType.AUTHENTICATED);
               } else {
-                client.socket.write(colorize('Error creating user. Please try again.\r\n', 'red'));
+                writeToClient(client, colorize('Error creating user. Please try again.\r\n', 'red'));
                 this.transitionTo(client, ClientStateType.LOGIN);
               }
             } else {
-              client.socket.write(colorize('Error creating user. Please try again.\r\n', 'red'));
+              writeToClient(client, colorize('Error creating user. Please try again.\r\n', 'red'));
               this.transitionTo(client, ClientStateType.LOGIN);
             }
           }
@@ -175,7 +176,7 @@ export class StateMachine {
           this.transitionTo(client, ClientStateType.AUTHENTICATED);
         }
       } else {
-        client.socket.write(colorize('Invalid password. Try again: ', 'red'));
+        writeToClient(client, colorize('Invalid password. Try again: ', 'red'));
         // Keep masking enabled for retrying password
       }
       return;

@@ -4,6 +4,7 @@ import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
 import { StateMachine } from './state/stateMachine';
 import { colorize } from './utils/colors';
+import { flushClientBuffer, stopBuffering } from './utils/socketWriter';
 
 const PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const userManager = new UserManager();
@@ -23,7 +24,9 @@ const server = net.createServer((socket) => {
     authenticated: false,
     buffer: '',
     state: ClientStateType.CONNECTING,
-    stateData: {}
+    stateData: {},
+    isTyping: false,
+    outputBuffer: []
   };
   
   clients.set(clientId, client);
@@ -36,6 +39,11 @@ const server = net.createServer((socket) => {
   
   // Handle client data with better echo management
   socket.on('data', (data) => {
+    // Start buffering output when user begins typing
+    if (client.buffer.length === 0 && !client.isTyping) {
+      client.isTyping = true;
+    }
+    
     // Process data byte by byte to handle backspace properly
     for (let i = 0; i < data.length; i++) {
       const byte = data[i];
@@ -57,6 +65,11 @@ const server = net.createServer((socket) => {
           
           // Update the terminal display (backspace, space, backspace)
           socket.write('\b \b');
+          
+          // If buffer becomes empty, flush any buffered output
+          if (client.buffer.length === 0) {
+            stopBuffering(client);
+          }
         }
         // Do nothing if buffer is empty
       }
@@ -71,6 +84,11 @@ const server = net.createServer((socket) => {
         const line = client.buffer;
         client.buffer = ''; // Reset the buffer
         socket.write('\r\n'); // Echo newline
+        
+        // Stop buffering and flush any buffered output before processing command
+        stopBuffering(client);
+        
+        // Process the input
         processInput(client, line);
       }
       // Handle normal printable characters
@@ -81,7 +99,7 @@ const server = net.createServer((socket) => {
         // Echo based on whether we're in a masked input state
         if (client.stateData.maskInput) {
           // For passwords, echo asterisk or bullet
-          socket.write('•');
+          socket.write('*');
         } else {
           // For normal input, echo the character
           socket.write(char);
