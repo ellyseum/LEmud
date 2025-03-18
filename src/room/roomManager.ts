@@ -202,6 +202,21 @@ export class RoomManager {
   }
 
   /**
+   * Announce a player's entrance to a room to all other players in that room
+   */
+  public announcePlayerEntrance(roomId: string, username: string): void {
+    const room = this.getRoom(roomId);
+    if (!room) return;
+    
+    // Announce to all other players in the room that this player has entered
+    this.notifyPlayersInRoom(
+      roomId,
+      `${formatUsername(username)} enters the room.\r\n`,
+      username // Exclude the player themselves
+    );
+  }
+
+  /**
    * Notifies all players in a room with a message, excluding the specified player
    */
   private notifyPlayersInRoom(roomId: string, message: string, excludeUsername?: string): void {

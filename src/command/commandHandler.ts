@@ -47,7 +47,7 @@ export class CommandHandler {
       new StatsCommand(),
       new HealCommand(this.userManager),
       new DamageCommand(this.userManager),
-      new QuitCommand(this.userManager),
+      new QuitCommand(this.userManager, this.roomManager), // Pass roomManager to QuitCommand
       new LookCommand(this.roomManager),
       new MoveCommand(this.roomManager),
       new InventoryCommand(),

@@ -3,17 +3,24 @@ import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { UserManager } from '../../user/userManager';
+import { RoomManager } from '../../room/roomManager';
 
 export class QuitCommand implements Command {
   name = 'quit';
   description = 'Disconnect from the server';
 
-  constructor(private userManager: UserManager) {}
+  constructor(
+    private userManager: UserManager,
+    private roomManager: RoomManager // Add RoomManager dependency
+  ) {}
 
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
 
     writeToClient(client, colorize('Thank you for playing! Goodbye.\r\n', 'yellow'));
+    
+    // Remove player from all rooms before disconnecting
+    this.roomManager.removePlayerFromAllRooms(client.user.username);
     
     // Save user state before disconnecting
     this.userManager.updateUserStats(client.user.username, {

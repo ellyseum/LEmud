@@ -15,6 +15,7 @@ import { SocketIOConnection } from './connection/socketio.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
 import { formatUsername } from './utils/formatters';
 import { writeCommandPrompt } from './utils/promptFormatter';
+import { RoomManager } from './room/roomManager';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -130,16 +131,22 @@ function setupClient(connection: IConnection): void {
     // Only unregister if the client is still authenticated
     // This prevents unregistering a session that was already handed over via transfer
     if (client.user && client.authenticated) {
+      // Remove player from all rooms when they disconnect
+      const username = client.user.username;
+      const roomManager = new RoomManager(clients);
+      roomManager.removePlayerFromAllRooms(username);
+      
       // Unregister the user session
-      userManager.unregisterUserSession(client.user.username);
+      userManager.unregisterUserSession(username);
       
       // Notify other users with formatted username
-      const username = formatUsername(client.user.username);
-      broadcastSystemMessage(`${username} has left the game.`, client);
+      const formattedUsername = formatUsername(username);
+      broadcastSystemMessage(`${formattedUsername} has left the game.`, client);
     }
     clients.delete(clientId);
   });
   
+  // Handle connection errors similarly
   connection.on('error', (err) => {
     console.error(`Error with client ${clientId}:`, err);
     
@@ -149,9 +156,14 @@ function setupClient(connection: IConnection): void {
     }
     
     // Only unregister if the client is still authenticated
-    // This prevents unregistering a session that was already handed over via transfer
     if (client.user && client.authenticated) {
-      userManager.unregisterUserSession(client.user.username);
+      // Remove player from all rooms when they disconnect due to error
+      const username = client.user.username;
+      const roomManager = new RoomManager(clients);
+      roomManager.removePlayerFromAllRooms(username);
+      
+      // Unregister the user session
+      userManager.unregisterUserSession(username);
     }
     
     clients.delete(clientId);

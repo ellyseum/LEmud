@@ -42,6 +42,9 @@ export class AuthenticatedState implements ClientState {
       // Now safely add the player to their current room
       room.addPlayer(client.user.username);
       
+      // Announce this player's entry to the room to all other players
+      this.roomManager.announcePlayerEntrance(client.user.currentRoomId, client.user.username);
+      
       // Use the Room's method for consistent formatting
       writeToClient(client, room.getDescriptionExcludingPlayer(client.user.username));
     }
