@@ -1,0 +1,12 @@
+[
+  {
+    "id": "dog",
+    "name": "dog",
+    "description": "A friendly dog with a wagging tail"
+  },
+  {
+    "id": "cat",
+    "name": "cat",
+    "description": "A sleepy cat with soft fur"
+  }
+]
