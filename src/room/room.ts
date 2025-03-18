@@ -1,4 +1,5 @@
 import { formatUsername } from '../utils/formatters';
+import { colorize } from '../utils/colors';
 
 export interface Currency {
   gold: number;
@@ -85,36 +86,36 @@ export class Room {
         currencyText = `${currencyParts.join(', ')}, and ${lastPart}`;
       }
       
-      description += `There is ${currencyText} on the ground.\r\n`;
+      description += colorize(`You notice ${currencyText} here.`, 'green') + '\r\n';
     }
 
     // Add objects description
     if (this.objects.length > 0) {
       if (this.objects.length === 1) {
-        description += `You see a ${this.objects[0]}.\r\n`;
+        description += colorize(`You see a ${this.objects[0]}.`, 'green') + '\r\n';
       } else {
         const lastObject = this.objects[this.objects.length - 1];
         const otherObjects = this.objects.slice(0, -1).map(obj => `a ${obj}`).join(', ');
-        description += `You see ${otherObjects}, and a ${lastObject}.\r\n`;
+        description += colorize(`You see ${otherObjects}, and a ${lastObject}.`, 'green') + '\r\n';
       }
     }
 
     // Add players and NPCs
     const entities = [
-      ...this.players.map(player => formatUsername(player)),
-      ...this.npcs.map(npc => `a ${npc}`)
+      ...this.players.map(player => colorize(formatUsername(player), 'brightMagenta')),
+      ...this.npcs.map(npc => colorize(`a ${npc}`, 'magenta'))
     ];
     
     if (entities.length > 0) {
-      description += `Also here: ${entities.join(', ')}.\r\n`;
+      description += colorize(`Also here: ${entities.join(', ')}.`, 'magenta') + '\r\n';
     }
 
     // Add exits
     if (this.exits.length > 0) {
       const directions = this.exits.map(exit => exit.direction);
-      description += `Obvious exits: ${directions.join(', ')}.\r\n`;
+      description += colorize(`Obvious exits: ${directions.join(', ')}.`, 'green') + '\r\n';
     } else {
-      description += 'There are no obvious exits.\r\n';
+      description += colorize('There are no obvious exits.', 'green') + '\r\n';
     }
 
     return description;
