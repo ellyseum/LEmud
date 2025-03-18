@@ -34,8 +34,8 @@ export class AuthenticatedState implements ClientState {
       // Add the player to the room
       room.addPlayer(client.user.username);
       
-      // Show room description
-      writeToClient(client, colorize(room.getDescription(), 'cyan'));
+      // Use the Room's method for consistent formatting
+      writeToClient(client, room.getDescriptionExcludingPlayer(client.user.username));
     }
     
     // Add the command prompt showing HP status

@@ -53,18 +53,37 @@ export class Room {
   }
 
   getDescription(): string {
-    let description = `${this.shortDescription}\r\n${this.longDescription}\r\n`;
-    return description + this.getCommonDescription();
+    return this.getFormattedDescription(true);
   }
 
-  // New method for brief room description (omits longDescription)
+  getDescriptionExcludingPlayer(username: string): string {
+    return this.getFormattedDescription(true, username);
+  }
+
   getBriefDescription(): string {
-    let description = `${this.shortDescription}\r\n`;
-    return description + this.getCommonDescription();
+    return this.getFormattedDescription(false);
   }
 
-  // Private helper method to generate the common parts of room descriptions
-  private getCommonDescription(): string {
+  getBriefDescriptionExcludingPlayer(username: string): string {
+    return this.getFormattedDescription(false, username);
+  }
+
+  // Centralized method to format room descriptions
+  private getFormattedDescription(includeLongDesc: boolean, excludePlayer?: string): string {
+    let description = colorize(this.shortDescription, 'cyan') + '\r\n';
+    
+    if (includeLongDesc) {
+      description += colorize(this.longDescription, 'white') + '\r\n';
+    }
+    
+    // Add the common parts
+    description += this.getFormattedCommonDescription(excludePlayer);
+    
+    return description;
+  }
+
+  // Centralized method for common description formatting
+  private getFormattedCommonDescription(excludePlayer?: string): string {
     let description = '';
 
     // Add currency description if there's any
@@ -101,8 +120,13 @@ export class Room {
     }
 
     // Add players and NPCs
+    let players = this.players;
+    if (excludePlayer) {
+      players = this.players.filter(player => player !== excludePlayer);
+    }
+
     const entities = [
-      ...this.players.map(player => colorize(formatUsername(player), 'brightMagenta')),
+      ...players.map(player => colorize(formatUsername(player), 'brightMagenta')),
       ...this.npcs.map(npc => colorize(`a ${npc}`, 'magenta'))
     ];
     

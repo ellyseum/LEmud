@@ -4,7 +4,6 @@ import { Room, Exit, Currency } from './room';
 import { ConnectedClient } from '../types';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
-import { writeCommandPrompt } from '../utils/promptFormatter';
 import { formatUsername } from '../utils/formatters';
 
 const ROOMS_FILE = path.join(__dirname, '..', '..', 'data', 'rooms.json');
@@ -164,8 +163,8 @@ export class RoomManager {
 
     writeToClient(client, colorize(`Moving...\r\n`, 'green'));
     
-    // Show the new room description
-    writeToClient(client, colorize(nextRoom.getDescription(), 'cyan'));
+    // Show the new room description - use the Room's method for consistent formatting
+    writeToClient(client, nextRoom.getDescriptionExcludingPlayer(client.user.username));
     
     return true;
   }
@@ -183,61 +182,8 @@ export class RoomManager {
       return false;
     }
 
-    let description = colorize(room.shortDescription, 'cyan') + '\r\n';
-    description += colorize(room.longDescription, 'white') + '\r\n';
-
-    // Add currency description if there's any
-    if (room.currency.gold > 0 || room.currency.silver > 0 || room.currency.copper > 0) {
-      const currencyParts = [];
-      if (room.currency.gold > 0) {
-        currencyParts.push(`${room.currency.gold} gold piece${room.currency.gold === 1 ? '' : 's'}`);
-      }
-      if (room.currency.silver > 0) {
-        currencyParts.push(`${room.currency.silver} silver piece${room.currency.silver === 1 ? '' : 's'}`);
-      }
-      if (room.currency.copper > 0) {
-        currencyParts.push(`${room.currency.copper} copper piece${room.currency.copper === 1 ? '' : 's'}`);
-      }
-      
-      let currencyText = currencyParts.join(', ');
-      if (currencyParts.length > 1) {
-        const lastPart = currencyParts.pop();
-        currencyText = `${currencyParts.join(', ')}, and ${lastPart}`;
-      }
-      
-      description += colorize(`You notice ${currencyText} here.`, 'green') + '\r\n';
-    }
-
-    // Add objects description
-    if (room.objects.length > 0) {
-      if (room.objects.length === 1) {
-        description += colorize(`You see a ${room.objects[0]}.`, 'green') + '\r\n';
-      } else {
-        const lastObject = room.objects[room.objects.length - 1];
-        const otherObjects = room.objects.slice(0, -1).map(obj => `a ${obj}`).join(', ');
-        description += colorize(`You see ${otherObjects}, and a ${lastObject}.`, 'green') + '\r\n';
-      }
-    }
-
-    // Add players and NPCs
-    const entities = [
-      ...room.players.map(player => colorize(formatUsername(player), 'brightMagenta')),
-      ...room.npcs.map(npc => colorize(`a ${npc}`, 'magenta'))
-    ];
-    
-    if (entities.length > 0) {
-      description += colorize(`Also here: ${entities.join(', ')}.`, 'magenta') + '\r\n';
-    }
-
-    // Add exits
-    if (room.exits.length > 0) {
-      const directions = room.exits.map(exit => exit.direction);
-      description += colorize(`Obvious exits: ${directions.join(', ')}.`, 'green') + '\r\n';
-    } else {
-      description += colorize('There are no obvious exits.', 'green') + '\r\n';
-    }
-
-    writeToClient(client, description);
+    // Use the Room's method for consistent formatting
+    writeToClient(client, room.getDescriptionExcludingPlayer(client.user.username));
     return true;
   }
 
@@ -254,60 +200,8 @@ export class RoomManager {
       return false;
     }
 
-    let description = colorize(room.shortDescription, 'cyan') + '\r\n';
-
-    // Add currency description if there's any
-    if (room.currency.gold > 0 || room.currency.silver > 0 || room.currency.copper > 0) {
-      const currencyParts = [];
-      if (room.currency.gold > 0) {
-        currencyParts.push(`${room.currency.gold} gold piece${room.currency.gold === 1 ? '' : 's'}`);
-      }
-      if (room.currency.silver > 0) {
-        currencyParts.push(`${room.currency.silver} silver piece${room.currency.silver === 1 ? '' : 's'}`);
-      }
-      if (room.currency.copper > 0) {
-        currencyParts.push(`${room.currency.copper} copper piece${room.currency.copper === 1 ? '' : 's'}`);
-      }
-      
-      let currencyText = currencyParts.join(', ');
-      if (currencyParts.length > 1) {
-        const lastPart = currencyParts.pop();
-        currencyText = `${currencyParts.join(', ')}, and ${lastPart}`;
-      }
-      
-      description += colorize(`You notice ${currencyText} here.`, 'green') + '\r\n';
-    }
-
-    // Add objects description
-    if (room.objects.length > 0) {
-      if (room.objects.length === 1) {
-        description += colorize(`You see a ${room.objects[0]}.`, 'green') + '\r\n';
-      } else {
-        const lastObject = room.objects[room.objects.length - 1];
-        const otherObjects = room.objects.slice(0, -1).map(obj => `a ${obj}`).join(', ');
-        description += colorize(`You see ${otherObjects}, and a ${lastObject}.`, 'green') + '\r\n';
-      }
-    }
-
-    // Add players and NPCs
-    const entities = [
-      ...room.players.map(player => colorize(formatUsername(player), 'brightMagenta')),
-      ...room.npcs.map(npc => colorize(`a ${npc}`, 'magenta'))
-    ];
-    
-    if (entities.length > 0) {
-      description += colorize(`Also here: ${entities.join(', ')}.`, 'magenta') + '\r\n';
-    }
-
-    // Add exits
-    if (room.exits.length > 0) {
-      const directions = room.exits.map(exit => exit.direction);
-      description += colorize(`Obvious exits: ${directions.join(', ')}.`, 'green') + '\r\n';
-    } else {
-      description += colorize('There are no obvious exits.', 'green') + '\r\n';
-    }
-
-    writeToClient(client, description);
+    // Use the Room's brief description method for consistent formatting
+    writeToClient(client, room.getBriefDescriptionExcludingPlayer(client.user.username));
     return true;
   }
 }
