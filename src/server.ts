@@ -134,7 +134,8 @@ function setupClient(connection: IConnection): void {
       userManager.unregisterUserSession(client.user.username);
       
       // Notify other users with formatted username
-      broadcastSystemMessage(`${formatUsername(client.user.username)} has left the server.`, client);
+      const username = formatUsername(client.user.username);
+      broadcastSystemMessage(`${username} has left the game.`, client);
     }
     clients.delete(clientId);
   });
@@ -268,7 +269,7 @@ function broadcastSystemMessage(message: string, excludeClient?: ConnectedClient
   clients.forEach(client => {
     if (client.authenticated && client !== excludeClient) {
       // Use the new message writing function that handles prompt management
-      writeMessageToClient(client, colorize(`>>> ${message}\r\n`, 'yellow'));
+      writeMessageToClient(client, colorize(message + '\r\n', 'bright'));
     }
   });
 }

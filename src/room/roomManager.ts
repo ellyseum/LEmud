@@ -154,13 +154,17 @@ export class RoomManager {
       return false;
     }
 
+    // Get the full direction name for messages
+    const fullDirectionName = this.getFullDirectionName(direction);
+    
     // Get the opposite direction for the arrival message
     const oppositeDirection = this.getOppositeDirection(direction);
+    const fullOppositeDirectionName = this.getFullDirectionName(oppositeDirection);
     
     // Notify players in current room that this player is leaving
     this.notifyPlayersInRoom(
       currentRoomId,
-      `${formatUsername(client.user.username)} leaves ${direction}.\r\n`,
+      `${formatUsername(client.user.username)} leaves ${fullDirectionName}.\r\n`,
       client.user.username
     );
 
@@ -173,7 +177,7 @@ export class RoomManager {
     // Notify players in the destination room that this player arrived
     this.notifyPlayersInRoom(
       nextRoomId, 
-      `${formatUsername(client.user.username)} enters from the ${oppositeDirection}.\r\n`,
+      `${formatUsername(client.user.username)} enters from the ${fullOppositeDirectionName}.\r\n`,
       client.user.username
     );
 
@@ -186,6 +190,15 @@ export class RoomManager {
     writeToClient(client, nextRoom.getDescriptionExcludingPlayer(client.user.username));
     
     return true;
+  }
+
+  /**
+   * Remove a player from all rooms (used when logging in to ensure player is only in one room)
+   */
+  public removePlayerFromAllRooms(username: string): void {
+    for (const [_, room] of this.rooms.entries()) {
+      room.removePlayer(username);
+    }
   }
 
   /**
@@ -247,6 +260,25 @@ export class RoomManager {
       case 'u': return 'below';
       case 'd': return 'above';
       default: return 'somewhere';
+    }
+  }
+
+  /**
+   * Convert direction abbreviation to full name
+   */
+  private getFullDirectionName(direction: string): string {
+    switch (direction.toLowerCase()) {
+      case 'n': return 'north';
+      case 's': return 'south';
+      case 'e': return 'east';
+      case 'w': return 'west';
+      case 'ne': return 'northeast';
+      case 'nw': return 'northwest';
+      case 'se': return 'southeast';
+      case 'sw': return 'southwest';
+      case 'u': return 'up';
+      case 'd': return 'down';
+      default: return direction.toLowerCase(); // Return the original if it's already a full name
     }
   }
 

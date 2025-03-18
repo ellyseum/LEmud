@@ -1,6 +1,6 @@
 import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { colorize, colors } from '../utils/colors';
-import { writeToClient } from '../utils/socketWriter';
+import { writeToClient, writeMessageToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 import { writeCommandPrompt } from '../utils/promptFormatter';
 import { RoomManager } from '../room/roomManager';
@@ -24,6 +24,9 @@ export class AuthenticatedState implements ClientState {
     writeToClient(client, colorize('Type "help" for a list of commands.\r\n', 'yellow'));
     writeToClient(client, colorize('========================================\r\n', 'bright'));
     
+    // Send login broadcast to all other users
+    this.broadcastLogin(client);
+    
     // Ensure user is placed in a room if they don't have one
     if (!client.user.currentRoomId) {
       client.user.currentRoomId = this.roomManager.getStartingRoomId();
@@ -32,7 +35,11 @@ export class AuthenticatedState implements ClientState {
     // Show the room description when user enters the game
     const room = this.roomManager.getRoom(client.user.currentRoomId);
     if (room) {
-      // Add the player to the room
+      // Before adding the player to this room, check if they're already in any room
+      // and remove them from those rooms first
+      this.roomManager.removePlayerFromAllRooms(client.user.username);
+      
+      // Now safely add the player to their current room
       room.addPlayer(client.user.username);
       
       // Use the Room's method for consistent formatting
@@ -45,5 +52,20 @@ export class AuthenticatedState implements ClientState {
 
   handle(): void {
     // Command handling is done separately in CommandHandler
+  }
+
+  // Broadcast login notification to all authenticated users except the one logging in
+  private broadcastLogin(joiningClient: ConnectedClient): void {
+    if (!joiningClient.user) return;
+
+    const username = formatUsername(joiningClient.user.username);
+    const message = `${username} has entered the game.\r\n`;
+    
+    for (const [_, client] of this.clients.entries()) {
+      // Only send to authenticated users who are not the joining client
+      if (client.authenticated && client !== joiningClient) {
+        writeMessageToClient(client, colorize(message, 'bright'));
+      }
+    }
   }
 }
