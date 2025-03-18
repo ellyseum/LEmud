@@ -21,7 +21,7 @@ const WS_PORT = 8080; // WebSocket port
 const userManager = new UserManager();
 const clients = new Map<string, ConnectedClient>();
 const commandHandler = new CommandHandler(clients, userManager);
-const stateMachine = new StateMachine(userManager);
+const stateMachine = new StateMachine(userManager, clients); // Add clients parameter
 
 // Create the HTTP server for Socket.IO
 const httpServer = http.createServer((req, res) => {

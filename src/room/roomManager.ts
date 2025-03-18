@@ -3,7 +3,7 @@ import path from 'path';
 import { Room, Exit, Currency } from './room';
 import { ConnectedClient } from '../types';
 import { colorize } from '../utils/colors';
-import { writeToClient } from '../utils/socketWriter';
+import { writeToClient, writeMessageToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 
 const ROOMS_FILE = path.join(__dirname, '..', '..', 'data', 'rooms.json');
@@ -21,8 +21,10 @@ interface RoomData {
 
 export class RoomManager {
   private rooms: Map<string, Room> = new Map();
+  private clients: Map<string, ConnectedClient>;
 
-  constructor() {
+  constructor(clients: Map<string, ConnectedClient>) {
+    this.clients = clients;
     this.loadRooms();
     this.ensureStartingRoom();
   }
@@ -152,11 +154,28 @@ export class RoomManager {
       return false;
     }
 
+    // Get the opposite direction for the arrival message
+    const oppositeDirection = this.getOppositeDirection(direction);
+    
+    // Notify players in current room that this player is leaving
+    this.notifyPlayersInRoom(
+      currentRoomId,
+      `${formatUsername(client.user.username)} leaves ${direction}.\r\n`,
+      client.user.username
+    );
+
     // Remove player from current room
     currentRoom.removePlayer(client.user.username);
 
     // Add player to new room
     nextRoom.addPlayer(client.user.username);
+    
+    // Notify players in the destination room that this player arrived
+    this.notifyPlayersInRoom(
+      nextRoomId, 
+      `${formatUsername(client.user.username)} enters from the ${oppositeDirection}.\r\n`,
+      client.user.username
+    );
 
     // Update user's current room
     client.user.currentRoomId = nextRoomId;
@@ -167,6 +186,68 @@ export class RoomManager {
     writeToClient(client, nextRoom.getDescriptionExcludingPlayer(client.user.username));
     
     return true;
+  }
+
+  /**
+   * Notifies all players in a room with a message, excluding the specified player
+   */
+  private notifyPlayersInRoom(roomId: string, message: string, excludeUsername?: string): void {
+    const room = this.getRoom(roomId);
+    if (!room) return;
+    
+    // Get all players in the room
+    for (const playerUsername of room.players) {
+      // Skip the excluded player if any
+      if (excludeUsername && playerUsername === excludeUsername) continue;
+      
+      // Find the client for this player
+      const client = this.findClientByUsername(playerUsername);
+      if (client) {
+        writeMessageToClient(client, colorize(message, 'cyan'));
+      }
+    }
+  }
+  
+  /**
+   * Find a client by username
+   */
+  private findClientByUsername(username: string): ConnectedClient | undefined {
+    for (const [_, client] of this.clients.entries()) {
+      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
+        return client;
+      }
+    }
+    return undefined;
+  }
+  
+  /**
+   * Get the opposite direction of movement
+   */
+  private getOppositeDirection(direction: string): string {
+    switch (direction.toLowerCase()) {
+      case 'north': return 'south';
+      case 'south': return 'north';
+      case 'east': return 'west';
+      case 'west': return 'east';
+      case 'up': return 'below';
+      case 'down': return 'above';
+      case 'northeast': return 'southwest';
+      case 'northwest': return 'southeast';
+      case 'southeast': return 'northwest';
+      case 'southwest': return 'northeast';
+      // Handle abbreviations too
+      case 'n': return 'south';
+      case 's': return 'north';
+      case 'e': return 'west';
+      case 'w': return 'east';
+      case 'ne': return 'southwest';
+      case 'nw': return 'southeast';
+      case 'se': return 'northwest';
+      case 'sw': return 'northeast';
+      case 'u': return 'below';
+      case 'd': return 'above';
+      default: return 'somewhere';
+    }
   }
 
   // Show room description to player

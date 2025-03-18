@@ -17,6 +17,14 @@ import { RoomManager } from '../room/roomManager';
 import { LookCommand } from './commands/look.command';
 import { MoveCommand } from './commands/move.command';
 
+// Import new commands
+import { InventoryCommand } from './commands/inventory.command';
+import { PickupCommand } from './commands/pickup.command';
+import { DropCommand } from './commands/drop.command';
+
+// Import the new dedicated alias command
+import { GetCommand } from './commands/get.command';
+
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
   private commandAliases: Map<string, string> = new Map(); // Add map for command aliases
@@ -26,7 +34,8 @@ export class CommandHandler {
     private clients: Map<string, ConnectedClient>,
     private userManager: UserManager
   ) {
-    this.roomManager = new RoomManager();
+    // Pass clients to RoomManager
+    this.roomManager = new RoomManager(clients);
     this.registerCommands();
   }
 
@@ -40,7 +49,11 @@ export class CommandHandler {
       new DamageCommand(this.userManager),
       new QuitCommand(this.userManager),
       new LookCommand(this.roomManager),
-      new MoveCommand(this.roomManager)
+      new MoveCommand(this.roomManager),
+      new InventoryCommand(),
+      new PickupCommand(this.roomManager, this.userManager),
+      new DropCommand(this.roomManager, this.userManager),
+      new GetCommand(this.roomManager, this.userManager) // Add the explicit Get command
     ];
     
     // Register all commands
@@ -48,8 +61,12 @@ export class CommandHandler {
       this.commands.set(cmd.name, cmd);
     });
     
-    // Register command aliases
-    this.commandAliases.set('l', 'look'); // Add 'l' as an alias for 'look'
+    // Register command aliases - no need for 'get' alias anymore since it's an explicit command
+    this.commandAliases.set('l', 'look');
+    this.commandAliases.set('i', 'inventory');
+    this.commandAliases.set('inv', 'inventory');
+    // this.commandAliases.set('get', 'pickup');  // Remove this line since we have an explicit command now
+    this.commandAliases.set('take', 'pickup');
     
     // Register direction shortcuts
     const moveCommand = commands.find(cmd => cmd.name === 'move') as MoveCommand;

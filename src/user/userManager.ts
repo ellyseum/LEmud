@@ -33,7 +33,7 @@ export class UserManager {
       const data = fs.readFileSync(USERS_FILE, 'utf8');
       this.users = JSON.parse(data);
       
-      // Ensure dates are properly parsed
+      // Ensure dates are properly parsed and inventory structures exist
       this.users.forEach(user => {
         if (typeof user.joinDate === 'string') {
           user.joinDate = new Date(user.joinDate);
@@ -41,7 +41,26 @@ export class UserManager {
         if (typeof user.lastLogin === 'string') {
           user.lastLogin = new Date(user.lastLogin);
         }
+        
+        // Ensure inventory structure exists
+        if (!user.inventory) {
+          user.inventory = {
+            items: [],
+            currency: { gold: 0, silver: 0, copper: 0 }
+          };
+        }
+        
+        if (!user.inventory.items) {
+          user.inventory.items = [];
+        }
+        
+        if (!user.inventory.currency) {
+          user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
+        }
       });
+      
+      // Save after migration to ensure all users have the correct structure
+      this.saveUsers();
     } catch (error) {
       console.error('Error loading users:', error);
       this.users = [];
@@ -246,7 +265,11 @@ export class UserManager {
       level: 1,
       joinDate: now,
       lastLogin: now,
-      currentRoomId: 'start' // Set default starting room
+      currentRoomId: 'start', // Set default starting room
+      inventory: {
+        items: [],
+        currency: { gold: 0, silver: 0, copper: 0 }
+      }
     };
 
     this.users.push(newUser);
@@ -267,6 +290,15 @@ export class UserManager {
     if (!user) return false;
     
     Object.assign(user, stats);
+    this.saveUsers();
+    return true;
+  }
+
+  public updateUserInventory(username: string, inventory: User['inventory']): boolean {
+    const user = this.getUser(username);
+    if (!user) return false;
+    
+    user.inventory = inventory;
     this.saveUsers();
     return true;
   }

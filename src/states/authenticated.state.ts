@@ -9,8 +9,9 @@ export class AuthenticatedState implements ClientState {
   name = ClientStateType.AUTHENTICATED;
   private roomManager: RoomManager;
 
-  constructor() {
-    this.roomManager = new RoomManager();
+  constructor(private clients: Map<string, ConnectedClient>) {
+    // Pass clients to RoomManager
+    this.roomManager = new RoomManager(clients);
   }
 
   enter(client: ConnectedClient): void {

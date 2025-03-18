@@ -19,7 +19,7 @@ export class StateMachine {
   private authenticatedState: AuthenticatedState;
   private transferRequestState: TransferRequestState;
 
-  constructor(userManager: UserManager) {
+  constructor(userManager: UserManager, private clients: Map<string, ConnectedClient>) {
     this.userManager = userManager;
     
     // Initialize state objects
@@ -27,7 +27,7 @@ export class StateMachine {
     this.loginState = new LoginState(userManager);
     this.signupState = new SignupState(userManager);
     this.confirmationState = new ConfirmationState(userManager);
-    this.authenticatedState = new AuthenticatedState();
+    this.authenticatedState = new AuthenticatedState(clients); // Pass clients
     this.transferRequestState = new TransferRequestState(userManager);
     
     // Register states

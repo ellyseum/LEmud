@@ -1,4 +1,5 @@
 import { IConnection } from './connection/interfaces/connection.interface';
+import { Currency } from './room/room';
 
 // Define state enum
 export enum ClientStateType {
@@ -20,6 +21,10 @@ export interface User {
   joinDate: Date;
   lastLogin: Date;
   currentRoomId: string; // Add this field to track user's current room
+  inventory: {
+    items: string[];
+    currency: Currency;
+  };
 }
 
 export interface ConnectedClient {
