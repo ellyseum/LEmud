@@ -144,6 +144,16 @@ export class RoomManager {
     const nextRoomId = currentRoom.getExit(direction);
     if (!nextRoomId) {
       writeToClient(client, colorize(`There is no exit in that direction.\r\n`, 'red'));
+      
+      // Notify other players in the room about the wall collision
+      // Get full direction name for the message
+      const fullDirectionName = this.getFullDirectionName(direction);
+      this.notifyPlayersInRoom(
+        currentRoomId,
+        `${formatUsername(client.user.username)} runs into a wall trying to go ${fullDirectionName}.\r\n`,
+        client.user.username
+      );
+      
       return false;
     }
 
