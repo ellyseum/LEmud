@@ -68,6 +68,38 @@ export class Room {
     return this.getFormattedDescription(false, username);
   }
 
+  /**
+   * Generate a description for someone looking into the room from outside
+   */
+  getDescriptionForPeeking(fromDirection: string): string {
+    let description = colorize(this.shortDescription, 'cyan') + '\r\n';
+    description += colorize(this.longDescription, 'white') + '\r\n';
+    
+    // Show players in the room
+    if (this.players.length > 0) {
+      const playerNames = this.players.map(player => formatUsername(player));
+      description += colorize(`Also here: ${playerNames.join(', ')}.\r\n`, 'magenta');
+    }
+    
+    // Show objects in the room (simplified view when peeking)
+    if (this.objects.length > 0) {
+      description += colorize(`You can see some items in the distance.\r\n`, 'green');
+    }
+    
+    // Only show exits since player is just peeking
+    if (this.exits.length > 0) {
+      const directions = this.exits.map(exit => exit.direction);
+      description += colorize(`Obvious exits: ${directions.join(', ')}.\r\n`, 'green');
+      
+      // Mention the direction the player is peeking from
+      description += colorize(`You are looking into this room from the ${fromDirection}.\r\n`, 'yellow');
+    } else {
+      description += colorize('There are no obvious exits.\r\n', 'green');
+    }
+    
+    return description;
+  }
+
   // Centralized method to format room descriptions
   private getFormattedDescription(includeLongDesc: boolean, excludePlayer?: string): string {
     let description = colorize(this.shortDescription, 'cyan') + '\r\n';

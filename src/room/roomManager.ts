@@ -358,4 +358,59 @@ export class RoomManager {
     writeToClient(client, room.getBriefDescriptionExcludingPlayer(client.user.username));
     return true;
   }
+
+  /**
+   * Allows a player to look into an adjacent room without entering it
+   */
+  public lookIntoRoom(client: ConnectedClient, direction: string): boolean {
+    if (!client.user) return false;
+
+    // Get current room
+    const currentRoomId = client.user.currentRoomId || this.getStartingRoomId();
+    const currentRoom = this.getRoom(currentRoomId);
+
+    if (!currentRoom) {
+      writeToClient(client, colorize(`You're not in a valid room.\r\n`, 'red'));
+      return false;
+    }
+
+    // Check if exit exists in the specified direction
+    const nextRoomId = currentRoom.getExit(direction);
+    if (!nextRoomId) {
+      writeToClient(client, colorize(`There is no exit in that direction.\r\n`, 'red'));
+      return false;
+    }
+
+    // Get destination room
+    const nextRoom = this.getRoom(nextRoomId);
+    if (!nextRoom) {
+      writeToClient(client, colorize(`The destination room doesn't exist.\r\n`, 'red'));
+      return false;
+    }
+
+    // Notify people in current room that this player is looking in a direction
+    this.notifyPlayersInRoom(
+      currentRoomId,
+      `${formatUsername(client.user.username)} looks ${direction}.\r\n`,
+      client.user.username
+    );
+
+    // Get the opposite direction for the arrival message
+    const oppositeDirection = this.getOppositeDirection(direction);
+
+    // Notify people in the destination room that someone is looking in
+    this.notifyPlayersInRoom(
+      nextRoomId,
+      `${formatUsername(client.user.username)} looks into the room from the ${oppositeDirection}.\r\n`
+    );
+
+    // Show the room description to the looking player
+    writeToClient(client, colorize(`You look ${direction}...\r\n`, 'cyan'));
+    
+    // Create a peek view of the room - similar to the regular view but might be limited
+    const peekDescription = nextRoom.getDescriptionForPeeking(oppositeDirection);
+    writeToClient(client, peekDescription);
+
+    return true;
+  }
 }
