@@ -34,8 +34,8 @@ export class CommandHandler {
     private clients: Map<string, ConnectedClient>,
     private userManager: UserManager
   ) {
-    // Pass clients to RoomManager
-    this.roomManager = new RoomManager(clients);
+    // Use singleton instance instead of creating a new one
+    this.roomManager = RoomManager.getInstance(clients);
     this.registerCommands();
   }
 
@@ -47,13 +47,13 @@ export class CommandHandler {
       new StatsCommand(),
       new HealCommand(this.userManager),
       new DamageCommand(this.userManager),
-      new QuitCommand(this.userManager, this.roomManager), // Pass roomManager to QuitCommand
-      new LookCommand(this.roomManager),
-      new MoveCommand(this.roomManager),
+      new QuitCommand(this.userManager, this.clients), // Pass clients instead of roomManager
+      new LookCommand(this.clients), // Pass clients instead of roomManager
+      new MoveCommand(this.clients), // Pass clients instead of roomManager 
       new InventoryCommand(),
-      new PickupCommand(this.roomManager, this.userManager),
-      new DropCommand(this.roomManager, this.userManager),
-      new GetCommand(this.roomManager, this.userManager) // Add the explicit Get command
+      new PickupCommand(this.clients, this.userManager), // Pass clients instead of roomManager
+      new DropCommand(this.clients, this.userManager), // Pass clients instead of roomManager
+      new GetCommand(this.clients, this.userManager) // Pass clients instead of roomManager
     ];
     
     // Register all commands

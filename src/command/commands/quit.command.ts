@@ -8,11 +8,15 @@ import { RoomManager } from '../../room/roomManager';
 export class QuitCommand implements Command {
   name = 'quit';
   description = 'Disconnect from the server';
+  private roomManager: RoomManager;
 
   constructor(
     private userManager: UserManager,
-    private roomManager: RoomManager // Add RoomManager dependency
-  ) {}
+    clients: Map<string, ConnectedClient> // Change parameter type
+  ) {
+    // Use singleton instance
+    this.roomManager = RoomManager.getInstance(clients);
+  }
 
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;

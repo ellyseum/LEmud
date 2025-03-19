@@ -9,11 +9,15 @@ export class PickupCommand implements Command {
   name = 'pickup';
   description = 'Pick up an item or currency from the room';
   aliases = ['take', 'get'];
+  private roomManager: RoomManager;
 
   constructor(
-    private roomManager: RoomManager,
+    clients: Map<string, ConnectedClient>,
     private userManager: UserManager
-  ) {}
+  ) {
+    // Use singleton instance
+    this.roomManager = RoomManager.getInstance(clients);
+  }
 
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;

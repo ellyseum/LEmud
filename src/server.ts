@@ -133,7 +133,7 @@ function setupClient(connection: IConnection): void {
     if (client.user && client.authenticated) {
       // Remove player from all rooms when they disconnect
       const username = client.user.username;
-      const roomManager = new RoomManager(clients);
+      const roomManager = RoomManager.getInstance(clients);
       roomManager.removePlayerFromAllRooms(username);
       
       // Unregister the user session
@@ -159,7 +159,7 @@ function setupClient(connection: IConnection): void {
     if (client.user && client.authenticated) {
       // Remove player from all rooms when they disconnect due to error
       const username = client.user.username;
-      const roomManager = new RoomManager(clients);
+      const roomManager = RoomManager.getInstance(clients);
       roomManager.removePlayerFromAllRooms(username);
       
       // Unregister the user session

@@ -5,6 +5,7 @@ import { RoomManager } from '../../room/roomManager';
 export class MoveCommand implements Command {
   name = 'move';
   description = 'Move in a direction (north, south, east, west, etc.)';
+  private roomManager: RoomManager;
   private directionAliases: { [key: string]: string } = {
     'n': 'north',
     's': 'south',
@@ -18,7 +19,10 @@ export class MoveCommand implements Command {
     'd': 'down'
   };
 
-  constructor(private roomManager: RoomManager) {}
+  constructor(clients: Map<string, ConnectedClient>) {
+    // Use singleton instance
+    this.roomManager = RoomManager.getInstance(clients);
+  }
 
   execute(client: ConnectedClient, args: string): void {
     const direction = args.trim().toLowerCase();

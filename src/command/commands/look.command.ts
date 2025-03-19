@@ -5,8 +5,12 @@ import { RoomManager } from '../../room/roomManager';
 export class LookCommand implements Command {
   name = 'look';
   description = 'Look at your surroundings';
+  private roomManager: RoomManager;
 
-  constructor(private roomManager: RoomManager) {}
+  constructor(clients: Map<string, ConnectedClient>) {
+    // Use singleton instance
+    this.roomManager = RoomManager.getInstance(clients);
+  }
 
   execute(client: ConnectedClient, args: string): void {
     // If no arguments, look at the room

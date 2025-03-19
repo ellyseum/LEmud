@@ -10,8 +10,8 @@ export class AuthenticatedState implements ClientState {
   private roomManager: RoomManager;
 
   constructor(private clients: Map<string, ConnectedClient>) {
-    // Pass clients to RoomManager
-    this.roomManager = new RoomManager(clients);
+    // Use singleton instance
+    this.roomManager = RoomManager.getInstance(clients);
   }
 
   enter(client: ConnectedClient): void {

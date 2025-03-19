@@ -13,10 +13,11 @@ export class GetCommand implements Command {
   private pickupCommand: PickupCommand;
 
   constructor(
-    roomManager: RoomManager,
+    clients: Map<string, ConnectedClient>,
     userManager: UserManager
   ) {
-    this.pickupCommand = new PickupCommand(roomManager, userManager);
+    // Pass the clients directly to PickupCommand
+    this.pickupCommand = new PickupCommand(clients, userManager);
   }
 
   execute(client: ConnectedClient, args: string): void {

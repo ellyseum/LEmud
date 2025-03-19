@@ -8,11 +8,15 @@ import { UserManager } from '../../user/userManager';
 export class DropCommand implements Command {
   name = 'drop';
   description = 'Drop an item or currency from your inventory';
+  private roomManager: RoomManager;
 
   constructor(
-    private roomManager: RoomManager,
+    clients: Map<string, ConnectedClient>,
     private userManager: UserManager
-  ) {}
+  ) {
+    // Use singleton instance
+    this.roomManager = RoomManager.getInstance(clients);
+  }
 
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;

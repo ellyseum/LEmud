@@ -22,11 +22,27 @@ interface RoomData {
 export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private clients: Map<string, ConnectedClient>;
+  
+  // Add static instance for singleton pattern
+  private static instance: RoomManager | null = null;
 
-  constructor(clients: Map<string, ConnectedClient>) {
+  // Make constructor private for singleton pattern
+  private constructor(clients: Map<string, ConnectedClient>) {
+    console.log('Creating RoomManager instance');
     this.clients = clients;
     this.loadRooms();
     this.ensureStartingRoom();
+  }
+  
+  // Static method to get the singleton instance
+  public static getInstance(clients: Map<string, ConnectedClient>): RoomManager {
+    if (!RoomManager.instance) {
+      RoomManager.instance = new RoomManager(clients);
+    } else {
+      // Update clients reference if it's a different object
+      RoomManager.instance.clients = clients;
+    }
+    return RoomManager.instance;
   }
 
   private loadRooms(): void {
