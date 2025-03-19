@@ -6,18 +6,6 @@ export class MoveCommand implements Command {
   name = 'move';
   description = 'Move in a direction (north, south, east, west, etc.)';
   private roomManager: RoomManager;
-  private directionAliases: { [key: string]: string } = {
-    'n': 'north',
-    's': 'south',
-    'e': 'east',
-    'w': 'west',
-    'ne': 'northeast',
-    'nw': 'northwest',
-    'se': 'southeast',
-    'sw': 'southwest',
-    'u': 'up',
-    'd': 'down'
-  };
 
   constructor(clients: Map<string, ConnectedClient>) {
     // Use singleton instance

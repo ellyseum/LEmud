@@ -3,18 +3,16 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { Server as SocketIOServer } from 'socket.io';
-import { v4 as uuidv4 } from 'uuid';
 import { ConnectedClient, ClientStateType } from './types';
 import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
 import { StateMachine } from './state/stateMachine';
 import { colorize } from './utils/colors';
-import { flushClientBuffer, stopBuffering, writeToClient, writeMessageToClient } from './utils/socketWriter';
+import { stopBuffering, writeMessageToClient } from './utils/socketWriter';
 import { TelnetConnection } from './connection/telnet.connection';
 import { SocketIOConnection } from './connection/socketio.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
 import { formatUsername } from './utils/formatters';
-import { writeCommandPrompt } from './utils/promptFormatter';
 import { RoomManager } from './room/roomManager';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges

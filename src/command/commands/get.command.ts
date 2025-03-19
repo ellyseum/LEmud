@@ -1,7 +1,6 @@
 import { ConnectedClient } from '../../types';
 import { Command } from '../command.interface';
 import { PickupCommand } from './pickup.command';
-import { RoomManager } from '../../room/roomManager';
 import { UserManager } from '../../user/userManager';
 
 /**

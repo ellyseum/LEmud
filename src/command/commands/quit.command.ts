@@ -18,7 +18,7 @@ export class QuitCommand implements Command {
     this.roomManager = RoomManager.getInstance(clients);
   }
 
-  execute(client: ConnectedClient, args: string): void {
+  execute(client: ConnectedClient): void {
     if (!client.user) return;
 
     writeToClient(client, colorize('Thank you for playing! Goodbye.\r\n', 'yellow'));

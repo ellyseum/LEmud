@@ -1,11 +1,12 @@
 import { ConnectedClient } from '../types';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
+import { writeCommandPrompt } from '../utils/promptFormatter';
 import { UserManager } from '../user/userManager';
 import { Command } from './command.interface';
-import { writeCommandPrompt } from '../utils/promptFormatter';
+import { RoomManager } from '../room/roomManager';
 
-// Import commands
+// Command imports can be grouped by functionality
 import { SayCommand } from './commands/say.command';
 import { ListCommand } from './commands/list.command';
 import { StatsCommand } from './commands/stats.command';
@@ -13,16 +14,11 @@ import { HealCommand } from './commands/heal.command';
 import { DamageCommand } from './commands/damage.command';
 import { HelpCommand } from './commands/help.command';
 import { QuitCommand } from './commands/quit.command';
-import { RoomManager } from '../room/roomManager';
 import { LookCommand } from './commands/look.command';
 import { MoveCommand } from './commands/move.command';
-
-// Import new commands
 import { InventoryCommand } from './commands/inventory.command';
 import { PickupCommand } from './commands/pickup.command';
 import { DropCommand } from './commands/drop.command';
-
-// Import the new dedicated alias command
 import { GetCommand } from './commands/get.command';
 
 export class CommandHandler {
