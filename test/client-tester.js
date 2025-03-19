@@ -16,7 +16,9 @@ const PASSWORD = process.env.MUD_PASSWORD || "a";
 
 // Create a socket connection
 const socket = new net.Socket();
-const RECONNECT_DELAY = 1000; // 1 second delay before reconnection
+const RECONNECT_DELAY = 3000; // Increased to 3 seconds delay before reconnection
+const MAX_RECONNECT_ATTEMPTS = 3; // Maximum number of reconnection attempts
+let reconnectAttempts = 0; // Track the number of reconnection attempts
 
 // Set up raw mode to capture keystrokes
 process.stdin.setRawMode(true);
@@ -29,6 +31,9 @@ function connectToServer(crDelay = 500) {
   
   socket.connect(PORT, HOST, () => {
     console.log("Connected! Sending login credentials...");
+    // Reset reconnect attempts on successful connection
+    reconnectAttempts = 0;
+    
     // Connected, waiting for login prompt
     // send username then CR
     socket.write(USERNAME);
@@ -54,18 +59,32 @@ socket.on("data", (data) => {
 
 // Handle socket close
 socket.on("close", () => {
-  console.log("\nConnection lost. Attempting to reconnect in 1 second...");
+  console.log("\nConnection lost. Attempting to reconnect in 3 seconds...");
   
-  // Wait 1 second before trying to reconnect
+  // Wait 3 seconds before trying to reconnect
   setTimeout(() => {
-    connectToServer();
+    // Only attempt to reconnect if we haven't reached the maximum number of attempts
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      connectToServer();
+    } else {
+      console.log(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
+      process.exit(1);
+    }
   }, RECONNECT_DELAY);
 });
 
 // Handle socket errors
 socket.on("error", (err) => {
   console.error(`Connection error: ${err.message}`);
+  // Increment reconnect attempts on connection errors
+  reconnectAttempts++;
+  
   // Don't exit on error - the close event will be triggered and we'll try to reconnect
+  // unless we've reached the maximum number of attempts
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.log(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
+    process.exit(1);
+  }
 });
 
 // Handle user input and send it to the server
