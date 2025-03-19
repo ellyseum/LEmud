@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# MUD Client Connection Script
+# This script sets environment variables and runs the MUD client
+
+# Default connection parameters (can be overridden by command-line arguments)
+MUD_USERNAME=test
+MUD_PASSWORD=a
+MUD_HOST=localhost
+MUD_PORT=8023
+
+# Print connection info
+echo "Connecting to $MUD_HOST:$MUD_PORT as $MUD_USERNAME"
+
+# Run the clientn
+MUD_USERNAME=$MUD_USERNAME MUD_PASSWORD=$MUD_PASSWORD MUD_HOST=$MUD_HOST MUD_PORT=$M node "./test/client-tester.js"
