@@ -13,6 +13,9 @@ export class MoveCommand implements Command {
   }
 
   execute(client: ConnectedClient, args: string): void {
+    // Check if the player is in a valid room first
+    this.roomManager.teleportToStartingRoomIfNeeded(client);
+    
     const direction = args.trim().toLowerCase();
     
     if (!direction) {

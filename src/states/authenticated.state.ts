@@ -47,6 +47,9 @@ export class AuthenticatedState implements ClientState {
       
       // Use the Room's method for consistent formatting
       writeToClient(client, room.getDescriptionExcludingPlayer(client.user.username));
+    } else {
+      // Player is in an invalid room, teleport them to the starting room
+      this.roomManager.teleportToStartingRoom(client);
     }
     
     // Add the command prompt showing HP status

@@ -152,8 +152,8 @@ export class RoomManager {
     const currentRoom = this.getRoom(currentRoomId);
 
     if (!currentRoom) {
-      writeToClient(client, colorize(`You're not in a valid room.\r\n`, 'red'));
-      return false;
+      writeToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
+      return this.teleportToStartingRoom(client);
     }
 
     // Check if exit exists
@@ -332,8 +332,8 @@ export class RoomManager {
     const room = this.getRoom(roomId);
 
     if (!room) {
-      writeToClient(client, colorize(`You're not in a valid room.\r\n`, 'red'));
-      return false;
+      writeToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
+      return this.teleportToStartingRoom(client);
     }
 
     // Use the Room's method for consistent formatting
@@ -350,8 +350,8 @@ export class RoomManager {
     const room = this.getRoom(roomId);
 
     if (!room) {
-      writeToClient(client, colorize(`You're not in a valid room.\r\n`, 'red'));
-      return false;
+      writeToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
+      return this.teleportToStartingRoom(client);
     }
 
     // Use the Room's brief description method for consistent formatting
@@ -373,8 +373,8 @@ export class RoomManager {
     const room = this.getRoom(roomId);
 
     if (!room) {
-      writeToClient(client, colorize(`You're not in a valid room.\r\n`, 'red'));
-      return false;
+      writeToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
+      return this.teleportToStartingRoom(client);
     }
 
     // Normalize the entity name for easier matching
@@ -583,5 +583,66 @@ export class RoomManager {
     // If we got here, no matching entity was found
     writeToClient(client, colorize(`You don't see anything like that here.\r\n`, 'yellow'));
     return false;
+  }
+
+  /**
+   * Teleports a player to the starting room if they're in an invalid room
+   * @param client The connected client
+   * @returns true if teleport was needed and successful, false otherwise
+   */
+  public teleportToStartingRoomIfNeeded(client: ConnectedClient): boolean {
+    if (!client.user) return false;
+
+    // Check if the player is in a valid room
+    const currentRoomId = client.user.currentRoomId;
+    if (currentRoomId && this.getRoom(currentRoomId)) {
+      // Player is in a valid room, no need to teleport
+      return false;
+    }
+
+    // Player is in an invalid room, teleport them to the starting room
+    return this.teleportToStartingRoom(client);
+  }
+
+  /**
+   * Forcefully teleports a player to the starting room
+   * @param client The connected client
+   * @returns true if teleport was successful, false otherwise
+   */
+  public teleportToStartingRoom(client: ConnectedClient): boolean {
+    if (!client.user) return false;
+
+    const startingRoomId = this.getStartingRoomId();
+    const startingRoom = this.getRoom(startingRoomId);
+
+    if (!startingRoom) {
+      console.error("Error: Starting room does not exist!");
+      return false;
+    }
+
+    // Remove the player from any room they might be in
+    this.removePlayerFromAllRooms(client.user.username);
+
+    // Add the player to the starting room
+    startingRoom.addPlayer(client.user.username);
+
+    // Update the player's current room ID
+    const oldRoomId = client.user.currentRoomId;
+    client.user.currentRoomId = startingRoomId;
+
+    // Notify the player about the teleport
+    writeToClient(client, colorize(`You are being teleported to a safe location...\r\n`, 'yellow'));
+    
+    // Show the new room description
+    writeToClient(client, startingRoom.getDescriptionExcludingPlayer(client.user.username));
+
+    // Announce player's arrival in the starting room
+    this.notifyPlayersInRoom(
+      startingRoomId,
+      `${formatUsername(client.user.username)} suddenly appears in a flash of light!\r\n`,
+      client.user.username
+    );
+
+    return true;
   }
 }
