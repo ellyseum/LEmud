@@ -36,6 +36,12 @@ export class YellCommand implements Command {
       return;
     }
 
+    // Format yell text: convert to uppercase and add exclamation mark if needed
+    let yellText = args.toUpperCase();
+    if (!yellText.endsWith('!')) {
+      yellText += '!';
+    }
+
     // Get current room
     const currentRoom = this.roomManager.getRoom(currentRoomId);
 
@@ -54,18 +60,26 @@ export class YellCommand implements Command {
     });
 
     // Let the yeller know what they yelled
-    writeToClient(client, colorize(`You yell '${args}'!\r\n`, 'red'));
+    writeToClient(client, colorize(`You yell '${yellText}'!\r\n`, 'red'));
 
     // Send message to all clients in current room
-    this.sendMessageToRoom(currentRoomId, username, args, false);
+    this.sendMessageToRoom(currentRoomId, username, yellText, false);
 
     // Send message to all clients in adjacent rooms
     for (const roomId of adjacentRoomIds) {
-      this.sendMessageToRoom(roomId, username, args, true);
+      // Find the direction from the adjacent room to the current room
+      const directionFromAdjacent = this.getDirectionBetweenRooms(roomId, currentRoomId);
+      this.sendMessageToRoom(roomId, username, yellText, true, directionFromAdjacent);
     }
   }
 
-  private sendMessageToRoom(roomId: string, yellerUsername: string, message: string, isAdjacent: boolean): void {
+  private sendMessageToRoom(
+    roomId: string, 
+    yellerUsername: string, 
+    message: string, 
+    isAdjacent: boolean,
+    fromDirection?: string
+  ): void {
     const room = this.roomManager.getRoom(roomId);
     if (!room) return;
 
@@ -77,14 +91,35 @@ export class YellCommand implements Command {
       // Find the client for this player
       const playerClient = this.findClientByUsername(playerUsername);
       if (playerClient) {
-        // For adjacent rooms, indicate it came from somewhere else
-        const messageText = isAdjacent
-          ? `You hear ${formatUsername(yellerUsername)} yell '${message}'!\r\n`
-          : `${formatUsername(yellerUsername)} yells '${message}'!\r\n`;
+        // Message format depends on whether the player is in the same room or adjacent
+        let messageText;
+        if (isAdjacent) {
+          messageText = fromDirection 
+            ? `You hear someone yell from the ${fromDirection} '${message}'\r\n`
+            : `You hear someone yell '${message}'\r\n`;
+        } else {
+          messageText = `${formatUsername(yellerUsername)} yells '${message}'\r\n`;
+        }
           
         writeMessageToClient(playerClient, colorize(messageText, 'red'));
       }
     }
+  }
+
+  /**
+   * Find the direction from one room to another based on exits
+   */
+  private getDirectionBetweenRooms(fromRoomId: string, toRoomId: string): string | undefined {
+    const fromRoom = this.roomManager.getRoom(fromRoomId);
+    if (!fromRoom) return undefined;
+    
+    // Find the exit that leads to the target room
+    for (const exit of fromRoom.exits) {
+      if (exit.roomId === toRoomId) {
+        return exit.direction;
+      }
+    }
+    return undefined;
   }
 
   /**

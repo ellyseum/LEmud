@@ -118,8 +118,8 @@ export class CommandHandler {
 
     // Check for repeat command shortcut (single period)
     if (cleanInput === '.') {
-      // If there's no command history, inform the user
-      if (client.user.commandHistory.length === 0) {
+      // Make sure user and command history are defined
+      if (!client.user.commandHistory || client.user.commandHistory.length === 0) {
         writeToClient(client, colorize('No previous command to repeat.\r\n', 'yellow'));
         writeCommandPrompt(client);
         return;
@@ -131,7 +131,7 @@ export class CommandHandler {
       // Display what we're executing
       writeToClient(client, colorize(`Repeating: ${lastCommand}\r\n`, 'dim'));
       
-      // Add the repeated command to history (key change!)
+      // Add the repeated command to history
       client.user.commandHistory.push(lastCommand);
       
       // Keep only the most recent 30 commands
@@ -139,14 +139,55 @@ export class CommandHandler {
         client.user.commandHistory.shift(); // Remove oldest command
       }
       
-      // Execute the last command (using existing logic)
+      // Execute the last command
       this.executeCommand(client, lastCommand);
       
       return;
     }
 
-    // Always add the command to history
-    client.user.commandHistory.push(cleanInput);
+    // Check for shortcut commands
+    // Single quote shortcut for say: 'hello -> say hello
+    if (cleanInput.startsWith("'") && cleanInput.length > 1) {
+      const text = cleanInput.substring(1);
+      this.addToHistory(client, `say ${text}`);
+      const sayCommand = this.commands.get('say');
+      if (sayCommand) {
+        sayCommand.execute(client, text);
+        writeCommandPrompt(client);
+      }
+      return;
+    }
+    
+    // Double quote shortcut for yell: "hello -> yell hello
+    if (cleanInput.startsWith('"') && cleanInput.length > 1) {
+      const text = cleanInput.substring(1);
+      this.addToHistory(client, `yell ${text}`);
+      const yellCommand = this.commands.get('yell');
+      if (yellCommand) {
+        yellCommand.execute(client, text);
+        writeCommandPrompt(client);
+      }
+      return;
+    }
+
+    // Add the normal command to history
+    this.addToHistory(client, cleanInput);
+
+    // Execute the command
+    this.executeCommand(client, cleanInput);
+  }
+
+  // Helper method to add commands to history
+  private addToHistory(client: ConnectedClient, command: string): void {
+    if (!client.user) return;
+
+    // Initialize command history if it doesn't exist
+    if (!client.user.commandHistory) {
+      client.user.commandHistory = [];
+    }
+
+    // Add command to history
+    client.user.commandHistory.push(command);
     
     // Keep only the most recent 30 commands
     if (client.user.commandHistory.length > 30) {
@@ -156,9 +197,6 @@ export class CommandHandler {
     // Reset history browsing state
     client.user.currentHistoryIndex = -1;
     client.user.savedCurrentCommand = '';
-
-    // Execute the command
-    this.executeCommand(client, cleanInput);
   }
 
   // New helper method to execute a command
