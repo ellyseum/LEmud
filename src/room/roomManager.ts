@@ -645,4 +645,12 @@ export class RoomManager {
 
     return true;
   }
+
+  /**
+   * Force saving rooms data
+   * Public method for tick system to call
+   */
+  public forceSave(): void {
+    this.saveRooms();
+  }
 }

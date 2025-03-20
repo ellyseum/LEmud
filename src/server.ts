@@ -20,6 +20,7 @@ import { formatUsername } from './utils/formatters';
 import { RoomManager } from './room/roomManager';
 import * as AdminApi from './admin/adminApi';
 import { getPromptText } from './utils/promptFormatter';
+import { GameTimerManager } from './timer/gameTimerManager';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -27,6 +28,10 @@ const userManager = new UserManager();
 const clients = new Map<string, ConnectedClient>();
 const commandHandler = new CommandHandler(clients, userManager);
 const stateMachine = new StateMachine(userManager, clients); // Add clients parameter
+const roomManager = RoomManager.getInstance(clients);
+
+// Initialize the game timer manager
+const gameTimerManager = GameTimerManager.getInstance(userManager, roomManager);
 
 // Secret key for JWT tokens - same as in adminApi.ts
 const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
@@ -66,6 +71,11 @@ app.get('/api/admin/stats', AdminApi.validateToken, AdminApi.getServerStats(serv
 app.get('/api/admin/players', AdminApi.validateToken, AdminApi.getPlayerDetails(clients, userManager));
 app.post('/api/admin/players/:clientId/kick', AdminApi.validateToken, AdminApi.kickPlayer(clients));
 app.post('/api/admin/players/:clientId/monitor', AdminApi.validateToken, AdminApi.monitorPlayer(clients));
+
+// Add new game timer system endpoints
+app.get('/api/admin/gametimer-config', AdminApi.validateToken, AdminApi.getGameTimerConfig(gameTimerManager));
+app.post('/api/admin/gametimer-config', AdminApi.validateToken, AdminApi.updateGameTimerConfig(gameTimerManager));
+app.post('/api/admin/force-save', AdminApi.validateToken, AdminApi.forceSave(gameTimerManager));
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -533,6 +543,28 @@ telnetServer.listen(TELNET_PORT, () => {
 httpServer.listen(WS_PORT, () => {
   console.log(`HTTP and Socket.IO server running on port ${WS_PORT}`);
   console.log(`Admin interface available at http://localhost:${WS_PORT}/admin`);
+});
+
+// Start the game timer system
+gameTimerManager.start();
+
+// Setup graceful shutdown to save data and properly clean up
+process.on('SIGINT', () => {
+  console.log('Shutting down server...');
+  
+  // Stop the game timer system
+  gameTimerManager.stop();
+  
+  // Force a final save
+  gameTimerManager.forceSave();
+  
+  // Reset the singleton instances if needed
+  // This isn't strictly necessary for normal shutdown, but helps with clean state
+  GameTimerManager.resetInstance();
+  
+  // Exit the process
+  console.log('Server shutdown complete');
+  process.exit(0);
 });
 
 console.log(`Make sure you have the following state files configured correctly:`);

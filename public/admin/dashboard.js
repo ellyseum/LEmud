@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fetch initial data
     fetchServerStats();
     fetchPlayerData();
+    fetchGameTimerConfig();
 
     // Set up polling for stats and player data
     setInterval(fetchServerStats, 5000);
@@ -177,6 +178,103 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error fetching server stats:', error);
             document.getElementById('server-status').textContent = 'Error';
             document.getElementById('server-status').className = 'badge bg-danger';
+        }
+    }
+
+    // Fetch game timer configuration
+    async function fetchGameTimerConfig() {
+        try {
+            const response = await fetch('/api/admin/gametimer-config', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (response.status === 401) {
+                // Token expired or invalid
+                localStorage.removeItem('mudAdminToken');
+                window.location.href = '/admin/login.html';
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const config = data.config;
+                
+                // Update the form fields
+                document.getElementById('tick-interval').value = config.tickInterval;
+                document.getElementById('save-interval').value = config.saveInterval;
+            }
+        } catch (error) {
+            console.error('Error fetching game timer configuration:', error);
+            alert('Failed to load game timer configuration');
+        }
+    }
+
+    // Save game timer configuration
+    async function saveGameTimerConfig() {
+        try {
+            const tickInterval = parseInt(document.getElementById('tick-interval').value);
+            const saveInterval = parseInt(document.getElementById('save-interval').value);
+            
+            // Basic validation
+            if (isNaN(tickInterval) || tickInterval < 1000) {
+                alert('Tick interval must be at least 1000ms (1 second)');
+                return;
+            }
+            
+            if (isNaN(saveInterval) || saveInterval < 1) {
+                alert('Save interval must be at least 1 tick');
+                return;
+            }
+            
+            const response = await fetch('/api/admin/gametimer-config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    tickInterval,
+                    saveInterval
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Game timer configuration updated successfully');
+                fetchGameTimerConfig(); // Refresh to show server values
+            } else {
+                alert('Failed to update configuration: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error saving game timer configuration:', error);
+            alert('Error saving configuration: ' + error.message);
+        }
+    }
+
+    // Force an immediate save
+    async function forceSaveData() {
+        try {
+            const response = await fetch('/api/admin/force-save', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Game data saved successfully');
+            } else {
+                alert('Failed to save data: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error forcing save:', error);
+            alert('Error saving data: ' + error.message);
         }
     }
 
@@ -596,5 +694,18 @@ document.addEventListener('DOMContentLoaded', () => {
             // Clear the input
             commandInput.value = '';
         }
+    });
+
+    // Add event listeners for the game timer config
+    document.getElementById('refresh-timer-config').addEventListener('click', () => {
+        fetchGameTimerConfig();
+    });
+    
+    document.getElementById('save-timer-config').addEventListener('click', () => {
+        saveGameTimerConfig();
+    });
+    
+    document.getElementById('force-save').addEventListener('click', () => {
+        forceSaveData();
     });
 });

@@ -75,6 +75,14 @@ export class UserManager {
     }
   }
 
+  /**
+   * Force saving users data
+   * Public method for tick system to call
+   */
+  public forceSave(): void {
+    this.saveUsers();
+  }
+
   public getUser(username: string): User | undefined {
     const standardized = standardizeUsername(username);
     return this.users.find(user => user.username === standardized);

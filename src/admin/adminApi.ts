@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import adminAuth from './adminAuth';
 import { ServerStats } from '../types';
 import jwt from 'jsonwebtoken';
+import { GameTimerManager } from '../timer/gameTimerManager';
 
 // Secret key for JWT tokens
 const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
@@ -145,6 +146,75 @@ export function monitorPlayer(clients: Map<string, any>) {
     } catch (error) {
       console.error('Error setting up monitoring:', error);
       res.status(500).json({ success: false, message: 'Failed to set up monitoring' });
+    }
+  };
+}
+
+export function getGameTimerConfig(gameTimerManager: GameTimerManager) {
+  return (req: Request, res: Response) => {
+    try {
+      const config = gameTimerManager.getConfig();
+      res.json({ 
+        success: true, 
+        config
+      });
+    } catch (error) {
+      console.error('Error getting game timer configuration:', error);
+      res.status(500).json({ success: false, message: 'Failed to get game timer configuration' });
+    }
+  };
+}
+
+export function updateGameTimerConfig(gameTimerManager: GameTimerManager) {
+  return (req: Request, res: Response) => {
+    try {
+      const { tickInterval, saveInterval } = req.body;
+      
+      // Validate inputs
+      if (tickInterval !== undefined && (isNaN(tickInterval) || tickInterval < 1000)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Tick interval must be at least 1000ms (1 second)'
+        });
+      }
+      
+      if (saveInterval !== undefined && (isNaN(saveInterval) || saveInterval < 1)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Save interval must be at least 1 tick'
+        });
+      }
+      
+      // Update config with validated values
+      const newConfig: any = {};
+      if (tickInterval !== undefined) newConfig.tickInterval = tickInterval;
+      if (saveInterval !== undefined) newConfig.saveInterval = saveInterval;
+      
+      gameTimerManager.updateConfig(newConfig);
+      
+      res.json({ 
+        success: true, 
+        message: 'Game timer configuration updated successfully',
+        config: gameTimerManager.getConfig()
+      });
+    } catch (error) {
+      console.error('Error updating game timer configuration:', error);
+      res.status(500).json({ success: false, message: 'Failed to update game timer configuration' });
+    }
+  };
+}
+
+export function forceSave(gameTimerManager: GameTimerManager) {
+  return (req: Request, res: Response) => {
+    try {
+      gameTimerManager.forceSave();
+      res.json({ 
+        success: true, 
+        message: 'Game data saved successfully'
+      });
+    } catch (error) {
+      console.error('Error forcing save:', error);
+      res.status(500).json({ success: false, message: 'Failed to save game data' });
     }
   };
 }

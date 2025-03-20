@@ -126,6 +126,56 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Add Game Timer Configuration Card -->
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-clock-history me-2"></i>
+                                <h5 class="mb-0">Game Timer Configuration</h5>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-primary" id="refresh-timer-config">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-success" id="save-timer-config">
+                                    <i class="bi bi-save"></i> Save
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="tick-interval" class="form-label text-muted small text-uppercase">Tick Interval (ms)</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                               id="tick-interval" min="1000" step="1000" 
+                                               data-tooltip="Milliseconds between each game tick (min: 1000ms)">
+                                        <small class="form-text text-muted">Milliseconds between game ticks (6000ms = 6 seconds)</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="save-interval" class="form-label text-muted small text-uppercase">Save Interval (ticks)</label>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                               id="save-interval" min="1" step="1"
+                                               data-tooltip="Number of ticks between automatic saves">
+                                        <small class="form-text text-muted">Number of ticks between saves (10 ticks = 1 minute at default rate)</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-warning" id="force-save">
+                                            <i class="bi bi-database-down"></i> Force Save Now
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                 </div>
                 
                 <div class="col-md-6">
