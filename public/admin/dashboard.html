@@ -424,6 +424,74 @@
                                         </tbody>
                                     </table>
                                 </div>
+
+                                <!-- Player Detail Template (Hidden) -->
+                                <template id="player-detail-template">
+                                    <div class="player-detail-form bg-dark border border-secondary rounded p-3 mb-3">
+                                        <h5 class="border-bottom border-secondary pb-2 mb-3">Edit Player: <span class="player-detail-name text-warning"></span></h5>
+                                        
+                                        <form>
+                                            <input type="hidden" class="player-detail-username">
+                                            
+                                            <div class="row mb-3">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Health</label>
+                                                        <div class="input-group">
+                                                            <input type="number" class="form-control bg-dark text-light border-secondary player-detail-health" min="1" required>
+                                                            <span class="input-group-text bg-dark text-light border-secondary">/</span>
+                                                            <input type="number" class="form-control bg-dark text-light border-secondary player-detail-max-health" min="1" required>
+                                                        </div>
+                                                        <small class="form-text text-muted">Current / Maximum health points</small>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Level</label>
+                                                        <input type="number" class="form-control bg-dark text-light border-secondary player-detail-level" min="1" required>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Experience</label>
+                                                        <input type="number" class="form-control bg-dark text-light border-secondary player-detail-experience" min="0" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label">Current Room</label>
+                                                <input type="text" class="form-control bg-dark text-light border-secondary player-detail-room" required>
+                                                <small class="form-text text-muted">Room ID where player is currently located</small>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label">New Password (leave blank to keep current)</label>
+                                                <input type="text" class="form-control bg-dark text-light border-secondary player-detail-password">
+                                                <small class="form-text text-muted">Set a new password or leave blank to keep current password</small>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label">Inventory</label>
+                                                <textarea class="form-control bg-dark text-light border-secondary player-detail-inventory" rows="4"></textarea>
+                                                <small class="form-text text-muted">JSON format of player's inventory</small>
+                                            </div>
+                                            
+                                            <div class="d-flex justify-content-between mt-4">
+                                                <div>
+                                                    <button type="button" class="btn btn-warning player-detail-reset-pwd">
+                                                        <i class="bi bi-key"></i> Generate New Password
+                                                    </button>
+                                                    <button type="button" class="btn btn-danger player-detail-delete">
+                                                        <i class="bi bi-trash"></i> Delete Player
+                                                    </button>
+                                                </div>
+                                                <div>
+                                                    <button type="button" class="btn btn-secondary player-detail-cancel">Cancel</button>
+                                                    <button type="button" class="btn btn-primary player-detail-save">Save Changes</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -445,67 +513,6 @@
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-danger" id="confirm-kick">Kick Player</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Player Modal -->
-    <div class="modal fade" id="editPlayerModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content bg-dark text-light border-secondary">
-                <div class="modal-header border-secondary">
-                    <h5 class="modal-title">Edit Player: <span id="edit-player-name">Username</span></h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="edit-player-form">
-                        <input type="hidden" id="edit-player-username">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="edit-player-health" class="form-label">Health</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control bg-dark text-light border-secondary" 
-                                               id="edit-player-health" min="1" required>
-                                        <span class="input-group-text bg-dark text-light border-secondary">/</span>
-                                        <input type="number" class="form-control bg-dark text-light border-secondary" 
-                                               id="edit-player-max-health" min="1" required>
-                                    </div>
-                                    <small class="form-text text-muted">Current / Maximum health points</small>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="edit-player-level" class="form-label">Level</label>
-                                    <input type="number" class="form-control bg-dark text-light border-secondary" 
-                                           id="edit-player-level" min="1" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-player-experience" class="form-label">Experience</label>
-                                    <input type="number" class="form-control bg-dark text-light border-secondary" 
-                                           id="edit-player-experience" min="0" required>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit-player-room" class="form-label">Current Room</label>
-                            <input type="text" class="form-control bg-dark text-light border-secondary" 
-                                   id="edit-player-room" required>
-                            <small class="form-text text-muted">Room ID where player is currently located</small>
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit-player-inventory" class="form-label">Inventory</label>
-                            <textarea class="form-control bg-dark text-light border-secondary" 
-                                      id="edit-player-inventory" rows="4"></textarea>
-                            <small class="form-text text-muted">JSON format of player's inventory</small>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer border-secondary">
-                    <button type="button" class="btn btn-warning" id="reset-player-password">Reset Password</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="save-player-changes">Save Changes</button>
                 </div>
             </div>
         </div>

@@ -1045,8 +1045,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOnline = connectedPlayers.some(p => p.username.toLowerCase() === player.username.toLowerCase());
             const connectedPlayer = connectedPlayers.find(p => p.username.toLowerCase() === player.username.toLowerCase());
             
-            const row = document.createElement('tr');
-            row.className = isOnline ? 'table-active' : '';
+            // Create data row
+            const dataRow = document.createElement('tr');
+            dataRow.className = isOnline ? 'table-active' : '';
+            dataRow.setAttribute('data-username', player.username);
             
             // Format last login date
             const lastLogin = new Date(player.lastLogin).toLocaleString();
@@ -1069,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             
-            row.innerHTML = `
+            dataRow.innerHTML = `
                 <td>${player.username}</td>
                 <td>${player.level}</td>
                 <td>${player.health}/${player.maxHealth}</td>
@@ -1077,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${statusBadge}</td>
                 <td>
                     <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-primary edit-player" data-username="${player.username}">
+                        <button type="button" class="btn btn-primary toggle-player-detail" data-username="${player.username}">
                             <i class="bi bi-pencil"></i>
                         </button>
                         ${isOnline ? `
@@ -1088,42 +1090,44 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <i class="bi bi-box-arrow-right"></i>
                             </button>
                         ` : ''}
-                        <button type="button" class="btn btn-danger delete-player" data-username="${player.username}">
-                            <i class="bi bi-trash"></i>
-                        </button>
                     </div>
                 </td>
             `;
             
-            tableBody.appendChild(row);
+            tableBody.appendChild(dataRow);
+            
+            // Create detail row (initially hidden)
+            const detailRow = document.createElement('tr');
+            detailRow.className = 'player-detail-row d-none';
+            detailRow.setAttribute('data-detail-for', player.username);
+            
+            const detailCell = document.createElement('td');
+            detailCell.colSpan = 6;
+            detailCell.className = 'p-0';
+            
+            // Use the template to create the detail form
+            const template = document.getElementById('player-detail-template');
+            if (template) {
+                const detailContent = template.content.cloneNode(true);
+                detailCell.appendChild(detailContent);
+            }
+            
+            detailRow.appendChild(detailCell);
+            tableBody.appendChild(detailRow);
         });
         
         // Attach event handlers to the newly created buttons
         attachPlayerManagementHandlers();
     }
     
-    // Initialize modals
-    const editPlayerModal = new bootstrap.Modal(document.getElementById('editPlayerModal'));
-    const deletePlayerModal = new bootstrap.Modal(document.getElementById('deletePlayerModal'));
-    const resetPasswordModal = new bootstrap.Modal(document.getElementById('resetPasswordModal'));
-    
     // Attach event handlers to player management buttons
     function attachPlayerManagementHandlers() {
-        // Edit player buttons
-        document.querySelectorAll('.edit-player').forEach(button => {
+        // Toggle player detail button handlers
+        document.querySelectorAll('.toggle-player-detail').forEach(button => {
             button.addEventListener('click', (e) => {
                 e.preventDefault();
                 const username = e.currentTarget.getAttribute('data-username');
-                openEditPlayerModal(username);
-            });
-        });
-        
-        // Delete player buttons
-        document.querySelectorAll('.delete-player').forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                const username = e.currentTarget.getAttribute('data-username');
-                openDeletePlayerModal(username);
+                togglePlayerDetail(username);
             });
         });
         
@@ -1174,29 +1178,107 @@ document.addEventListener('DOMContentLoaded', () => {
                 kickPlayerModal.show();
             });
         });
+        
+        // Player detail form buttons
+        document.querySelectorAll('.player-detail-cancel').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    const username = detailRow.getAttribute('data-detail-for');
+                    hidePlayerDetail(username);
+                }
+            });
+        });
+        
+        document.querySelectorAll('.player-detail-save').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    savePlayerDetail(detailRow);
+                }
+            });
+        });
+        
+        document.querySelectorAll('.player-detail-reset-pwd').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    const usernameInput = detailRow.querySelector('.player-detail-username');
+                    const passwordInput = detailRow.querySelector('.player-detail-password');
+                    if (usernameInput && passwordInput) {
+                        passwordInput.value = generateRandomPassword();
+                    }
+                }
+            });
+        });
+        
+        document.querySelectorAll('.player-detail-delete').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    const username = detailRow.getAttribute('data-detail-for');
+                    openDeletePlayerModal(username);
+                }
+            });
+        });
     }
     
-    // Set up player search functionality
-    document.getElementById('player-search')?.addEventListener('input', (e) => {
-        const searchText = e.target.value.toLowerCase();
-        const tableRows = document.querySelectorAll('#players-table-body tr');
+    // Toggle player detail section
+    function togglePlayerDetail(username) {
+        const detailRow = document.querySelector(`.player-detail-row[data-detail-for="${username}"]`);
+        if (!detailRow) return;
         
-        tableRows.forEach(row => {
-            // Skip the "no players found" row
-            if (row.cells.length === 1) return;
+        const isVisible = !detailRow.classList.contains('d-none');
+        
+        if (isVisible) {
+            // Hide the detail row
+            hidePlayerDetail(username);
+        } else {
+            // Hide any other open detail rows
+            document.querySelectorAll('.player-detail-row:not(.d-none)').forEach(row => {
+                const rowUsername = row.getAttribute('data-detail-for');
+                if (rowUsername !== username) {
+                    hidePlayerDetail(rowUsername);
+                }
+            });
             
-            const username = row.cells[0].textContent.toLowerCase();
-            if (username.includes(searchText)) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    });
+            // Show this detail row and load the data
+            loadPlayerDetailData(username);
+        }
+    }
     
-    // Open the edit player modal
-    async function openEditPlayerModal(username) {
+    // Hide player detail section
+    function hidePlayerDetail(username) {
+        const detailRow = document.querySelector(`.player-detail-row[data-detail-for="${username}"]`);
+        if (detailRow) {
+            detailRow.classList.add('d-none');
+        }
+    }
+    
+    // Load player detail data
+    async function loadPlayerDetailData(username) {
         try {
+            const detailRow = document.querySelector(`.player-detail-row[data-detail-for="${username}"]`);
+            if (!detailRow) return;
+            
+            // Show loading state
+            detailRow.classList.remove('d-none');
+            const detailForm = detailRow.querySelector('.player-detail-form');
+            if (detailForm) {
+                detailForm.innerHTML = `
+                    <div class="text-center p-3">
+                        <div class="spinner-border text-light" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading player data...</p>
+                    </div>
+                `;
+            }
+            
             // Fetch player details
             const response = await fetch(`/api/admin/players/details/${username}`, {
                 headers: {
@@ -1209,80 +1291,130 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success && data.player) {
                 const player = data.player;
                 
-                // Set up the modal with player data - add null checks for each element
-                const nameElement = document.getElementById('edit-player-name');
-                if (nameElement) nameElement.textContent = player.username;
-                
-                const usernameElement = document.getElementById('edit-player-username');
-                if (usernameElement) usernameElement.value = player.username;
-                
-                const healthElement = document.getElementById('edit-player-health');
-                if (healthElement) healthElement.value = player.health;
-                
-                const maxHealthElement = document.getElementById('edit-player-max-health');
-                if (maxHealthElement) maxHealthElement.value = player.maxHealth;
-                
-                const levelElement = document.getElementById('edit-player-level');
-                if (levelElement) levelElement.value = player.level;
-                
-                const experienceElement = document.getElementById('edit-player-experience');
-                if (experienceElement) experienceElement.value = player.experience;
-                
-                const roomElement = document.getElementById('edit-player-room');
-                if (roomElement) roomElement.value = player.currentRoomId;
-                
-                const inventoryElement = document.getElementById('edit-player-inventory');
-                if (inventoryElement) inventoryElement.value = JSON.stringify(player.inventory, null, 2);
-                
-                const passwordElement = document.getElementById('edit-player-password');
-                if (passwordElement) passwordElement.value = ''; // Clear password field
-                
-                // Show the modal
-                editPlayerModal.show();
+                // Reset the form content from the template
+                const template = document.getElementById('player-detail-template');
+                if (template && detailForm) {
+                    detailForm.innerHTML = '';
+                    const detailContent = template.content.cloneNode(true);
+                    detailForm.appendChild(detailContent);
+                    
+                    // Set up the form with player data
+                    detailForm.querySelector('.player-detail-name').textContent = player.username;
+                    detailForm.querySelector('.player-detail-username').value = player.username;
+                    detailForm.querySelector('.player-detail-health').value = player.health;
+                    detailForm.querySelector('.player-detail-max-health').value = player.maxHealth;
+                    detailForm.querySelector('.player-detail-level').value = player.level;
+                    detailForm.querySelector('.player-detail-experience').value = player.experience;
+                    detailForm.querySelector('.player-detail-room').value = player.currentRoomId;
+                    detailForm.querySelector('.player-detail-inventory').value = JSON.stringify(player.inventory, null, 2);
+                    
+                    // Re-attach event handlers for this form's buttons
+                    attachPlayerDetailFormHandlers(detailForm);
+                }
             } else {
-                alert('Failed to load player details: ' + (data.message || 'Unknown error'));
+                // Show error in the form
+                if (detailForm) {
+                    detailForm.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            Failed to load player details: ${data.message || 'Unknown error'}
+                        </div>
+                    `;
+                }
             }
         } catch (error) {
             console.error('Error loading player details:', error);
-            alert('Error loading player details: ' + error.message);
+            
+            // Show error in the form
+            const detailRow = document.querySelector(`.player-detail-row[data-detail-for="${username}"]`);
+            if (detailRow) {
+                const detailForm = detailRow.querySelector('.player-detail-form');
+                if (detailForm) {
+                    detailForm.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            Error loading player details: ${error.message}
+                        </div>
+                    `;
+                }
+            }
         }
     }
     
-    // Open the delete player modal
-    function openDeletePlayerModal(username) {
-        document.getElementById('delete-player-name').textContent = username;
-        document.getElementById('confirm-delete-check').checked = false;
-        document.getElementById('confirm-delete').disabled = true;
-        deletePlayerModal.show();
+    // Attach event handlers to a specific player detail form
+    function attachPlayerDetailFormHandlers(formElement) {
+        const cancelBtn = formElement.querySelector('.player-detail-cancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    const username = detailRow.getAttribute('data-detail-for');
+                    hidePlayerDetail(username);
+                }
+            });
+        }
+        
+        const saveBtn = formElement.querySelector('.player-detail-save');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    savePlayerDetail(detailRow);
+                }
+            });
+        }
+        
+        const resetPwdBtn = formElement.querySelector('.player-detail-reset-pwd');
+        if (resetPwdBtn) {
+            resetPwdBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const passwordInput = formElement.querySelector('.player-detail-password');
+                if (passwordInput) {
+                    passwordInput.value = generateRandomPassword();
+                }
+            });
+        }
+        
+        const deleteBtn = formElement.querySelector('.player-detail-delete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const detailRow = e.currentTarget.closest('.player-detail-row');
+                if (detailRow) {
+                    const username = detailRow.getAttribute('data-detail-for');
+                    openDeletePlayerModal(username);
+                }
+            });
+        }
     }
     
-    // Handle the checkbox in delete player modal
-    document.getElementById('confirm-delete-check')?.addEventListener('change', (e) => {
-        document.getElementById('confirm-delete').disabled = !e.target.checked;
-    });
-    
-    // Handle saving player changes
-    document.getElementById('save-player-changes')?.addEventListener('click', async () => {
+    // Save player detail changes
+    async function savePlayerDetail(detailRow) {
         try {
-            const username = document.getElementById('edit-player-username').value;
+            const username = detailRow.getAttribute('data-detail-for');
+            const form = detailRow.querySelector('.player-detail-form');
+            if (!form) return;
             
-            // Validate form inputs
-            const health = parseInt(document.getElementById('edit-player-health').value);
-            const maxHealth = parseInt(document.getElementById('edit-player-max-health').value);
-            const level = parseInt(document.getElementById('edit-player-level').value);
-            const experience = parseInt(document.getElementById('edit-player-experience').value);
-            const currentRoomId = document.getElementById('edit-player-room').value;
+            // Get form values
+            const health = parseInt(form.querySelector('.player-detail-health').value);
+            const maxHealth = parseInt(form.querySelector('.player-detail-max-health').value);
+            const level = parseInt(form.querySelector('.player-detail-level').value);
+            const experience = parseInt(form.querySelector('.player-detail-experience').value);
+            const currentRoomId = form.querySelector('.player-detail-room').value;
+            const newPassword = form.querySelector('.player-detail-password').value;
             
-            // Parse inventory JSON (catch parse errors)
+            // Parse inventory JSON
             let inventory;
             try {
-                inventory = JSON.parse(document.getElementById('edit-player-inventory').value);
+                inventory = JSON.parse(form.querySelector('.player-detail-inventory').value);
             } catch (e) {
                 alert('Invalid inventory JSON format');
                 return;
             }
             
-            // Validate numeric inputs
+            // Validate inputs
             if (isNaN(health) || health < 1) {
                 alert('Health must be a positive number');
                 return;
@@ -1308,8 +1440,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Check if a new password was provided
-            const newPassword = document.getElementById('edit-player-password').value;
+            // Show loading state
+            const originalContent = form.innerHTML;
+            form.innerHTML = `
+                <div class="text-center p-3">
+                    <div class="spinner-border text-light" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Saving changes...</p>
+                </div>
+            `;
             
             // Build the update payload
             const updateData = {
@@ -1321,7 +1461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 inventory
             };
             
-            // Only include password if it was changed
+            // Only include password if it was provided
             if (newPassword) {
                 updateData.newPassword = newPassword;
             }
@@ -1340,98 +1480,28 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (data.success) {
                 alert('Player updated successfully');
-                editPlayerModal.hide();
+                
+                // Hide the detail row
+                hidePlayerDetail(username);
                 
                 // Refresh the players list
                 loadPlayersTabContent();
             } else {
+                // Restore the form and show error
+                form.innerHTML = originalContent;
+                attachPlayerDetailFormHandlers(form);
                 alert('Failed to update player: ' + (data.message || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error saving player data:', error);
             alert(`Error saving player data: ${error.message}`);
+            
+            // Restore the form
+            loadPlayerDetailData(detailRow.getAttribute('data-detail-for'));
         }
-    });
-    
-    // Handle resetting player password
-    document.getElementById('reset-player-password')?.addEventListener('click', () => {
-        const username = document.getElementById('edit-player-username').value;
-        document.getElementById('reset-password-name').textContent = username;
-        document.getElementById('new-password').value = generateRandomPassword();
-        
-        // Hide edit modal and show reset password modal
-        editPlayerModal.hide();
-        resetPasswordModal.show();
-    });
-    
-    // Handle confirming password reset
-    document.getElementById('confirm-reset-password')?.addEventListener('click', async () => {
-        try {
-            const username = document.getElementById('reset-password-name').textContent;
-            const newPassword = document.getElementById('new-password').value;
-            
-            if (!newPassword) {
-                alert('Password cannot be empty');
-                return;
-            }
-            
-            // Send password reset request to server
-            const response = await fetch(`/api/admin/players/reset-password/${username}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    newPassword
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                alert(`Password for ${username} has been reset successfully`);
-                resetPasswordModal.hide();
-            } else {
-                alert('Failed to reset password: ' + (data.message || 'Unknown error'));
-            }
-        } catch (error) {
-            console.error('Error resetting password:', error);
-            alert('Error resetting password: ' + error.message);
-        }
-    });
-    
-    // Handle confirming player deletion
-    document.getElementById('confirm-delete')?.addEventListener('click', async () => {
-        try {
-            const username = document.getElementById('delete-player-name').textContent;
-            
-            // Send delete request to server
-            const response = await fetch(`/api/admin/players/delete/${username}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                alert(`Player ${username} has been deleted successfully`);
-                deletePlayerModal.hide();
-                
-                // Refresh the players list
-                loadPlayersTabContent();
-            } else {
-                alert('Failed to delete player: ' + (data.message || 'Unknown error'));
-            }
-        } catch (error) {
-            console.error('Error deleting player:', error);
-            alert('Error deleting player: ' + error.message);
-        }
-    });
-    
-    // Helper function to generate a random password
+    }
+
+    // Helper function to generate a random password (keep this existing function)
     function generateRandomPassword() {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         let password = '';
