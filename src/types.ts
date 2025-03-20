@@ -13,7 +13,9 @@ export enum ClientStateType {
 
 export interface User {
   username: string;
-  password: string;
+  password?: string; // Making optional for backward compatibility
+  passwordHash?: string;
+  salt?: string;
   health: number;
   maxHealth: number;
   experience: number;

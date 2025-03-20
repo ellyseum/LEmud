@@ -75,3 +75,44 @@ router.post('/mud-config', authenticateAdmin, async (req, res) => {
         });
     }
 });
+
+/**
+ * PUT /api/admin/players/:username
+ * Update a player's data
+ */
+router.put('/players/:username', authenticateAdmin, async (req, res) => {
+    try {
+        const { username } = req.params;
+        const updateData = req.body;
+        
+        // Get the user manager instance
+        const userManager = req.app.get('userManager');
+        
+        // Handle password change separately if provided
+        if (updateData.newPassword) {
+            const success = userManager.changeUserPassword(username, updateData.newPassword);
+            if (!success) {
+                return res.status(404).json({
+                    success: false,
+                    message: `User ${username} not found`
+                });
+            }
+            // Remove from update data after processing
+            delete updateData.newPassword;
+        }
+        
+        // Update the rest of the user data
+        // ...existing code...
+        
+        res.json({
+            success: true,
+            message: 'Player updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating player:', error);
+        res.status(500).json({
+            success: false,
+            message: `Error updating player: ${error.message}`
+        });
+    }
+});

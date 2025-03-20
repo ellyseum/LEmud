@@ -1183,15 +1183,33 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success && data.player) {
                 const player = data.player;
                 
-                // Set up the modal with player data
-                document.getElementById('edit-player-name').textContent = player.username;
-                document.getElementById('edit-player-username').value = player.username;
-                document.getElementById('edit-player-health').value = player.health;
-                document.getElementById('edit-player-max-health').value = player.maxHealth;
-                document.getElementById('edit-player-level').value = player.level;
-                document.getElementById('edit-player-experience').value = player.experience;
-                document.getElementById('edit-player-room').value = player.currentRoomId;
-                document.getElementById('edit-player-inventory').value = JSON.stringify(player.inventory, null, 2);
+                // Set up the modal with player data - add null checks for each element
+                const nameElement = document.getElementById('edit-player-name');
+                if (nameElement) nameElement.textContent = player.username;
+                
+                const usernameElement = document.getElementById('edit-player-username');
+                if (usernameElement) usernameElement.value = player.username;
+                
+                const healthElement = document.getElementById('edit-player-health');
+                if (healthElement) healthElement.value = player.health;
+                
+                const maxHealthElement = document.getElementById('edit-player-max-health');
+                if (maxHealthElement) maxHealthElement.value = player.maxHealth;
+                
+                const levelElement = document.getElementById('edit-player-level');
+                if (levelElement) levelElement.value = player.level;
+                
+                const experienceElement = document.getElementById('edit-player-experience');
+                if (experienceElement) experienceElement.value = player.experience;
+                
+                const roomElement = document.getElementById('edit-player-room');
+                if (roomElement) roomElement.value = player.currentRoomId;
+                
+                const inventoryElement = document.getElementById('edit-player-inventory');
+                if (inventoryElement) inventoryElement.value = JSON.stringify(player.inventory, null, 2);
+                
+                const passwordElement = document.getElementById('edit-player-password');
+                if (passwordElement) passwordElement.value = ''; // Clear password field
                 
                 // Show the modal
                 editPlayerModal.show();
@@ -1264,21 +1282,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Send updated player data to server
-            const response = await fetch(`/api/admin/players/update/${username}`, {
-                method: 'POST',
+            // Check if a new password was provided
+            const newPassword = document.getElementById('edit-player-password').value;
+            
+            // Build the update payload
+            const updateData = {
+                health,
+                maxHealth,
+                level,
+                experience,
+                currentRoomId,
+                inventory
+            };
+            
+            // Only include password if it was changed
+            if (newPassword) {
+                updateData.newPassword = newPassword;
+            }
+            
+            // Send the update to the API
+            const response = await fetch(`/api/admin/players/${username}`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    health,
-                    maxHealth,
-                    level,
-                    experience,
-                    currentRoomId,
-                    inventory
-                })
+                body: JSON.stringify(updateData)
             });
             
             const data = await response.json();
@@ -1293,8 +1322,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Failed to update player: ' + (data.message || 'Unknown error'));
             }
         } catch (error) {
-            console.error('Error updating player:', error);
-            alert('Error updating player: ' + error.message);
+            console.error('Error saving player data:', error);
+            alert(`Error saving player data: ${error.message}`);
         }
     });
     

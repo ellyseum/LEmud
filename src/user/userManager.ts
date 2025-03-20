@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { User, ConnectedClient, ClientStateType } from '../types';
 import { writeToClient, flushClientBuffer, writeMessageToClient } from '../utils/socketWriter';
 import { colorize } from '../utils/colors';
@@ -17,13 +18,54 @@ export class UserManager {
     this.loadUsers();
   }
 
+  // Generate a random salt
+  private generateSalt(): string {
+    return crypto.randomBytes(16).toString('hex');
+  }
+
+  // Hash password with salt
+  private hashPassword(password: string, salt: string): string {
+    return crypto
+      .pbkdf2Sync(password, salt, 10000, 64, 'sha512')
+      .toString('hex');
+  }
+
+  // Verify password against stored hash
+  private verifyPassword(password: string, salt: string, storedHash: string): boolean {
+    const hash = this.hashPassword(password, salt);
+    return hash === storedHash;
+  }
+
+  // Migrate existing users to use hash+salt
+  private migrateUsersToHashedPasswords(): void {
+    let hasChanges = false;
+
+    this.users.forEach(user => {
+      if (user.password && !user.passwordHash) {
+        const salt = this.generateSalt();
+        const passwordHash = this.hashPassword(user.password, salt);
+
+        // Update user object
+        user.passwordHash = passwordHash;
+        user.salt = salt;
+        delete user.password;
+
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      this.saveUsers();
+    }
+  }
+
   private loadUsers(): void {
     try {
       // Create data directory if it doesn't exist
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      
+
       // Create users file if it doesn't exist
       if (!fs.existsSync(USERS_FILE)) {
         fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2));
@@ -32,7 +74,7 @@ export class UserManager {
 
       const data = fs.readFileSync(USERS_FILE, 'utf8');
       this.users = JSON.parse(data);
-      
+
       // Ensure dates are properly parsed and inventory structures exist
       this.users.forEach(user => {
         if (typeof user.joinDate === 'string') {
@@ -41,7 +83,7 @@ export class UserManager {
         if (typeof user.lastLogin === 'string') {
           user.lastLogin = new Date(user.lastLogin);
         }
-        
+
         // Ensure inventory structure exists
         if (!user.inventory) {
           user.inventory = {
@@ -49,16 +91,19 @@ export class UserManager {
             currency: { gold: 0, silver: 0, copper: 0 }
           };
         }
-        
+
         if (!user.inventory.items) {
           user.inventory.items = [];
         }
-        
+
         if (!user.inventory.currency) {
           user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
         }
       });
-      
+
+      // Migrate any users with plain text passwords
+      this.migrateUsersToHashedPasswords();
+
       // Save after migration to ensure all users have the correct structure
       this.saveUsers();
     } catch (error) {
@@ -95,7 +140,34 @@ export class UserManager {
 
   public authenticateUser(username: string, password: string): boolean {
     const user = this.getUser(username);
-    return user !== undefined && user.password === password;
+
+    if (!user) {
+      return false;
+    }
+
+    // Handle legacy users with plain text passwords
+    if (user.password) {
+      if (user.password === password) {
+        // Migrate this user to the new password system
+        const salt = this.generateSalt();
+        const passwordHash = this.hashPassword(password, salt);
+
+        user.passwordHash = passwordHash;
+        user.salt = salt;
+        delete user.password;
+
+        this.saveUsers();
+        return true;
+      }
+      return false;
+    }
+
+    // Verify using hash and salt
+    if (user.passwordHash && user.salt) {
+      return this.verifyPassword(password, user.salt, user.passwordHash);
+    }
+
+    return false;
   }
 
   public isUserActive(username: string): boolean {
@@ -125,29 +197,29 @@ export class UserManager {
   // Request a transfer of the session for the user
   public requestSessionTransfer(username: string, newClient: ConnectedClient): boolean {
     const lowerUsername = username.toLowerCase();
-    
+
     // Get the existing client session
     const existingClient = this.activeUserSessions.get(lowerUsername);
     if (!existingClient) return false;
-    
+
     // Store the pending transfer request
     this.pendingTransfers.set(lowerUsername, newClient);
-    
+
     // Save the current state and previous state for restoring if denied
     newClient.stateData.previousState = newClient.state;
     newClient.stateData.waitingForTransfer = true;
     newClient.stateData.transferUsername = username;
-    
+
     // Interrupt the existing client with a transfer request through the state machine
     existingClient.stateData.forcedTransition = ClientStateType.TRANSFER_REQUEST;
     existingClient.stateData.transferClient = newClient;
-    
+
     // Send an immediate notification to the existing client to check for state changes
     this.notifyClient(existingClient);
-    
+
     return true;
   }
-  
+
   // Helper method to notify a client to check their state
   private notifyClient(client: ConnectedClient): void {
     // For notifications, use the message writer that handles prompt management
@@ -164,21 +236,21 @@ export class UserManager {
     const lowerUsername = username.toLowerCase();
     const newClient = this.pendingTransfers.get(lowerUsername);
     const existingClient = this.activeUserSessions.get(lowerUsername);
-    
+
     if (!newClient || !existingClient) return;
-    
+
     if (approved) {
       // Inform the existing client they're being disconnected
       writeToClient(existingClient, colorize('\r\n\r\nYou approved the session transfer. Disconnecting...\r\n', 'yellow'));
-      
+
       // Save the user state before disconnecting
       if (existingClient.user) {
         this.updateUserStats(username, { lastLogin: new Date() });
       }
-      
+
       // IMPORTANT: Explicitly unregister the existing session first
       this.unregisterUserSession(username);
-      
+
       // Get the user object
       const user = this.getUser(username);
       if (user) {
@@ -186,20 +258,20 @@ export class UserManager {
         newClient.user = user;
         newClient.authenticated = true;
         newClient.stateData.waitingForTransfer = false;
-        
+
         // Update last login time
         this.updateLastLogin(username);
-        
+
         // Register the new session (will replace the existing one)
         this.registerUserSession(username, newClient);
-        
+
         // Inform the new client they can proceed
         writeToClient(newClient, colorize('\r\n\r\nSession transfer approved. Logging in...\r\n', 'green'));
-        
+
         // Transition the new client to authenticated state
         newClient.stateData.transitionTo = ClientStateType.AUTHENTICATED;
       }
-      
+
       // Disconnect the existing client after a brief delay
       setTimeout(() => {
         // Mark the client as no longer authenticated to prevent re-registration on disconnect
@@ -207,20 +279,20 @@ export class UserManager {
         existingClient.user = null;
         existingClient.connection.end();
       }, 1000);
-      
+
     } else {
       // Transfer denied - restore the new client to previous state
       newClient.stateData.waitingForTransfer = false;
       writeToClient(newClient, colorize('\r\n\r\nSession transfer was denied by the active user.\r\n', 'red'));
       newClient.stateData.transitionTo = ClientStateType.LOGIN;
-      
+
       // Restore the existing client
       existingClient.state = existingClient.stateData.returnToState || ClientStateType.AUTHENTICATED;
       delete existingClient.stateData.interruptedBy;
       delete existingClient.stateData.transferClient;
       writeToClient(existingClient, colorize('\r\n\r\nYou denied the session transfer. Continuing your session.\r\n', 'green'));
     }
-    
+
     // Clean up the pending transfer
     this.pendingTransfers.delete(lowerUsername);
   }
@@ -230,13 +302,13 @@ export class UserManager {
     const lowerUsername = username.toLowerCase();
     const newClient = this.pendingTransfers.get(lowerUsername);
     const existingClient = this.activeUserSessions.get(lowerUsername);
-    
+
     if (newClient) {
       newClient.stateData.waitingForTransfer = false;
       writeToClient(newClient, colorize('\r\n\r\nSession transfer was cancelled.\r\n', 'red'));
       newClient.stateData.transitionTo = ClientStateType.LOGIN;
     }
-    
+
     if (existingClient && existingClient.state === ClientStateType.TRANSFER_REQUEST) {
       // Restore the existing client to its previous state
       existingClient.state = existingClient.stateData.returnToState || ClientStateType.AUTHENTICATED;
@@ -244,29 +316,33 @@ export class UserManager {
       delete existingClient.stateData.transferClient;
       writeToClient(existingClient, colorize('\r\n\r\nTransfer request cancelled.\r\n', 'yellow'));
     }
-    
+
     this.pendingTransfers.delete(lowerUsername);
   }
 
   public createUser(username: string, password: string): boolean {
     // Standardize the username to lowercase
     const standardized = standardizeUsername(username);
-    
+
     if (this.userExists(standardized)) {
       return false;
     }
-    
+
     // Validate username before creating
-    if (!/^[a-zA-Z]+$/.test(standardized) || 
-        standardized.length >= 13 || 
-        standardized.length < 3) {
+    if (!/^[a-zA-Z]+$/.test(standardized) ||
+      standardized.length >= 13 ||
+      standardized.length < 3) {
       return false;
     }
+
+    const salt = this.generateSalt();
+    const passwordHash = this.hashPassword(password, salt);
 
     const now = new Date();
     const newUser: User = {
       username: standardized,
-      password,
+      passwordHash,
+      salt,
       health: 100,
       maxHealth: 100,
       experience: 0,
@@ -296,7 +372,7 @@ export class UserManager {
   public updateUserStats(username: string, stats: Partial<User>): boolean {
     const user = this.getUser(username);
     if (!user) return false;
-    
+
     Object.assign(user, stats);
     this.saveUsers();
     return true;
@@ -305,7 +381,7 @@ export class UserManager {
   public updateUserInventory(username: string, inventory: User['inventory']): boolean {
     const user = this.getUser(username);
     if (!user) return false;
-    
+
     user.inventory = inventory;
     this.saveUsers();
     return true;
@@ -314,7 +390,7 @@ export class UserManager {
   public deleteUser(username: string): boolean {
     const index = this.users.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
     if (index === -1) return false;
-    
+
     this.users.splice(index, 1);
     this.saveUsers();
     return true;
@@ -326,5 +402,28 @@ export class UserManager {
    */
   public getAllUsers(): User[] {
     return [...this.users];
+  }
+
+  // Add method to change password
+  public changeUserPassword(username: string, newPassword: string): boolean {
+    const user = this.getUser(username);
+
+    if (!user) {
+      return false;
+    }
+
+    const salt = this.generateSalt();
+    const passwordHash = this.hashPassword(newPassword, salt);
+
+    user.passwordHash = passwordHash;
+    user.salt = salt;
+
+    // Remove plain text password if it exists
+    if (user.password) {
+      delete user.password;
+    }
+
+    this.saveUsers();
+    return true;
   }
 }

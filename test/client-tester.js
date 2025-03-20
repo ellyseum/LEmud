@@ -7,12 +7,18 @@
 // keystrokes to the server and displays the output.
 
 const net = require("net");
+const { exit } = require("process");
 
 // Configuration from environment variables with defaults
 const HOST = process.env.MUD_HOST || "localhost";
 const PORT = parseInt(process.env.MUD_PORT || "8023", 10);
-const USERNAME = process.env.MUD_USERNAME || "test";
-const PASSWORD = process.env.MUD_PASSWORD || "a";
+
+const USERNAME = process.env.MUD_USERNAME;
+const PASSWORD = process.env.MUD_PASSWORD;
+
+console.log('PASSWORD IS ', PASSWORD);
+
+exit(0);
 
 // Create a socket connection
 const socket = new net.Socket();
