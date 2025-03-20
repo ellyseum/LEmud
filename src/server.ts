@@ -18,6 +18,7 @@ import { IConnection } from './connection/interfaces/connection.interface';
 import { formatUsername } from './utils/formatters';
 import { RoomManager } from './room/roomManager';
 import * as AdminApi from './admin/adminApi';
+import { getPromptText } from './utils/promptFormatter';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -181,8 +182,11 @@ function handleClientData(client: ConnectedClient, data: string): void {
     client.isTyping = true;
   }
   
-  // Handle backspace
-  if (data === '\b') {
+  // Debugging - uncomment if needed
+  // console.log('Input data:', data.split('').map(c => c.charCodeAt(0).toString(16)).join(' '));
+  
+  // Handle backspace - check for both BS char and DEL char since clients may send either
+  if (data === '\b' || data === '\x7F') {
     if (client.buffer.length > 0) {
       // Remove the last character from the buffer
       client.buffer = client.buffer.slice(0, -1);
@@ -198,8 +202,8 @@ function handleClientData(client: ConnectedClient, data: string): void {
     return;
   }
   
-  // Handle Enter (CR+LF or just CR)
-  if (data === '\r\n' || data === '\r') {
+  // Handle Enter (CR+LF, CR, or LF)
+  if (data === '\r\n' || data === '\r' || data === '\n') {
     // Echo a newline
     client.connection.write('\r\n');
     
@@ -273,21 +277,31 @@ function handleUpArrow(client: ConnectedClient): void {
   if (client.user.commandHistory.length > 0 && 
       client.user.currentHistoryIndex < client.user.commandHistory.length - 1) {
     
-    // Clear current line
-    while (client.buffer.length > 0) {
-      client.connection.write('\b \b');
-      client.buffer = client.buffer.slice(0, -1);
-    }
-    
-    // Increment history index
+    // Increment history index first
     client.user.currentHistoryIndex++;
     
     // Get the command from history
     const historyCommand = client.user.commandHistory[client.user.commandHistory.length - 1 - client.user.currentHistoryIndex];
     
-    // Set as current buffer and display
+    // If telnet, do a full line rewrite
+    if (client.connection.getType() === 'telnet') {
+      // Clear line and return to beginning with escape sequence (works better than backspaces)
+      client.connection.write('\r\x1B[K');
+      
+      // Write the prompt
+      const promptText = getPromptText(client);
+      client.connection.write(promptText);
+      
+      // Write the command from history
+      client.connection.write(historyCommand);
+    } else {
+      // For websocket: standard clear and rewrite
+      client.connection.write('\r\x1B[K');
+      client.connection.write(historyCommand);
+    }
+    
+    // Update the buffer
     client.buffer = historyCommand;
-    client.connection.write(historyCommand);
   }
 }
 
@@ -304,25 +318,38 @@ function handleDownArrow(client: ConnectedClient): void {
     return;
   }
   
-  // Clear current line
-  while (client.buffer.length > 0) {
-    client.connection.write('\b \b');
-    client.buffer = client.buffer.slice(0, -1);
-  }
-  
   // Decrement history index
   client.user.currentHistoryIndex--;
   
+  let newCommand = '';
+  
   // If we've moved past the first command, restore the saved current command
   if (client.user.currentHistoryIndex === -1) {
-    client.buffer = client.user.savedCurrentCommand || '';
-    client.connection.write(client.buffer);
+    newCommand = client.user.savedCurrentCommand || '';
   } else {
     // Otherwise, get the command from history
-    const historyCommand = client.user.commandHistory[client.user.commandHistory.length - 1 - client.user.currentHistoryIndex];
-    client.buffer = historyCommand;
-    client.connection.write(historyCommand);
+    newCommand = client.user.commandHistory[client.user.commandHistory.length - 1 - client.user.currentHistoryIndex];
   }
+  
+  // If telnet, do a full line rewrite
+  if (client.connection.getType() === 'telnet') {
+    // Clear line and return to beginning with escape sequence (works better than backspaces)
+    client.connection.write('\r\x1B[K');
+    
+    // Write the prompt
+    const promptText = getPromptText(client);
+    client.connection.write(promptText);
+    
+    // Write the command 
+    client.connection.write(newCommand);
+  } else {
+    // For websocket: standard clear and rewrite
+    client.connection.write('\r\x1B[K');
+    client.connection.write(newCommand);
+  }
+  
+  // Update the buffer
+  client.buffer = newCommand;
 }
 
 function processInput(client: ConnectedClient, input: string): void {
