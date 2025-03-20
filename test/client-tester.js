@@ -16,10 +16,6 @@ const PORT = parseInt(process.env.MUD_PORT || "8023", 10);
 const USERNAME = process.env.MUD_USERNAME;
 const PASSWORD = process.env.MUD_PASSWORD;
 
-console.log('PASSWORD IS ', PASSWORD);
-
-exit(0);
-
 // Create a socket connection
 const socket = new net.Socket();
 const RECONNECT_DELAY = 3000; // Increased to 3 seconds delay before reconnection
