@@ -69,11 +69,6 @@ export class SocketIOConnection extends EventEmitter implements IConnection {
     // Convert ANSI to HTML before sending to the client
     const htmlData = this.convertAnsiToHtml(data);
     this.socket.emit('output', { data: htmlData });
-
-    // If it's a single character, echo it back to the client
-    if (data.length === 1 || data === '\b \b') {
-      this.socket.emit('echo', { char: data });
-    }
   }
 
   public end(): void {

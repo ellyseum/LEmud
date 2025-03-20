@@ -11,12 +11,8 @@
     // State variables
     let socket = null;
     let connected = false;
-    let isFocused = false;
     let lineBuffer = '';
-    let commandHistory = [];
-    let historyIndex = -1;
-    let currentInput = '';
-    
+
     // Initialize terminal
     function initTerminal() {
         terminalOutput.appendChild(cursor);
@@ -53,34 +49,47 @@
         socket.on('connect_error', (error) => {
             addOutput(`Connection Error: ${error.message}\n`, 'error');
         });
-        
+
         // Handle server messages
         socket.on('output', handleOutput);
-        socket.on('echo', handleEcho);
         socket.on('mask', handleMask);
     }
     
     // Handle server output messages
     function handleOutput(message) {
-        addOutput(message.data);
+        if (message.data === '\b \b') { deleteLastCharacter(); return; }
+        const convertedText = convertAnsiToHtml(message.data);
+        addOutput(convertedText);
     }
     
-    // Handle server echo of characters
-    function handleEcho(message) {
-        const char = message.char;
-        
-        if (char === '\b \b') {
-            // Remove last character from display (backspace sequence)
-            deleteLastCharacter();
-        } else if (char === '\r\n' || char === '\n') {
-            // Handle newline
-            addOutput('\n');
-            lineBuffer = '';
-        } else {
-            // Regular character - add to output
-            addOutput(char);
-            lineBuffer += char;
-        }
+    // Convert ANSI escape sequences to HTML
+    function convertAnsiToHtml(text) {
+        // Handle color codes and other ANSI sequences
+        return text
+            .replace(/\r\n/g, '<br>')
+            .replace(/\n/g, '<br>')
+            .replace(/\r/g, '<br>')
+            .replace(/\x1b\[0m/g, '</span>')
+            .replace(/\x1b\[1m/g, '<span class="bright">')
+            .replace(/\x1b\[2m/g, '<span class="dim">')
+            .replace(/\x1b\[4m/g, '<span class="underline">')
+            .replace(/\x1b\[5m/g, '<span class="blink">')
+            .replace(/\x1b\[31m/g, '<span class="red">')
+            .replace(/\x1b\[32m/g, '<span class="green">')
+            .replace(/\x1b\[33m/g, '<span class="yellow">')
+            .replace(/\x1b\[34m/g, '<span class="blue">')
+            .replace(/\x1b\[35m/g, '<span class="magenta">')
+            .replace(/\x1b\[36m/g, '<span class="cyan">')
+            .replace(/\x1b\[37m/g, '<span class="white">')
+            .replace(/\x1b\[90m/g, '<span class="bright black">')
+            .replace(/\x1b\[91m/g, '<span class="bright red">')
+            .replace(/\x1b\[92m/g, '<span class="bright green">')
+            .replace(/\x1b\[93m/g, '<span class="bright yellow">')
+            .replace(/\x1b\[94m/g, '<span class="bright blue">')
+            .replace(/\x1b\[95m/g, '<span class="bright magenta">')
+            .replace(/\x1b\[96m/g, '<span class="bright cyan">')
+            .replace(/\x1b\[97m/g, '<span class="bright white">')
+            .replace(/\x1b\[2J\x1b\[0;0H/g, '<!-- clear -->');
     }
     
     // Handle mask state changes
@@ -112,6 +121,11 @@
         
         const key = e.key;
         
+        // Prevent default behavior for these keys to avoid browser actions
+        if (key === 'Enter' || key === 'Backspace' || key === 'ArrowUp' || key === 'ArrowDown') {
+            e.preventDefault();
+        }
+        
         if (key === 'Enter') {
             sendKeypress('\r');
         } else if (key === 'Backspace') {
@@ -123,6 +137,9 @@
         } else if (key.length === 1) {
             sendKeypress(key);
         }
+        
+        // No local echo - we'll rely on server echo
+        // Characters are only displayed when they come back from the server
     }
     
     // Send a keypress to the server
