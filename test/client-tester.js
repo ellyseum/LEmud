@@ -19,6 +19,7 @@ const socket = new net.Socket();
 const RECONNECT_DELAY = 3000; // Increased to 3 seconds delay before reconnection
 const MAX_RECONNECT_ATTEMPTS = 3; // Maximum number of reconnection attempts
 let reconnectAttempts = 0; // Track the number of reconnection attempts
+let isConnected = false;
 
 // Set up raw mode to capture keystrokes
 process.stdin.setRawMode(true);
@@ -29,10 +30,17 @@ process.stdin.setEncoding("utf8");
 function connectToServer(crDelay = 500) {
   console.log(`Connecting to ${HOST}:${PORT}...`);
   
+  // Create a new socket if the current one is closed
+  if (!socket.writable) {
+    socket.removeAllListeners();
+    setupSocketListeners();
+  }
+  
   socket.connect(PORT, HOST, () => {
     console.log("Connected! Sending login credentials...");
     // Reset reconnect attempts on successful connection
     reconnectAttempts = 0;
+    isConnected = true;
     
     // Connected, waiting for login prompt
     // send username then CR
@@ -48,44 +56,46 @@ function connectToServer(crDelay = 500) {
   });
 }
 
+// Set up all socket event listeners
+function setupSocketListeners() {
+  // Handle data from the server
+  socket.on("data", (data) => {
+    // Output the data from the server (with ANSI colors intact)
+    process.stdout.write(data);
+  });
+
+  // Handle socket close
+  socket.on("close", () => {
+    if (isConnected) {
+      console.log(`\nConnection lost. Attempting to reconnect in ${RECONNECT_DELAY/1000} seconds...`);
+      isConnected = false;
+    }
+    
+    // Wait before trying to reconnect
+    setTimeout(() => {
+      // Only attempt to reconnect if we haven't reached the maximum number of attempts
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        connectToServer();
+      } else {
+        console.log(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
+        process.exit(1);
+      }
+    }, RECONNECT_DELAY);
+  });
+
+  // Handle socket errors
+  socket.on("error", (err) => {
+    console.error(`Connection error: ${err.message}`);
+    // Increment reconnect attempts on connection errors
+    reconnectAttempts++;
+  });
+}
+
+// Setup initial listeners
+setupSocketListeners();
+
 // Initial connection
 connectToServer();
-
-// Handle data from the server
-socket.on("data", (data) => {
-  // Output the data from the server (with ANSI colors intact)
-  process.stdout.write(data);
-});
-
-// Handle socket close
-socket.on("close", () => {
-  console.log("\nConnection lost. Attempting to reconnect in 3 seconds...");
-  
-  // Wait 3 seconds before trying to reconnect
-  setTimeout(() => {
-    // Only attempt to reconnect if we haven't reached the maximum number of attempts
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      connectToServer();
-    } else {
-      console.log(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
-      process.exit(1);
-    }
-  }, RECONNECT_DELAY);
-});
-
-// Handle socket errors
-socket.on("error", (err) => {
-  console.error(`Connection error: ${err.message}`);
-  // Increment reconnect attempts on connection errors
-  reconnectAttempts++;
-  
-  // Don't exit on error - the close event will be triggered and we'll try to reconnect
-  // unless we've reached the maximum number of attempts
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    console.log(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
-    process.exit(1);
-  }
-});
 
 // Handle user input and send it to the server
 process.stdin.on("data", (key) => {
