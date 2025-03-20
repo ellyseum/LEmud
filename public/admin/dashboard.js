@@ -19,18 +19,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Custom tab handling - completely replace Bootstrap's tab system
-    function activateTab(tabId) {
+    function activateTab(tabId, updateHash = true) {
+        // Remove the '#' if it exists in the tabId
+        const cleanTabId = tabId.replace(/^#/, '');
+        const fullTabId = '#' + cleanTabId;
+        
         // Update tab nav links
         document.querySelectorAll('.nav-link').forEach(link => {
             link.classList.remove('active');
         });
-        document.querySelector(`[data-tab-target="${tabId}"]`).classList.add('active');
+        document.querySelector(`[data-tab-target="${fullTabId}"]`)?.classList.add('active');
         
         // Update tab panes
         document.querySelectorAll('.tab-pane').forEach(pane => {
             pane.classList.remove('show', 'active');
         });
-        document.querySelector(tabId).classList.add('show', 'active');
+        document.querySelector(fullTabId)?.classList.add('show', 'active');
+        
+        // Update URL hash if requested (avoid during page initialization from hash)
+        if (updateHash) {
+            window.history.pushState(null, '', `#${cleanTabId}`);
+        }
+        
+        // Load content for players tab when it's activated
+        if (fullTabId === '#players-tab') {
+            loadPlayersTabContent();
+        }
     }
     
     // Set up tab click handlers
@@ -39,13 +53,34 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const target = e.currentTarget.getAttribute('data-tab-target');
             activateTab(target);
-            
-            // Load content for players tab when it's activated
-            if (target === '#players-tab') {
-                loadPlayersTabContent();
-            }
         });
     });
+
+    // Check URL hash on page load and activate the corresponding tab
+    function handleHashChange() {
+        const hash = window.location.hash;
+        if (hash) {
+            // Only activate these specific tabs (security/validation)
+            const validTabs = ['dashboard-tab', 'client-tab', 'players-tab', 'config-tab'];
+            const tabName = hash.substring(1); // Remove the # character
+            
+            if (validTabs.includes(tabName)) {
+                activateTab(hash, false); // Don't update hash again during initial load
+            } else {
+                // Invalid hash, default to dashboard
+                activateTab('#dashboard-tab', false);
+            }
+        } else {
+            // No hash, default to dashboard
+            activateTab('#dashboard-tab', false);
+        }
+    }
+    
+    // Handle hash changes (browser back/forward)
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Initial hash check
+    handleHashChange();
 
     // Fetch initial data
     fetchServerStats();

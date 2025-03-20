@@ -8,9 +8,12 @@
         // Check if the user is logged in
         const token = localStorage.getItem('mudAdminToken');
         
+        // Preserve hash fragment for deep linking
+        const hash = window.location.hash;
+        
         // Redirect to the appropriate page
         if (token) {
-            window.location.href = '/admin/dashboard.html';
+            window.location.href = '/admin/dashboard.html' + hash;
         } else {
             window.location.href = '/admin/login.html';
         }
