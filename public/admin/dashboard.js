@@ -674,7 +674,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle stop monitoring button
     document.getElementById('stop-monitoring').addEventListener('click', () => {
-        if (monitorSocket) {
+        if (monitorSocket && currentlyMonitoringId) {
+            // Explicitly tell the server to stop monitoring
+            monitorSocket.emit('stop-monitoring', {
+                clientId: currentlyMonitoringId
+            });
+            
+            console.log(`Stopped monitoring client: ${currentlyMonitoringId}`);
+            
+            // Clean up socket
             monitorSocket.disconnect();
             monitorSocket = null;
         }
@@ -683,6 +691,24 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('stop-monitoring').classList.add('d-none');
         document.getElementById('admin-command-form').classList.add('d-none');
         currentlyMonitoringId = null;
+    });
+
+    // When page is unloaded, make sure to stop monitoring
+    window.addEventListener('beforeunload', (event) => {
+        if (monitorSocket && currentlyMonitoringId) {
+            try {
+                // Use sendBeacon for more reliable delivery during page unload
+                const data = JSON.stringify({clientId: currentlyMonitoringId});
+                navigator.sendBeacon('/socket.io/?EIO=4&transport=polling&t=' + Date.now(), data);
+                
+                // Also try the normal emit as a fallback
+                monitorSocket.emit('stop-monitoring', {
+                    clientId: currentlyMonitoringId
+                });
+            } catch (error) {
+                console.error('Error during cleanup:', error);
+            }
+        }
     });
 
     // Handle admin commands

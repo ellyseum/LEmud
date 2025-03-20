@@ -126,9 +126,11 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Store the admin socket for this client
+      // Store the admin socket for this client and set monitoring flag
       client.adminMonitorSocket = socket;
       client.isBeingMonitored = true;
+      
+      console.log(`Admin is now monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
       
       // Send initial data to the admin
       socket.emit('monitor-connected', { 
@@ -193,6 +195,19 @@ io.on('connection', (socket) => {
       });
     });
   });
+
+  // Explicitly handle the stop-monitoring event
+  socket.on('stop-monitoring', (data) => {
+    const clientId = data.clientId;
+    if (!clientId) return;
+    
+    const client = clients.get(clientId);
+    if (client && client.adminMonitorSocket === socket) {
+      console.log(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+      client.isBeingMonitored = false;
+      client.adminMonitorSocket = undefined;
+    }
+  });
 });
 
 // Create TELNET server
@@ -213,6 +228,7 @@ const telnetServer = net.createServer(socket => {
 function setupClient(connection: IConnection): void {
   // Set up the client
   const client: ConnectedClient = {
+    id: crypto.randomUUID(), // Add unique ID using Node.js crypto module
     connection,
     user: null,
     authenticated: false,
@@ -222,7 +238,8 @@ function setupClient(connection: IConnection): void {
     isTyping: false,
     outputBuffer: [],
     connectedAt: Date.now(), // Add connectedAt property
-    lastActivity: Date.now()  // Add lastActivity property
+    lastActivity: Date.now(),  // Add lastActivity property
+    isBeingMonitored: false // Add default for monitoring flag
   };
   
   const clientId = connection.getId();
@@ -570,6 +587,12 @@ function checkForIdleClients() {
   clients.forEach((client, clientId) => {
     // Skip clients who aren't authenticated yet (in login process)
     if (!client.authenticated) return;
+    
+    // Skip clients that are being monitored by an admin
+    if (client.isBeingMonitored) {
+      console.log(`Skipping idle check for monitored client: ${client.user?.username || 'anonymous'}`);
+      return;
+    }
     
     // Calculate how long the client has been idle
     const idleTime = now - client.lastActivity;

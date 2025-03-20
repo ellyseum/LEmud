@@ -33,6 +33,7 @@ export interface User {
 }
 
 export interface ConnectedClient {
+  id: string; // Make sure clients have an ID property for lookup
   connection: IConnection; // Replace Socket with IConnection
   user: User | null;
   authenticated: boolean;
@@ -44,13 +45,11 @@ export interface ConnectedClient {
   isTyping: boolean;
   outputBuffer: string[];
   
-  // Add connectedAt and lastActivity properties
+  // For idle disconnection and monitoring
   connectedAt: number;
   lastActivity: number;
-  
-  // Add monitoring-related properties
-  isBeingMonitored?: boolean;
-  adminMonitorSocket?: any; // Using any for now but we'll type it more specifically
+  isBeingMonitored: boolean;
+  adminMonitorSocket?: any;
   
   // Add tempUsername property
   tempUsername?: string;
