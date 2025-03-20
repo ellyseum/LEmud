@@ -39,6 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const target = e.currentTarget.getAttribute('data-tab-target');
             activateTab(target);
+            
+            // Load content for players tab when it's activated
+            if (target === '#players-tab') {
+                loadPlayersTabContent();
+            }
         });
     });
 
@@ -890,5 +895,494 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('config-loading').classList.add('d-none');
             document.getElementById('mud-config-form').classList.remove('d-none');
         }
+    }
+
+    // Add handler for players tab refresh button
+    document.getElementById('refresh-player-list')?.addEventListener('click', () => {
+        loadPlayersTabContent();
+    });
+    
+    // Function to load players tab content
+    function loadPlayersTabContent() {
+        const loadingElement = document.getElementById('players-loading');
+        const contentElement = document.getElementById('players-content');
+        
+        if (loadingElement && contentElement) {
+            loadingElement.classList.remove('d-none');
+            contentElement.classList.add('d-none');
+            
+            // Make API request to get all players
+            fetchAllPlayers().then(players => {
+                // Populate the table with player data
+                populatePlayersTable(players);
+                
+                // Show content and hide loading
+                loadingElement.classList.add('d-none');
+                contentElement.classList.remove('d-none');
+            }).catch(error => {
+                console.error('Error loading players:', error);
+                
+                // Show error message
+                loadingElement.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        Error loading players: ${error.message}
+                    </div>
+                `;
+            });
+        }
+    }
+    
+    // Fetch all players from the database (including offline ones)
+    async function fetchAllPlayers() {
+        try {
+            const response = await fetch('/api/admin/players/all', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (response.status === 401) {
+                localStorage.removeItem('mudAdminToken');
+                window.location.href = '/admin/login.html';
+                return [];
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                return data.players || [];
+            } else {
+                throw new Error(data.message || 'Failed to fetch players');
+            }
+        } catch (error) {
+            console.error('Error fetching all players:', error);
+            throw error;
+        }
+    }
+    
+    // Populate the players table with data
+    function populatePlayersTable(players) {
+        const tableBody = document.getElementById('players-table-body');
+        if (!tableBody) return;
+        
+        // Clear existing rows
+        tableBody.innerHTML = '';
+        
+        if (players.length === 0) {
+            const emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = `
+                <td colspan="6" class="text-center text-muted">No players found</td>
+            `;
+            tableBody.appendChild(emptyRow);
+            return;
+        }
+        
+        // Get list of currently connected players for status
+        const connectedPlayers = Array.from(document.querySelectorAll('#player-accordion .accordion-item'))
+            .map(item => {
+                const header = item.querySelector('.accordion-header');
+                if (header) {
+                    const id = header.id.replace('heading-', '');
+                    const usernameEl = item.querySelector('.accordion-button span');
+                    if (usernameEl) {
+                        // Extract just the username text without the (not authenticated) part
+                        const fullText = usernameEl.textContent || '';
+                        const username = fullText.split(' ')[0];
+                        return { id, username };
+                    }
+                }
+                return null;
+            })
+            .filter(p => p !== null);
+        
+        // Sort players: online first, then by level (high to low), then by name
+        players.sort((a, b) => {
+            // Check if player is online
+            const aOnline = connectedPlayers.some(p => p.username.toLowerCase() === a.username.toLowerCase());
+            const bOnline = connectedPlayers.some(p => p.username.toLowerCase() === b.username.toLowerCase());
+            
+            // Online players come first
+            if (aOnline && !bOnline) return -1;
+            if (!aOnline && bOnline) return 1;
+            
+            // Then sort by level (high to low)
+            if (a.level !== b.level) return b.level - a.level;
+            
+            // Then by name
+            return a.username.localeCompare(b.username);
+        });
+        
+        // Add each player to the table
+        players.forEach(player => {
+            // Check if player is currently online
+            const isOnline = connectedPlayers.some(p => p.username.toLowerCase() === player.username.toLowerCase());
+            const connectedPlayer = connectedPlayers.find(p => p.username.toLowerCase() === player.username.toLowerCase());
+            
+            const row = document.createElement('tr');
+            row.className = isOnline ? 'table-active' : '';
+            
+            // Format last login date
+            const lastLogin = new Date(player.lastLogin).toLocaleString();
+            
+            // Create status badge
+            let statusBadge = '';
+            if (isOnline) {
+                statusBadge = '<span class="badge bg-success">Online</span>';
+            } else {
+                const lastLoginDate = new Date(player.lastLogin);
+                const now = new Date();
+                const daysSinceLogin = Math.floor((now - lastLoginDate) / (1000 * 60 * 60 * 24));
+                
+                if (daysSinceLogin < 7) {
+                    statusBadge = '<span class="badge bg-info">Active</span>';
+                } else if (daysSinceLogin < 30) {
+                    statusBadge = '<span class="badge bg-warning text-dark">Inactive</span>';
+                } else {
+                    statusBadge = '<span class="badge bg-danger">Dormant</span>';
+                }
+            }
+            
+            row.innerHTML = `
+                <td>${player.username}</td>
+                <td>${player.level}</td>
+                <td>${player.health}/${player.maxHealth}</td>
+                <td>${lastLogin}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-primary edit-player" data-username="${player.username}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        ${isOnline ? `
+                            <button type="button" class="btn btn-info monitor-player-managed" data-id="${connectedPlayer?.id}" data-name="${player.username}">
+                                <i class="bi bi-display"></i>
+                            </button>
+                            <button type="button" class="btn btn-warning kick-player-managed" data-id="${connectedPlayer?.id}" data-name="${player.username}">
+                                <i class="bi bi-box-arrow-right"></i>
+                            </button>
+                        ` : ''}
+                        <button type="button" class="btn btn-danger delete-player" data-username="${player.username}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            
+            tableBody.appendChild(row);
+        });
+        
+        // Attach event handlers to the newly created buttons
+        attachPlayerManagementHandlers();
+    }
+    
+    // Initialize modals
+    const editPlayerModal = new bootstrap.Modal(document.getElementById('editPlayerModal'));
+    const deletePlayerModal = new bootstrap.Modal(document.getElementById('deletePlayerModal'));
+    const resetPasswordModal = new bootstrap.Modal(document.getElementById('resetPasswordModal'));
+    
+    // Attach event handlers to player management buttons
+    function attachPlayerManagementHandlers() {
+        // Edit player buttons
+        document.querySelectorAll('.edit-player').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const username = e.currentTarget.getAttribute('data-username');
+                openEditPlayerModal(username);
+            });
+        });
+        
+        // Delete player buttons
+        document.querySelectorAll('.delete-player').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const username = e.currentTarget.getAttribute('data-username');
+                openDeletePlayerModal(username);
+            });
+        });
+        
+        // Monitor player buttons (in the players table)
+        document.querySelectorAll('.monitor-player-managed').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const clientId = e.currentTarget.getAttribute('data-id');
+                const playerName = e.currentTarget.getAttribute('data-name');
+                
+                try {
+                    const response = await fetch(`/api/admin/players/${clientId}/monitor`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Switch to client tab using our custom function
+                        activateTab('#client-tab');
+                        
+                        // Start monitoring
+                        startMonitoring(clientId, playerName);
+                    } else {
+                        alert('Failed to monitor player: ' + (data.message || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error monitoring player:', error);
+                    alert('Error monitoring player: ' + error.message);
+                }
+            });
+        });
+        
+        // Kick player buttons (in the players table)
+        document.querySelectorAll('.kick-player-managed').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const clientId = e.currentTarget.getAttribute('data-id');
+                const playerName = e.currentTarget.getAttribute('data-name');
+                
+                document.getElementById('kick-player-name').textContent = playerName;
+                kickClientId = clientId;
+                
+                kickPlayerModal.show();
+            });
+        });
+    }
+    
+    // Set up player search functionality
+    document.getElementById('player-search')?.addEventListener('input', (e) => {
+        const searchText = e.target.value.toLowerCase();
+        const tableRows = document.querySelectorAll('#players-table-body tr');
+        
+        tableRows.forEach(row => {
+            // Skip the "no players found" row
+            if (row.cells.length === 1) return;
+            
+            const username = row.cells[0].textContent.toLowerCase();
+            if (username.includes(searchText)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+    
+    // Open the edit player modal
+    async function openEditPlayerModal(username) {
+        try {
+            // Fetch player details
+            const response = await fetch(`/api/admin/players/details/${username}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.player) {
+                const player = data.player;
+                
+                // Set up the modal with player data
+                document.getElementById('edit-player-name').textContent = player.username;
+                document.getElementById('edit-player-username').value = player.username;
+                document.getElementById('edit-player-health').value = player.health;
+                document.getElementById('edit-player-max-health').value = player.maxHealth;
+                document.getElementById('edit-player-level').value = player.level;
+                document.getElementById('edit-player-experience').value = player.experience;
+                document.getElementById('edit-player-room').value = player.currentRoomId;
+                document.getElementById('edit-player-inventory').value = JSON.stringify(player.inventory, null, 2);
+                
+                // Show the modal
+                editPlayerModal.show();
+            } else {
+                alert('Failed to load player details: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error loading player details:', error);
+            alert('Error loading player details: ' + error.message);
+        }
+    }
+    
+    // Open the delete player modal
+    function openDeletePlayerModal(username) {
+        document.getElementById('delete-player-name').textContent = username;
+        document.getElementById('confirm-delete-check').checked = false;
+        document.getElementById('confirm-delete').disabled = true;
+        deletePlayerModal.show();
+    }
+    
+    // Handle the checkbox in delete player modal
+    document.getElementById('confirm-delete-check')?.addEventListener('change', (e) => {
+        document.getElementById('confirm-delete').disabled = !e.target.checked;
+    });
+    
+    // Handle saving player changes
+    document.getElementById('save-player-changes')?.addEventListener('click', async () => {
+        try {
+            const username = document.getElementById('edit-player-username').value;
+            
+            // Validate form inputs
+            const health = parseInt(document.getElementById('edit-player-health').value);
+            const maxHealth = parseInt(document.getElementById('edit-player-max-health').value);
+            const level = parseInt(document.getElementById('edit-player-level').value);
+            const experience = parseInt(document.getElementById('edit-player-experience').value);
+            const currentRoomId = document.getElementById('edit-player-room').value;
+            
+            // Parse inventory JSON (catch parse errors)
+            let inventory;
+            try {
+                inventory = JSON.parse(document.getElementById('edit-player-inventory').value);
+            } catch (e) {
+                alert('Invalid inventory JSON format');
+                return;
+            }
+            
+            // Validate numeric inputs
+            if (isNaN(health) || health < 1) {
+                alert('Health must be a positive number');
+                return;
+            }
+            
+            if (isNaN(maxHealth) || maxHealth < health) {
+                alert('Max health must be greater than or equal to current health');
+                return;
+            }
+            
+            if (isNaN(level) || level < 1) {
+                alert('Level must be a positive number');
+                return;
+            }
+            
+            if (isNaN(experience) || experience < 0) {
+                alert('Experience cannot be negative');
+                return;
+            }
+            
+            if (!currentRoomId) {
+                alert('Current room ID is required');
+                return;
+            }
+            
+            // Send updated player data to server
+            const response = await fetch(`/api/admin/players/update/${username}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    health,
+                    maxHealth,
+                    level,
+                    experience,
+                    currentRoomId,
+                    inventory
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Player updated successfully');
+                editPlayerModal.hide();
+                
+                // Refresh the players list
+                loadPlayersTabContent();
+            } else {
+                alert('Failed to update player: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating player:', error);
+            alert('Error updating player: ' + error.message);
+        }
+    });
+    
+    // Handle resetting player password
+    document.getElementById('reset-player-password')?.addEventListener('click', () => {
+        const username = document.getElementById('edit-player-username').value;
+        document.getElementById('reset-password-name').textContent = username;
+        document.getElementById('new-password').value = generateRandomPassword();
+        
+        // Hide edit modal and show reset password modal
+        editPlayerModal.hide();
+        resetPasswordModal.show();
+    });
+    
+    // Handle confirming password reset
+    document.getElementById('confirm-reset-password')?.addEventListener('click', async () => {
+        try {
+            const username = document.getElementById('reset-password-name').textContent;
+            const newPassword = document.getElementById('new-password').value;
+            
+            if (!newPassword) {
+                alert('Password cannot be empty');
+                return;
+            }
+            
+            // Send password reset request to server
+            const response = await fetch(`/api/admin/players/reset-password/${username}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    newPassword
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`Password for ${username} has been reset successfully`);
+                resetPasswordModal.hide();
+            } else {
+                alert('Failed to reset password: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error resetting password:', error);
+            alert('Error resetting password: ' + error.message);
+        }
+    });
+    
+    // Handle confirming player deletion
+    document.getElementById('confirm-delete')?.addEventListener('click', async () => {
+        try {
+            const username = document.getElementById('delete-player-name').textContent;
+            
+            // Send delete request to server
+            const response = await fetch(`/api/admin/players/delete/${username}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`Player ${username} has been deleted successfully`);
+                deletePlayerModal.hide();
+                
+                // Refresh the players list
+                loadPlayersTabContent();
+            } else {
+                alert('Failed to delete player: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error deleting player:', error);
+            alert('Error deleting player: ' + error.message);
+        }
+    });
+    
+    // Helper function to generate a random password
+    function generateRandomPassword() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let password = '';
+        for (let i = 0; i < 10; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
     }
 });

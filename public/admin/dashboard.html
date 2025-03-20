@@ -26,6 +26,9 @@
                         <a class="nav-link" href="#" data-tab-target="#client-tab">MUD Client</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" data-tab-target="#players-tab">Players</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" data-tab-target="#config-tab">Config</a>
                     </li>
                 </ul>
@@ -375,7 +378,58 @@
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Add Players Tab Pane -->
+        <div class="tab-pane fade" id="players-tab">
+            <div class="row">
+                <div class="col-md-12 mb-4">
+                    <div class="card bg-dark border-secondary">
+                        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-people-fill me-2"></i>
+                                <h5 class="mb-0">Player Management</h5>
+                            </div>
+                            <div>
+                                <div class="input-group">
+                                    <input type="text" id="player-search" class="form-control bg-dark text-light border-secondary" 
+                                           placeholder="Search players...">
+                                    <button class="btn btn-primary" id="refresh-player-list">
+                                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="text-center text-muted" id="players-loading">
+                                <div class="spinner-border text-light" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading players...</p>
+                            </div>
+                            <div id="players-content" class="d-none">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Username</th>
+                                                <th>Level</th>
+                                                <th>Health</th>
+                                                <th>Last Login</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="players-table-body">
+                                            <!-- Players will be added here dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     <!-- Kick Player Modal -->
     <div class="modal fade" id="kickPlayerModal" tabindex="-1" aria-hidden="true">
@@ -391,6 +445,116 @@
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-danger" id="confirm-kick">Kick Player</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Player Modal -->
+    <div class="modal fade" id="editPlayerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Edit Player: <span id="edit-player-name">Username</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-player-form">
+                        <input type="hidden" id="edit-player-username">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="edit-player-health" class="form-label">Health</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                               id="edit-player-health" min="1" required>
+                                        <span class="input-group-text bg-dark text-light border-secondary">/</span>
+                                        <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                               id="edit-player-max-health" min="1" required>
+                                    </div>
+                                    <small class="form-text text-muted">Current / Maximum health points</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="edit-player-level" class="form-label">Level</label>
+                                    <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                           id="edit-player-level" min="1" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-player-experience" class="form-label">Experience</label>
+                                    <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                           id="edit-player-experience" min="0" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-player-room" class="form-label">Current Room</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                   id="edit-player-room" required>
+                            <small class="form-text text-muted">Room ID where player is currently located</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-player-inventory" class="form-label">Inventory</label>
+                            <textarea class="form-control bg-dark text-light border-secondary" 
+                                      id="edit-player-inventory" rows="4"></textarea>
+                            <small class="form-text text-muted">JSON format of player's inventory</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-warning" id="reset-player-password">Reset Password</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-player-changes">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Player Modal -->
+    <div class="modal fade" id="deletePlayerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Delete Player</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to permanently delete <span id="delete-player-name" class="text-warning fw-bold">Username</span>?</p>
+                    <p class="text-danger">This action cannot be undone. All player data will be lost.</p>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="confirm-delete-check">
+                        <label class="form-check-label" for="confirm-delete-check">
+                            I understand that this action is permanent
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-delete" disabled>Delete Player</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div class="modal fade" id="resetPasswordModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Reset Password</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Set new password for <span id="reset-password-name" class="text-warning fw-bold">Username</span>:</p>
+                    <div class="mb-3">
+                        <label for="new-password" class="form-label">New Password</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" id="new-password">
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="confirm-reset-password">Reset Password</button>
                 </div>
             </div>
         </div>

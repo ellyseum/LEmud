@@ -49,6 +49,9 @@ export interface ConnectedClient {
   // Add monitoring-related properties
   isBeingMonitored?: boolean;
   adminMonitorSocket?: any; // Using any for now but we'll type it more specifically
+  
+  // Add tempUsername property
+  tempUsername?: string;
 }
 
 export type StateHandler = (client: ConnectedClient, input: string) => void;

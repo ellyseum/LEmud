@@ -69,9 +69,16 @@ app.use(bodyParser.json());
 // Admin API routes
 app.post('/api/admin/login', AdminApi.login);
 app.get('/api/admin/stats', AdminApi.validateToken, AdminApi.getServerStats(serverStats));
-app.get('/api/admin/players', AdminApi.validateToken, AdminApi.getPlayerDetails(clients, userManager));
+app.get('/api/admin/players', AdminApi.validateToken, AdminApi.getConnectedPlayers(clients, userManager));
 app.post('/api/admin/players/:clientId/kick', AdminApi.validateToken, AdminApi.kickPlayer(clients));
 app.post('/api/admin/players/:clientId/monitor', AdminApi.validateToken, AdminApi.monitorPlayer(clients));
+
+// Add new player management endpoints
+app.get('/api/admin/players/all', AdminApi.validateToken, AdminApi.getAllPlayers(userManager));
+app.get('/api/admin/players/details/:username', AdminApi.validateToken, AdminApi.getPlayerDetailsById(userManager));
+app.post('/api/admin/players/update/:username', AdminApi.validateToken, AdminApi.updatePlayer(userManager, roomManager));
+app.post('/api/admin/players/reset-password/:username', AdminApi.validateToken, AdminApi.resetPlayerPassword(userManager));
+app.delete('/api/admin/players/delete/:username', AdminApi.validateToken, AdminApi.deletePlayer(userManager, roomManager, clients));
 
 // Add new game timer system endpoints
 app.get('/api/admin/gametimer-config', AdminApi.validateToken, AdminApi.getGameTimerConfig(gameTimerManager));
@@ -300,6 +307,7 @@ function handleClientData(client: ConnectedClient, data: string): void {
       client.connection.write(backspaces);
       
       // Clear the buffer
+      
       client.buffer = '';
       
       // If buffer becomes empty, flush any buffered output

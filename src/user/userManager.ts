@@ -319,4 +319,12 @@ export class UserManager {
     this.saveUsers();
     return true;
   }
+
+  /**
+   * Get all users
+   * Used by admin API to get a list of all players
+   */
+  public getAllUsers(): User[] {
+    return [...this.users];
+  }
 }
