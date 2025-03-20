@@ -77,12 +77,17 @@ export class Room {
     
     // Show players in the room
     if (this.players.length > 0) {
-      const playerNames = this.players.map(player => formatUsername(player));
-      description += colorize(`Also here: ${playerNames.join(', ')}.\r\n`, 'magenta');
+      description += colorize(`You can see some figures moving around.\r\n`, 'yellow');
+    }
+    
+    // Show NPCs in the room
+    if (this.npcs.length > 0) {
+      description += colorize(`You can see some creatures moving around.\r\n`, 'yellow');
     }
     
     // Show objects in the room (simplified view when peeking)
-    if (this.objects.length > 0) {
+    if (this.objects.length > 0 || 
+        (this.currency.gold > 0 || this.currency.silver > 0 || this.currency.copper > 0)) {
       description += colorize(`You can see some items in the distance.\r\n`, 'green');
     }
     

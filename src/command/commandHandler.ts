@@ -20,6 +20,7 @@ import { InventoryCommand } from './commands/inventory.command';
 import { PickupCommand } from './commands/pickup.command';
 import { DropCommand } from './commands/drop.command';
 import { GetCommand } from './commands/get.command';
+import { YellCommand } from './commands/yell.command';
 
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
@@ -43,13 +44,14 @@ export class CommandHandler {
       new StatsCommand(),
       new HealCommand(this.userManager),
       new DamageCommand(this.userManager),
-      new QuitCommand(this.userManager, this.clients), // Pass clients instead of roomManager
-      new LookCommand(this.clients), // Pass clients instead of roomManager
-      new MoveCommand(this.clients), // Pass clients instead of roomManager 
+      new QuitCommand(this.userManager, this.clients),
+      new LookCommand(this.clients),
+      new MoveCommand(this.clients),
       new InventoryCommand(),
-      new PickupCommand(this.clients, this.userManager), // Pass clients instead of roomManager
-      new DropCommand(this.clients, this.userManager), // Pass clients instead of roomManager
-      new GetCommand(this.clients, this.userManager) // Pass clients instead of roomManager
+      new PickupCommand(this.clients, this.userManager),
+      new DropCommand(this.clients, this.userManager),
+      new GetCommand(this.clients, this.userManager),
+      new YellCommand(this.clients)
     ];
     
     // Register all commands

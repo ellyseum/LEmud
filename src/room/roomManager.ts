@@ -360,57 +360,228 @@ export class RoomManager {
   }
 
   /**
-   * Allows a player to look into an adjacent room without entering it
+   * Examine a specific entity (item, NPC, player) in the room or inventory
+   * @param client The connected client
+   * @param entityName The name of the entity to examine
+   * @returns true if entity was found and examined, false otherwise
    */
-  public lookIntoRoom(client: ConnectedClient, direction: string): boolean {
+  public lookAtEntity(client: ConnectedClient, entityName: string): boolean {
     if (!client.user) return false;
 
     // Get current room
-    const currentRoomId = client.user.currentRoomId || this.getStartingRoomId();
-    const currentRoom = this.getRoom(currentRoomId);
+    const roomId = client.user.currentRoomId || this.getStartingRoomId();
+    const room = this.getRoom(roomId);
 
-    if (!currentRoom) {
+    if (!room) {
       writeToClient(client, colorize(`You're not in a valid room.\r\n`, 'red'));
       return false;
     }
 
-    // Check if exit exists in the specified direction
-    const nextRoomId = currentRoom.getExit(direction);
-    if (!nextRoomId) {
-      writeToClient(client, colorize(`There is no exit in that direction.\r\n`, 'red'));
-      return false;
-    }
+    // Normalize the entity name for easier matching
+    const normalizedName = entityName.toLowerCase().trim();
 
-    // Get destination room
-    const nextRoom = this.getRoom(nextRoomId);
-    if (!nextRoom) {
-      writeToClient(client, colorize(`The destination room doesn't exist.\r\n`, 'red'));
-      return false;
-    }
-
-    // Notify people in current room that this player is looking in a direction
-    this.notifyPlayersInRoom(
-      currentRoomId,
-      `${formatUsername(client.user.username)} looks ${direction}.\r\n`,
-      client.user.username
+    // First check if it's an NPC
+    const npcMatch = room.npcs.find(npc => 
+      npc.toLowerCase() === normalizedName || 
+      npc.toLowerCase().includes(normalizedName)
     );
-
-    // Get the opposite direction for the arrival message
-    const oppositeDirection = this.getOppositeDirection(direction);
-
-    // Notify people in the destination room that someone is looking in
-    this.notifyPlayersInRoom(
-      nextRoomId,
-      `${formatUsername(client.user.username)} looks into the room from the ${oppositeDirection}.\r\n`
-    );
-
-    // Show the room description to the looking player
-    writeToClient(client, colorize(`You look ${direction}...\r\n`, 'cyan'));
     
-    // Create a peek view of the room - similar to the regular view but might be limited
-    const peekDescription = nextRoom.getDescriptionForPeeking(oppositeDirection);
-    writeToClient(client, peekDescription);
+    if (npcMatch) {
+      // Display NPC description
+      writeToClient(client, colorize(`You look at the ${npcMatch}.\r\n`, 'cyan'));
+      // Here we can add more detailed description based on the NPC type
+      writeToClient(client, colorize(`It's a ${npcMatch} in the room with you.\r\n`, 'cyan'));
+      
+      // Notify other players in the room
+      this.notifyPlayersInRoom(
+        roomId,
+        `${formatUsername(client.user.username)} examines the ${npcMatch} carefully.\r\n`,
+        client.user.username
+      );
+      
+      return true;
+    }
 
-    return true;
+    // Then check if it's an object in the room
+    const objectMatch = room.objects.find(obj => 
+      obj.toLowerCase() === normalizedName || 
+      obj.toLowerCase().includes(normalizedName)
+    );
+    
+    if (objectMatch) {
+      // Display object description
+      writeToClient(client, colorize(`You look at the ${objectMatch}.\r\n`, 'cyan'));
+      // Here we can add more detailed description based on the object type
+      writeToClient(client, colorize(`It's a ${objectMatch} lying on the ground.\r\n`, 'cyan'));
+      
+      // Notify other players in the room
+      this.notifyPlayersInRoom(
+        roomId,
+        `${formatUsername(client.user.username)} examines the ${objectMatch} closely.\r\n`,
+        client.user.username
+      );
+      
+      return true;
+    }
+
+    // Check for currency in the room
+    if ((normalizedName === 'gold' || normalizedName.includes('gold')) && room.currency.gold > 0) {
+      writeToClient(client, colorize(`You look at the gold pieces.\r\n`, 'cyan'));
+      writeToClient(client, colorize(`There are ${room.currency.gold} gold pieces on the ground.\r\n`, 'cyan'));
+      
+      // Notify other players in the room
+      this.notifyPlayersInRoom(
+        roomId,
+        `${formatUsername(client.user.username)} looks at the gold pieces with interest.\r\n`,
+        client.user.username
+      );
+      
+      return true;
+    } else if ((normalizedName === 'silver' || normalizedName.includes('silver')) && room.currency.silver > 0) {
+      writeToClient(client, colorize(`You look at the silver pieces.\r\n`, 'cyan'));
+      writeToClient(client, colorize(`There are ${room.currency.silver} silver pieces on the ground.\r\n`, 'cyan'));
+      
+      // Notify other players in the room
+      this.notifyPlayersInRoom(
+        roomId,
+        `${formatUsername(client.user.username)} looks at the silver pieces with interest.\r\n`,
+        client.user.username
+      );
+      
+      return true;
+    } else if ((normalizedName === 'copper' || normalizedName.includes('copper')) && room.currency.copper > 0) {
+      writeToClient(client, colorize(`You look at the copper pieces.\r\n`, 'cyan'));
+      writeToClient(client, colorize(`There are ${room.currency.copper} copper pieces on the ground.\r\n`, 'cyan'));
+      
+      // Notify other players in the room
+      this.notifyPlayersInRoom(
+        roomId,
+        `${formatUsername(client.user.username)} looks at the copper pieces with interest.\r\n`,
+        client.user.username
+      );
+      
+      return true;
+    }
+
+    // Check if it's a player in the room
+    const playerMatch = room.players.find(player => 
+      player.toLowerCase() === normalizedName || 
+      player.toLowerCase().includes(normalizedName)
+    );
+    
+    if (playerMatch) {
+      // Don't let players look at themselves
+      if (playerMatch.toLowerCase() === client.user.username.toLowerCase()) {
+        writeToClient(client, colorize(`You look at yourself. You look... like yourself.\r\n`, 'cyan'));
+        
+        // Notify other players that this player is looking at themselves
+        this.notifyPlayersInRoom(
+          roomId,
+          `${formatUsername(client.user.username)} looks over themselves.\r\n`,
+          client.user.username
+        );
+        
+        return true;
+      }
+      
+      // Display player description
+      writeToClient(client, colorize(`You look at ${formatUsername(playerMatch)}.\r\n`, 'cyan'));
+      writeToClient(client, colorize(`They are another player in the game.\r\n`, 'cyan'));
+      
+      // Notify the player being looked at
+      const targetClient = this.findClientByUsername(playerMatch);
+      if (targetClient) {
+        writeMessageToClient(
+          targetClient, 
+          colorize(`${formatUsername(client.user.username)} looks you up and down.\r\n`, 'cyan')
+        );
+      }
+      
+      // Notify other players in the room (excluding both the looker and the target)
+      for (const otherPlayerName of room.players) {
+        if (otherPlayerName.toLowerCase() === client.user.username.toLowerCase() || 
+            otherPlayerName.toLowerCase() === playerMatch.toLowerCase()) {
+          continue;
+        }
+        
+        const otherClient = this.findClientByUsername(otherPlayerName);
+        if (otherClient) {
+          writeMessageToClient(
+            otherClient, 
+            colorize(`${formatUsername(client.user.username)} looks ${formatUsername(playerMatch)} up and down.\r\n`, 'cyan')
+          );
+        }
+      }
+      
+      return true;
+    }
+
+    // If nothing was found in the room, check the player's inventory
+    if (client.user.inventory && client.user.inventory.items) {
+      const inventoryMatch = client.user.inventory.items.find(item => 
+        item.toLowerCase() === normalizedName || 
+        item.toLowerCase().includes(normalizedName)
+      );
+      
+      if (inventoryMatch) {
+        // Display inventory item description
+        writeToClient(client, colorize(`You look at the ${inventoryMatch} in your inventory.\r\n`, 'cyan'));
+        // Here we can add more detailed description based on the item type
+        writeToClient(client, colorize(`It's a ${inventoryMatch} that you're carrying.\r\n`, 'cyan'));
+        
+        // Notify other players in the room
+        this.notifyPlayersInRoom(
+          roomId,
+          `${formatUsername(client.user.username)} examines ${inventoryMatch} from their inventory.\r\n`,
+          client.user.username
+        );
+        
+        return true;
+      }
+
+      // Check for currency in inventory
+      const currency = client.user.inventory.currency;
+      if ((normalizedName === 'gold' || normalizedName.includes('gold')) && currency.gold > 0) {
+        writeToClient(client, colorize(`You look at your gold pieces.\r\n`, 'cyan'));
+        writeToClient(client, colorize(`You have ${currency.gold} gold pieces in your pouch.\r\n`, 'cyan'));
+        
+        // Notify other players in the room
+        this.notifyPlayersInRoom(
+          roomId,
+          `${formatUsername(client.user.username)} counts their gold pieces.\r\n`,
+          client.user.username
+        );
+        
+        return true;
+      } else if ((normalizedName === 'silver' || normalizedName.includes('silver')) && currency.silver > 0) {
+        writeToClient(client, colorize(`You look at your silver pieces.\r\n`, 'cyan'));
+        writeToClient(client, colorize(`You have ${currency.silver} silver pieces in your pouch.\r\n`, 'cyan'));
+        
+        // Notify other players in the room
+        this.notifyPlayersInRoom(
+          roomId,
+          `${formatUsername(client.user.username)} counts their silver pieces.\r\n`,
+          client.user.username
+        );
+        
+        return true;
+      } else if ((normalizedName === 'copper' || normalizedName.includes('copper')) && currency.copper > 0) {
+        writeToClient(client, colorize(`You look at your copper pieces.\r\n`, 'cyan'));
+        writeToClient(client, colorize(`You have ${currency.copper} copper pieces in your pouch.\r\n`, 'cyan'));
+        
+        // Notify other players in the room
+        this.notifyPlayersInRoom(
+          roomId,
+          `${formatUsername(client.user.username)} counts their copper pieces.\r\n`,
+          client.user.username
+        );
+        
+        return true;
+      }
+    }
+
+    // If we got here, no matching entity was found
+    writeToClient(client, colorize(`You don't see anything like that here.\r\n`, 'yellow'));
+    return false;
   }
 }
