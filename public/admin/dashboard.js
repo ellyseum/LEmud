@@ -13,9 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = '/admin/login.html';
     });
 
-    // Refresh players button
+    // Refresh players button - use the new function that preserves state
     document.getElementById('refresh-players').addEventListener('click', () => {
-        fetchPlayerData();
+        refreshPlayersPreservingState();
     });
 
     // Custom tab handling - completely replace Bootstrap's tab system
@@ -46,8 +46,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchServerStats();
     fetchPlayerData();
 
-    // Set up polling for stats (every 5 seconds)
+    // Set up polling for stats and player data
     setInterval(fetchServerStats, 5000);
+    setInterval(() => {
+        // Auto-refresh players every 10 seconds
+        refreshPlayersPreservingState();
+    }, 10000);
 
     let kickClientId = null;
     const kickPlayerModal = new bootstrap.Modal(document.getElementById('kickPlayerModal'));
@@ -68,7 +72,33 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (data.success) {
                 kickPlayerModal.hide();
-                fetchPlayerData(); // Refresh player list
+                
+                // Instead of refreshing the entire player list, just remove the kicked player
+                const kickedPlayerElement = document.querySelector(`#collapse-${kickClientId}`).closest('.accordion-item');
+                if (kickedPlayerElement) {
+                    // Fade out animation before removal
+                    kickedPlayerElement.style.transition = 'opacity 0.5s';
+                    kickedPlayerElement.style.opacity = '0';
+                    
+                    // Remove element after animation
+                    setTimeout(() => {
+                        kickedPlayerElement.remove();
+                        
+                        // Check if there are any players left
+                        // Fix: Use the correct selector (#player-accordion instead of .player-accordion)
+                        const remainingPlayers = document.querySelectorAll('#player-accordion .accordion-item');
+                        if (remainingPlayers.length === 0) {
+                            const playerAccordion = document.getElementById('player-accordion');
+                            if (playerAccordion) {
+                                const noPlayersMessage = document.createElement('div');
+                                noPlayersMessage.id = 'no-players-message';
+                                noPlayersMessage.className = 'text-center text-muted';
+                                noPlayersMessage.textContent = "No active players connected";
+                                playerAccordion.appendChild(noPlayersMessage);
+                            }
+                        }
+                    }, 500);
+                }
             } else {
                 alert('Failed to kick player: ' + (data.message || 'Unknown error'));
             }
@@ -150,9 +180,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Function to refresh players while preserving accordion open states
+    function refreshPlayersPreservingState() {
+        // Store which accordions are currently open
+        const openAccordions = [];
+        document.querySelectorAll('.accordion-collapse.show').forEach(el => {
+            const playerId = el.id.replace('collapse-', '');
+            if (playerId) {
+                openAccordions.push(playerId);
+            }
+        });
+        
+        // Fetch new player data
+        fetchPlayerData(openAccordions);
+    }
+
     // Fetch player data from API
-    async function fetchPlayerData() {
+    async function fetchPlayerData(openAccordions = []) {
         try {
+            // Get DOM elements with null checks
+            const playerAccordion = document.getElementById('player-accordion');
+            if (!playerAccordion) {
+                console.error('Error: player-accordion element not found in DOM');
+                return;
+            }
+            
+            // Only show loading indicator if we're not preserving state (initial load)
+            const noPlayersMessage = document.getElementById('no-players-message');
+            if (openAccordions.length === 0 && noPlayersMessage) {
+                noPlayersMessage.textContent = "Loading players...";
+                noPlayersMessage.style.display = 'block';
+            }
+            
             const response = await fetch('/api/admin/players', {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -168,52 +227,100 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const data = await response.json();
             
-            if (data.success) {
-                const playerAccordion = document.getElementById('player-accordion');
-                const noPlayersMessage = document.getElementById('no-players-message');
-                
-                // Clear existing player entries
+            // Clear existing player entries only after successful data fetch
+            if (openAccordions.length === 0) {
                 playerAccordion.innerHTML = '';
-                
-                if (data.players.length === 0) {
-                    noPlayersMessage.style.display = 'block';
-                    return;
+            } else {
+                // If preserving state, keep the existing message element if present
+                const existingMessage = document.getElementById('no-players-message');
+                playerAccordion.innerHTML = '';
+                if (existingMessage) {
+                    playerAccordion.appendChild(existingMessage);
                 }
+            }
+            
+            if (!data.success) {
+                console.error('API returned error:', data);
+                // Re-create no players message element (since we cleared the container)
+                const newMessage = document.createElement('div');
+                newMessage.id = 'no-players-message';
+                newMessage.className = 'text-center text-muted';
+                newMessage.textContent = "Error loading players: " + (data.message || "Unknown error");
+                playerAccordion.appendChild(newMessage);
+                return;
+            }
+            
+            console.log('Player data received:', data.players);
+            
+            if (!data.players || data.players.length === 0) {
+                // Re-create no players message element
+                const newMessage = document.createElement('div');
+                newMessage.id = 'no-players-message';
+                newMessage.className = 'text-center text-muted';
+                newMessage.textContent = "No active players connected";
+                playerAccordion.appendChild(newMessage);
+                return;
+            }
+            
+            // Add player entries - sort authenticated users first, then non-authenticated
+            const sortedPlayers = [...data.players].sort((a, b) => {
+                // Sort authenticated users first
+                if (a.authenticated && !b.authenticated) return -1;
+                if (!a.authenticated && b.authenticated) return 1;
+                // Then sort by username
+                return a.username.localeCompare(b.username);
+            });
+            
+            sortedPlayers.forEach((player, index) => {
+                const accordionItem = document.createElement('div');
+                accordionItem.className = 'accordion-item bg-dark border-secondary';
                 
-                noPlayersMessage.style.display = 'none';
+                const accordionHeader = document.createElement('h2');
+                accordionHeader.className = 'accordion-header';
+                accordionHeader.id = `heading-${player.id}`;
                 
-                // Add player entries
-                data.players.forEach((player, index) => {
-                    const accordionItem = document.createElement('div');
-                    accordionItem.className = 'accordion-item bg-dark border-secondary';
-                    
-                    const accordionHeader = document.createElement('h2');
-                    accordionHeader.className = 'accordion-header';
-                    accordionHeader.id = `heading-${player.id}`;
-                    
-                    const accordionButton = document.createElement('button');
-                    accordionButton.className = 'accordion-button bg-dark text-light collapsed';
-                    accordionButton.type = 'button';
-                    accordionButton.setAttribute('data-bs-toggle', 'collapse');
-                    accordionButton.setAttribute('data-bs-target', `#collapse-${player.id}`);
-                    accordionButton.setAttribute('aria-expanded', 'false');
-                    accordionButton.setAttribute('aria-controls', `collapse-${player.id}`);
-                    accordionButton.innerHTML = `
-                        <div class="d-flex justify-content-between align-items-center w-100">
-                            <span>${player.username}</span>
-                            <span class="badge bg-info ms-2">${player.health}</span>
-                        </div>
-                    `;
-                    
-                    accordionHeader.appendChild(accordionButton);
-                    
-                    const accordionCollapse = document.createElement('div');
-                    accordionCollapse.id = `collapse-${player.id}`;
-                    accordionCollapse.className = 'accordion-collapse collapse';
-                    accordionCollapse.setAttribute('aria-labelledby', `heading-${player.id}`);
-                    
-                    const accordionBody = document.createElement('div');
-                    accordionBody.className = 'accordion-body text-light';
+                const accordionButton = document.createElement('button');
+                
+                // Set the correct collapsed/expanded state based on previously open accordions
+                const isOpen = openAccordions.includes(player.id);
+                accordionButton.className = isOpen 
+                    ? 'accordion-button bg-dark text-light' 
+                    : 'accordion-button bg-dark text-light collapsed';
+                
+                accordionButton.type = 'button';
+                accordionButton.setAttribute('data-bs-toggle', 'collapse');
+                accordionButton.setAttribute('data-bs-target', `#collapse-${player.id}`);
+                accordionButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                accordionButton.setAttribute('aria-controls', `collapse-${player.id}`);
+                
+                // Show authentication status with different styling
+                const badgeClass = player.authenticated ? 'bg-info' : 'bg-warning text-dark';
+                const healthText = player.authenticated ? player.health : 'Login';
+                
+                accordionButton.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center w-100">
+                        <span>${player.username}${player.authenticated ? '' : ' <i>(not authenticated)</i>'}</span>
+                        <span class="badge ${badgeClass} ms-2">${healthText}</span>
+                    </div>
+                `;
+                
+                accordionHeader.appendChild(accordionButton);
+                
+                const accordionCollapse = document.createElement('div');
+                accordionCollapse.id = `collapse-${player.id}`;
+                
+                // Set the show class if this accordion was previously open
+                accordionCollapse.className = isOpen 
+                    ? 'accordion-collapse collapse show' 
+                    : 'accordion-collapse collapse';
+                
+                accordionCollapse.setAttribute('aria-labelledby', `heading-${player.id}`);
+                
+                const accordionBody = document.createElement('div');
+                accordionBody.className = 'accordion-body text-light';
+                
+                // Customize the display based on authentication status
+                if (player.authenticated) {
                     accordionBody.innerHTML = `
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -246,68 +353,113 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                     `;
-                    
-                    accordionCollapse.appendChild(accordionBody);
-                    
-                    accordionItem.appendChild(accordionHeader);
-                    accordionItem.appendChild(accordionCollapse);
-                    
-                    playerAccordion.appendChild(accordionItem);
-                });
+                } else {
+                    // Simpler display for non-authenticated users
+                    accordionBody.innerHTML = `
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <p><strong>Connection Status:</strong> <span class="badge bg-warning text-dark">Not Authenticated</span></p>
+                                <p><strong>Connected:</strong> ${new Date(player.connected).toLocaleString()}</p>
+                                <p><strong>IP Address:</strong> ${player.ip}</p>
+                                <p><strong>Connection Type:</strong> ${player.connectionType}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Current State:</strong> ${player.state}</p>
+                                <p><strong>Last Activity:</strong> ${new Date(player.lastActivity).toLocaleString()}</p>
+                                <p><strong>Idle Time:</strong> ${formatTime(player.idleTime)}</p>
+                                <div class="d-grid gap-2 mt-3">
+                                    <button class="btn btn-primary monitor-player mb-2" data-id="${player.id}" data-name="${player.username}">
+                                        <i class="bi bi-display"></i> Monitor Connection
+                                    </button>
+                                    <button class="btn btn-danger kick-player" data-id="${player.id}" data-name="${player.username}">
+                                        <i class="bi bi-x-circle"></i> Disconnect User
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
                 
-                // Add kick player button handlers
-                document.querySelectorAll('.kick-player').forEach(button => {
-                    button.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        
-                        const clientId = e.currentTarget.getAttribute('data-id');
-                        const playerName = e.currentTarget.getAttribute('data-name');
-                        
-                        document.getElementById('kick-player-name').textContent = playerName;
-                        kickClientId = clientId;
-                        
-                        kickPlayerModal.show();
-                    });
-                });
-
-                // Add monitor player button handlers
-                document.querySelectorAll('.monitor-player').forEach(button => {
-                    button.addEventListener('click', async (e) => {
-                        e.preventDefault();
-                        
-                        const clientId = e.currentTarget.getAttribute('data-id');
-                        const playerName = e.currentTarget.getAttribute('data-name');
-                        
-                        try {
-                            const response = await fetch(`/api/admin/players/${clientId}/monitor`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            });
-                            
-                            const data = await response.json();
-                            
-                            if (data.success) {
-                                // Switch to client tab using our custom function
-                                activateTab('#client-tab');
-                                
-                                // Start monitoring
-                                startMonitoring(clientId, playerName);
-                            } else {
-                                alert('Failed to monitor player: ' + (data.message || 'Unknown error'));
-                            }
-                        } catch (error) {
-                            console.error('Error monitoring player:', error);
-                            alert('Error monitoring player');
-                        }
-                    });
-                });
-            }
+                accordionCollapse.appendChild(accordionBody);
+                accordionItem.appendChild(accordionHeader);
+                accordionItem.appendChild(accordionCollapse);
+                playerAccordion.appendChild(accordionItem);
+            });
+            
+            // Add event handlers for the newly created buttons
+            attachPlayerButtonHandlers();
+            
         } catch (error) {
             console.error('Error fetching player data:', error);
+            
+            // Get player accordion with null check
+            const playerAccordion = document.getElementById('player-accordion');
+            if (!playerAccordion) {
+                console.error('Error: player-accordion element not found in DOM');
+                return;
+            }
+            
+            // Always recreate the message element to avoid null reference
+            playerAccordion.innerHTML = '';
+            const errorMessage = document.createElement('div');
+            errorMessage.id = 'no-players-message';
+            errorMessage.className = 'text-center text-muted';
+            errorMessage.textContent = "Error loading players: " + error.message;
+            playerAccordion.appendChild(errorMessage);
         }
+    }
+
+    // Function to attach event handlers to player buttons
+    function attachPlayerButtonHandlers() {
+        // Add kick player button handlers
+        document.querySelectorAll('.kick-player').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                const clientId = e.currentTarget.getAttribute('data-id');
+                const playerName = e.currentTarget.getAttribute('data-name');
+                
+                document.getElementById('kick-player-name').textContent = playerName;
+                kickClientId = clientId;
+                
+                kickPlayerModal.show();
+            });
+        });
+
+        // Add monitor player button handlers
+        document.querySelectorAll('.monitor-player').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                e.preventDefault();
+                
+                const clientId = e.currentTarget.getAttribute('data-id');
+                const playerName = e.currentTarget.getAttribute('data-name');
+                
+                try {
+                    const response = await fetch(`/api/admin/players/${clientId}/monitor`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Switch to client tab using our custom function
+                        activateTab('#client-tab');
+                        
+                        // Start monitoring
+                        startMonitoring(clientId, playerName);
+                    } else {
+                        alert('Failed to monitor player: ' + (data.message || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error monitoring player:', error);
+                    alert('Error monitoring player: ' + error.message);
+                }
+            });
+        });
     }
 
     // Monitor player functionality

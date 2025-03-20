@@ -89,21 +89,27 @@ export function kickPlayer(clients: Map<string, any>) {
 
 export function getPlayerDetails(clients: Map<string, any>, userManager: any) {
   return (req: Request, res: Response) => {
+    // Get all connected clients, both authenticated and unauthenticated
     const players = Array.from(clients.entries())
-      .filter(([_, client]) => client.authenticated && client.user)
-      .map(([id, client]) => ({
-        id,
-        username: client.user.username,
-        connected: new Date(client.connectedAt).toISOString(),
-        ip: client.connection.remoteAddress || 'unknown',
-        connectionType: client.connection.getType(),
-        currentRoom: client.user.currentRoomId,
-        health: `${client.user.health}/${client.user.maxHealth}`,
-        level: client.user.level,
-        experience: client.user.experience,
-        lastActivity: client.lastActivity ? new Date(client.lastActivity).toISOString() : 'unknown',
-        idleTime: client.lastActivity ? Math.floor((Date.now() - client.lastActivity) / 1000) : 0
-      }));
+      .map(([id, client]) => {
+        const isAuthenticated = client.authenticated && client.user;
+        
+        return {
+          id,
+          username: isAuthenticated ? client.user.username : (client.tempUsername || `Guest-${id.substring(0, 8)}`),
+          authenticated: !!isAuthenticated,
+          connected: new Date(client.connectedAt).toISOString(),
+          ip: client.connection.remoteAddress || 'unknown',
+          connectionType: client.connection.getType(),
+          currentRoom: isAuthenticated ? client.user.currentRoomId : 'Not in game',
+          health: isAuthenticated ? `${client.user.health}/${client.user.maxHealth}` : 'N/A',
+          level: isAuthenticated ? client.user.level : 'N/A',
+          experience: isAuthenticated ? client.user.experience : 'N/A',
+          lastActivity: client.lastActivity ? new Date(client.lastActivity).toISOString() : 'unknown',
+          idleTime: client.lastActivity ? Math.floor((Date.now() - client.lastActivity) / 1000) : 0,
+          state: client.state || 'Unknown'
+        };
+      });
     
     res.json({ success: true, players });
   };
