@@ -36,17 +36,7 @@ export interface ConnectedClient {
   authenticated: boolean;
   buffer: string;
   state: ClientStateType;
-  stateData: {
-    maskInput?: boolean;
-    username?: string;
-    password?: string;
-    awaitingPassword?: boolean;
-    offerSignup?: boolean;
-    transitionTo?: ClientStateType;
-    waitingForTransfer?: boolean; // Flag to indicate this client is waiting for transfer approval
-    transferredSession?: boolean; // Flag to indicate this session was transferred from another
-    [key: string]: any;
-  };
+  stateData: Record<string, any>;
   
   // For output buffering
   isTyping: boolean;
@@ -55,6 +45,10 @@ export interface ConnectedClient {
   // Add connectedAt and lastActivity properties
   connectedAt: number;
   lastActivity: number;
+  
+  // Add monitoring-related properties
+  isBeingMonitored?: boolean;
+  adminMonitorSocket?: any; // Using any for now but we'll type it more specifically
 }
 
 export type StateHandler = (client: ConnectedClient, input: string) => void;

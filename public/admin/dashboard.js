@@ -18,12 +18,27 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchPlayerData();
     });
 
-    // Setup tab behavior
-    const tabLinks = document.querySelectorAll('.nav-link');
-    tabLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            tabLinks.forEach(l => l.classList.remove('active'));
-            e.target.classList.add('active');
+    // Custom tab handling - completely replace Bootstrap's tab system
+    function activateTab(tabId) {
+        // Update tab nav links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        document.querySelector(`[data-tab-target="${tabId}"]`).classList.add('active');
+        
+        // Update tab panes
+        document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.remove('show', 'active');
+        });
+        document.querySelector(tabId).classList.add('show', 'active');
+    }
+    
+    // Set up tab click handlers
+    document.querySelectorAll('[data-tab-target]').forEach(tabLink => {
+        tabLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const target = e.currentTarget.getAttribute('data-tab-target');
+            activateTab(target);
         });
     });
 
@@ -220,7 +235,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <p><strong>Idle Time:</strong> ${formatTime(player.idleTime)}</p>
                             </div>
                             <div class="col-md-6">
-                                <div class="d-grid">
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary monitor-player mb-2" data-id="${player.id}" data-name="${player.username}">
+                                        <i class="bi bi-display"></i> Monitor Player
+                                    </button>
                                     <button class="btn btn-danger kick-player" data-id="${player.id}" data-name="${player.username}">
                                         <i class="bi bi-x-circle"></i> Kick Player
                                     </button>
@@ -251,9 +269,180 @@ document.addEventListener('DOMContentLoaded', () => {
                         kickPlayerModal.show();
                     });
                 });
+
+                // Add monitor player button handlers
+                document.querySelectorAll('.monitor-player').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        
+                        const clientId = e.currentTarget.getAttribute('data-id');
+                        const playerName = e.currentTarget.getAttribute('data-name');
+                        
+                        try {
+                            const response = await fetch(`/api/admin/players/${clientId}/monitor`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.success) {
+                                // Switch to client tab using our custom function
+                                activateTab('#client-tab');
+                                
+                                // Start monitoring
+                                startMonitoring(clientId, playerName);
+                            } else {
+                                alert('Failed to monitor player: ' + (data.message || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            console.error('Error monitoring player:', error);
+                            alert('Error monitoring player');
+                        }
+                    });
+                });
             }
         } catch (error) {
             console.error('Error fetching player data:', error);
         }
     }
+
+    // Monitor player functionality
+    let monitorSocket = null;
+    let currentlyMonitoringId = null;
+
+    function startMonitoring(clientId, playerName) {
+        // If already monitoring someone, disconnect first
+        if (monitorSocket) {
+            monitorSocket.disconnect();
+        }
+        
+        // Update the monitoring interface
+        const monitorInfo = document.getElementById('monitor-info');
+        monitorInfo.innerHTML = `Monitoring: <span class="text-warning">${playerName}</span>`;
+        monitorInfo.classList.remove('d-none');
+        
+        document.getElementById('stop-monitoring').classList.remove('d-none');
+        document.getElementById('admin-command-form').classList.remove('d-none');
+        
+        // Clear previous terminal content
+        const terminal = document.getElementById('monitor-terminal');
+        terminal.innerHTML = '';
+        
+        // Store currently monitoring client id
+        currentlyMonitoringId = clientId;
+        
+        // Connect to Socket.IO for monitoring
+        monitorSocket = io();
+        
+        monitorSocket.on('connect', () => {
+            // Send monitoring request with authentication
+            monitorSocket.emit('monitor-user', {
+                clientId: clientId,
+                token: token
+            });
+        });
+        
+        monitorSocket.on('monitor-connected', (data) => {
+            addToMonitorTerminal(`Connected to ${data.username}'s session.\n`, 'system');
+        });
+        
+        monitorSocket.on('monitor-output', (message) => {
+            addToMonitorTerminal(convertAnsiToHtml(message.data));
+        });
+        
+        monitorSocket.on('monitor-error', (error) => {
+            addToMonitorTerminal(`Error: ${error.message}\n`, 'error');
+        });
+        
+        monitorSocket.on('disconnect', () => {
+            addToMonitorTerminal('Disconnected from monitoring session.\n', 'system');
+        });
+    }
+
+    // Add output to the monitoring terminal
+    function addToMonitorTerminal(text, className = '') {
+        const terminal = document.getElementById('monitor-terminal');
+        const span = document.createElement('span');
+        span.className = className;
+        span.innerHTML = text;
+        terminal.appendChild(span);
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    // Convert ANSI escape sequences to HTML
+    function convertAnsiToHtml(text) {
+        // Replace common ANSI escape codes with HTML
+        // First handle line breaks and special characters
+        let html = text
+            .replace(/\n/g, '<br>')
+            .replace(/\r/g, '')
+            .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+        
+        // Handle basic ANSI color codes
+        // This is a simplified implementation - a full implementation would handle more codes
+        
+        // Reset color
+        html = html.replace(/\x1B\[0m/g, '</span>');
+        
+        // Text colors
+        html = html.replace(/\x1B\[30m/g, '<span style="color:#000000">'); // Black
+        html = html.replace(/\x1B\[31m/g, '<span style="color:#ff0000">'); // Red
+        html = html.replace(/\x1B\[32m/g, '<span style="color:#00ff00">'); // Green
+        html = html.replace(/\x1B\[33m/g, '<span style="color:#ffff00">'); // Yellow
+        html = html.replace(/\x1B\[34m/g, '<span style="color:#0000ff">'); // Blue
+        html = html.replace(/\x1B\[35m/g, '<span style="color:#ff00ff">'); // Magenta
+        html = html.replace(/\x1B\[36m/g, '<span style="color:#00ffff">'); // Cyan
+        html = html.replace(/\x1B\[37m/g, '<span style="color:#ffffff">'); // White
+        
+        // Bright colors
+        html = html.replace(/\x1B\[1;30m/g, '<span style="color:#808080">'); // Bright Black
+        html = html.replace(/\x1B\[1;31m/g, '<span style="color:#ff5555">'); // Bright Red
+        html = html.replace(/\x1B\[1;32m/g, '<span style="color:#55ff55">'); // Bright Green
+        html = html.replace(/\x1B\[1;33m/g, '<span style="color:#ffff55">'); // Bright Yellow
+        html = html.replace(/\x1B\[1;34m/g, '<span style="color:#5555ff">'); // Bright Blue
+        html = html.replace(/\x1B\[1;35m/g, '<span style="color:#ff55ff">'); // Bright Magenta
+        html = html.replace(/\x1B\[1;36m/g, '<span style="color:#55ffff">'); // Bright Cyan
+        html = html.replace(/\x1B\[1;37m/g, '<span style="color:#ffffff">'); // Bright White
+        
+        // Clean up any remaining ANSI sequences
+        html = html.replace(/\x1B\[\d+(;\d+)*m/g, '');
+        
+        return html;
+    }
+
+    // Handle stop monitoring button
+    document.getElementById('stop-monitoring').addEventListener('click', () => {
+        if (monitorSocket) {
+            monitorSocket.disconnect();
+            monitorSocket = null;
+        }
+        
+        document.getElementById('monitor-info').classList.add('d-none');
+        document.getElementById('stop-monitoring').classList.add('d-none');
+        document.getElementById('admin-command-form').classList.add('d-none');
+        currentlyMonitoringId = null;
+    });
+
+    // Handle admin commands
+    document.getElementById('admin-command-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const commandInput = document.getElementById('admin-command-input');
+        const command = commandInput.value;
+        
+        if (command && monitorSocket && currentlyMonitoringId) {
+            // Send the command
+            monitorSocket.emit('admin-command', {
+                clientId: currentlyMonitoringId,
+                command: command
+            });
+            
+            // Clear the input
+            commandInput.value = '';
+        }
+    });
 });

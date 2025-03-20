@@ -1,16 +1,16 @@
 import { ConnectedClient } from '../types';
-import { writeCommandPrompt } from './promptFormatter';
+import { writeCommandPrompt, getPromptText } from './promptFormatter';
 
 /**
  * Writes data to the client connection, buffering if the client is currently typing
  */
 export function writeToClient(client: ConnectedClient, data: string): void {
-  if (client.isTyping) {
-    // Buffer the output
-    client.outputBuffer.push(data);
-  } else {
-    // Direct write
-    client.connection.write(data);
+  // Always write to the actual client
+  client.connection.write(data);
+  
+  // If this client is being monitored, also send to the admin
+  if (client.isBeingMonitored && client.adminMonitorSocket) {
+    client.adminMonitorSocket.emit('monitor-output', { data });
   }
 }
 
@@ -18,37 +18,30 @@ export function writeToClient(client: ConnectedClient, data: string): void {
  * Writes data to client, erasing and restoring the command prompt if necessary
  * This is used for real-time messages like chat or system notifications
  */
-export function writeMessageToClient(client: ConnectedClient, data: string): void {
-  if (!client.authenticated || !client.user) {
-    // For non-authenticated users, just use the standard method
-    writeToClient(client, data);
-    return;
-  }
-
-  if (client.isTyping) {
-    // If typing, just buffer the output for later
-    client.outputBuffer.push(data);
-  } else {
-    // Handle websocket and telnet connections differently
-    if (client.connection.getType() === 'websocket') {
-      // For WebSockets, we need more explicit handling
-      client.connection.write('\r\n' + data); // Add an explicit newline before the message
-      writeCommandPrompt(client);
-    } else {
-      // For telnet connections, use the standard approach
-      if (client.state === 'authenticated') {
-        // First move to the beginning of the line and clear it
-        client.connection.write('\r');
-        
-        // Write the actual message
-        client.connection.write(data);
-        
-        // Redraw the prompt
-        writeCommandPrompt(client);
-      } else {
-        client.connection.write(data);
-      }
+export function writeMessageToClient(client: ConnectedClient, message: string): void {
+  // If the client is currently typing (has a prompt displayed)
+  if (client.isTyping && client.buffer.length > 0) {
+    // Save current input
+    const currentInput = client.buffer;
+    const promptLength = getPromptText(client).length;
+    
+    // Clear the current line
+    client.connection.write('\r' + ' '.repeat(promptLength + currentInput.length) + '\r');
+    
+    // Write the message
+    writeToClient(client, message);
+    
+    // Restore the prompt and current input
+    const promptText = getPromptText(client);
+    writeToClient(client, promptText + currentInput);
+    
+    // Buffer the message for later if we're in a buffering state
+    if (client.isTyping) {
+      client.outputBuffer.push(message);
     }
+  } else {
+    // Just write the message directly
+    writeToClient(client, message);
   }
 }
 

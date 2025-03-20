@@ -6,6 +6,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
+import jwt from 'jsonwebtoken'; // Add this import
 import { ConnectedClient, ClientStateType, ServerStats } from './types';
 import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
@@ -26,6 +27,9 @@ const userManager = new UserManager();
 const clients = new Map<string, ConnectedClient>();
 const commandHandler = new CommandHandler(clients, userManager);
 const stateMachine = new StateMachine(userManager, clients); // Add clients parameter
+
+// Secret key for JWT tokens - same as in adminApi.ts
+const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
 
 // Create server statistics
 const serverStats: ServerStats = {
@@ -61,6 +65,7 @@ app.post('/api/admin/login', AdminApi.login);
 app.get('/api/admin/stats', AdminApi.validateToken, AdminApi.getServerStats(serverStats));
 app.get('/api/admin/players', AdminApi.validateToken, AdminApi.getPlayerDetails(clients, userManager));
 app.post('/api/admin/players/:clientId/kick', AdminApi.validateToken, AdminApi.kickPlayer(clients));
+app.post('/api/admin/players/:clientId/monitor', AdminApi.validateToken, AdminApi.monitorPlayer(clients));
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -81,6 +86,91 @@ io.on('connection', (socket) => {
   
   // Track total connections
   serverStats.totalConnections++;
+  
+  // Handle monitoring requests
+  socket.on('monitor-user', (data) => {
+    const { clientId, token } = data;
+    
+    // Verify admin token
+    jwt.verify(token, JWT_SECRET, (err: jwt.VerifyErrors | null, decoded: any) => {
+      if (err) {
+        socket.emit('monitor-error', { message: 'Authentication failed' });
+        return;
+      }
+      
+      const client = clients.get(clientId);
+      if (!client) {
+        socket.emit('monitor-error', { message: 'Client not found' });
+        return;
+      }
+      
+      // Store the admin socket for this client
+      client.adminMonitorSocket = socket;
+      client.isBeingMonitored = true;
+      
+      // Send initial data to the admin
+      socket.emit('monitor-connected', { 
+        username: client.user ? client.user.username : 'Unknown',
+        message: 'Monitoring session established'
+      });
+      
+      // Send current room description if user is authenticated
+      if (client.authenticated && client.user) {
+        const roomManager = RoomManager.getInstance(clients);
+        const room = roomManager.getRoom(client.user.currentRoomId);
+        if (room) {
+          socket.emit('monitor-output', { 
+            data: `\r\n${colorize(`Current location: ${client.user.currentRoomId}`, 'cyan')}\r\n${room.getDescription()}\r\n` 
+          });
+        }
+      }
+      
+      // Set up handler for admin commands
+      socket.on('admin-command', (commandData) => {
+        if (commandData.clientId === clientId && client.authenticated) {
+          // Process the command as if it came from the user
+          const commandStr = commandData.command;
+          
+          // Echo the command to admin's terminal
+          socket.emit('monitor-output', { data: `${colorize('> ' + commandStr, 'green')}\r\n` });
+          
+          // If the user is currently typing something, clear their input first
+          if (client.buffer.length > 0) {
+            // Get the current prompt length
+            const promptText = getPromptText(client);
+            const promptLength = promptText.length;
+            
+            // Clear the entire line and return to beginning
+            client.connection.write('\r' + ' '.repeat(promptLength + client.buffer.length) + '\r');
+            
+            // Redisplay the prompt (since we cleared it as well)
+            client.connection.write(promptText);
+            
+            // Clear the buffer
+            client.buffer = '';
+          }
+          
+          // Pause briefly to ensure the line is cleared
+          setTimeout(() => {
+            // Simulate the user typing this command by sending each character
+            for (const char of commandStr) {
+              handleClientData(client, char);
+            }
+            // Send enter key to execute the command
+            handleClientData(client, '\r');
+          }, 50);
+        }
+      });
+      
+      // Handle admin disconnect
+      socket.on('disconnect', () => {
+        if (client && client.adminMonitorSocket === socket) {
+          delete client.adminMonitorSocket;
+          client.isBeingMonitored = false;
+        }
+      });
+    });
+  });
 });
 
 // Create TELNET server
@@ -184,6 +274,24 @@ function handleClientData(client: ConnectedClient, data: string): void {
   
   // Debugging - uncomment if needed
   // console.log('Input data:', data.split('').map(c => c.charCodeAt(0).toString(16)).join(' '));
+  
+  // Handle Ctrl+U (ASCII code 21) - clear entire input line
+  if (data === '\u0015') {
+    if (client.buffer.length > 0) {
+      // Calculate how many backspaces are needed to clear the current input
+      const backspaces = '\b \b'.repeat(client.buffer.length);
+      
+      // Send backspaces to clear the user's current input
+      client.connection.write(backspaces);
+      
+      // Clear the buffer
+      client.buffer = '';
+      
+      // If buffer becomes empty, flush any buffered output
+      stopBuffering(client);
+    }
+    return;
+  }
   
   // Handle backspace - check for both BS char and DEL char since clients may send either
   if (data === '\b' || data === '\x7F') {
@@ -404,6 +512,17 @@ function broadcastSystemMessage(message: string, excludeClient?: ConnectedClient
       writeMessageToClient(client, colorize(message + '\r\n', 'bright'));
     }
   });
+}
+
+// Modify the writeToClient function to also send output to monitoring admins
+function writeToClient(client: ConnectedClient, data: string): void {
+  // Always write to the actual client
+  client.connection.write(data);
+  
+  // If this client is being monitored, also send to the admin
+  if (client.isBeingMonitored && client.adminMonitorSocket) {
+    client.adminMonitorSocket.emit('monitor-output', { data });
+  }
 }
 
 // Start the servers

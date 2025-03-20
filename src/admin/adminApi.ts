@@ -108,3 +108,37 @@ export function getPlayerDetails(clients: Map<string, any>, userManager: any) {
     res.json({ success: true, players });
   };
 }
+
+export function monitorPlayer(clients: Map<string, any>) {
+  return (req: Request, res: Response) => {
+    const { clientId } = req.params;
+    
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'Client ID is required' });
+    }
+    
+    const client = clients.get(clientId);
+    
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+    
+    try {
+      // Get username for response
+      const username = client.user ? client.user.username : 'Unknown';
+      
+      // Set a flag on the client to indicate it's being monitored
+      client.isBeingMonitored = true;
+      
+      res.json({ 
+        success: true, 
+        message: 'Monitoring session established',
+        username: username,
+        clientId: clientId
+      });
+    } catch (error) {
+      console.error('Error setting up monitoring:', error);
+      res.status(500).json({ success: false, message: 'Failed to set up monitoring' });
+    }
+  };
+}

@@ -203,3 +203,27 @@ body {
 .player-list-header span {
     font-size: 0.8rem;
 }
+
+/* Monitoring terminal styles */
+#monitor-terminal {
+    height: 500px;
+    overflow-y: auto;
+    background-color: #000;
+    font-family: 'Courier New', monospace;
+    color: #ccc;
+    white-space: pre-wrap;
+    padding: 10px;
+}
+
+#monitor-terminal .system {
+    color: #3498db;
+}
+
+#monitor-terminal .error {
+    color: #e74c3c;
+}
+
+/* Command input styling */
+#admin-command-input {
+    font-family: 'Courier New', monospace;
+}
