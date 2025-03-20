@@ -7,13 +7,14 @@ export interface IConnection extends EventEmitter {
   
   // Connection information
   getId(): string;
-  getType(): 'telnet' | 'websocket';
+  getType(): string;
   
   // Specific options for different connection types
   setMaskInput(mask: boolean): void;
   
   // Raw socket/connection access if needed by implementation
   getRawConnection(): any;
+  remoteAddress?: string;
 }
 
 export interface ConnectionEvents {

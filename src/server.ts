@@ -3,7 +3,10 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { Server as SocketIOServer } from 'socket.io';
-import { ConnectedClient, ClientStateType } from './types';
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import { ConnectedClient, ClientStateType, ServerStats } from './types';
 import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
 import { StateMachine } from './state/stateMachine';
@@ -14,6 +17,7 @@ import { SocketIOConnection } from './connection/socketio.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
 import { formatUsername } from './utils/formatters';
 import { RoomManager } from './room/roomManager';
+import * as AdminApi from './admin/adminApi';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -22,73 +26,74 @@ const clients = new Map<string, ConnectedClient>();
 const commandHandler = new CommandHandler(clients, userManager);
 const stateMachine = new StateMachine(userManager, clients); // Add clients parameter
 
-// Create the HTTP server for Socket.IO
-const httpServer = http.createServer((req, res) => {
-  // Serve static files from the public directory
-  const publicPath = path.join(__dirname, '..', 'public');
-  let filePath = path.join(publicPath, req.url === '/' ? 'index.html' : req.url || '');
-  
-  // Get file extension
-  const extname = String(path.extname(filePath)).toLowerCase();
-  
-  // Map file extensions to MIME types
-  const mimeTypes: {[key: string]: string} = {
-    '.html': 'text/html',
-    '.js': 'text/javascript',
-    '.css': 'text/css',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-  };
-
-  // Set default content type
-  let contentType = mimeTypes[extname] || 'application/octet-stream';
-
-  // Read file and serve it
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
-      if(error.code === 'ENOENT') {
-        // Page not found
-        res.writeHead(404);
-        res.end('404 Not Found');
-      } else {
-        // Server error
-        res.writeHead(500);
-        res.end(`Server Error: ${error.code}`);
-      }
-    } else {
-      // Success
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content, 'utf-8');
-    }
-  });
-});
-
-// Create the Socket.IO server
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+// Create server statistics
+const serverStats: ServerStats = {
+  startTime: new Date(),
+  uptime: 0,
+  connectedClients: 0,
+  authenticatedUsers: 0,
+  totalConnections: 0,
+  totalCommands: 0,
+  memoryUsage: {
+    rss: 0,
+    heapTotal: 0,
+    heapUsed: 0,
+    external: 0
   }
-});
+};
 
-// Handle Socket.IO connections
+// Update server stats every 5 seconds
+setInterval(() => {
+  serverStats.uptime = Math.floor((Date.now() - serverStats.startTime.getTime()) / 1000);
+  serverStats.connectedClients = clients.size;
+  serverStats.authenticatedUsers = Array.from(clients.values()).filter(c => c.authenticated).length;
+  serverStats.memoryUsage = process.memoryUsage();
+}, 5000);
+
+// Create the Express app for the HTTP server
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+
+// Admin API routes
+app.post('/api/admin/login', AdminApi.login);
+app.get('/api/admin/stats', AdminApi.validateToken, AdminApi.getServerStats(serverStats));
+app.get('/api/admin/players', AdminApi.validateToken, AdminApi.getPlayerDetails(clients, userManager));
+app.post('/api/admin/players/:clientId/kick', AdminApi.validateToken, AdminApi.kickPlayer(clients));
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Create the HTTP server with the Express app
+const httpServer = http.createServer(app);
+
+// Create Socket.IO server for WebSocket connections
+const io = new SocketIOServer(httpServer);
+
+// Add Socket.IO handler
 io.on('connection', (socket) => {
   console.log(`Socket.IO client connected: ${socket.id}`);
   
+  // Create our custom connection wrapper
   const connection = new SocketIOConnection(socket);
   setupClient(connection);
+  
+  // Track total connections
+  serverStats.totalConnections++;
 });
 
-// Create the TELNET server
-const telnetServer = net.createServer((socket) => {
+// Create TELNET server
+const telnetServer = net.createServer(socket => {
+  console.log(`TELNET client connected: ${socket.remoteAddress}`);
+  
+  // Create our custom connection wrapper
   const connection = new TelnetConnection(socket);
-  console.log(`TELNET client connected: ${connection.getId()}`);
   
   // TelnetConnection class now handles all the TELNET negotiation
   setupClient(connection);
+  
+  // Track total connections
+  serverStats.totalConnections++;
 });
 
 // Shared client setup function
@@ -102,7 +107,9 @@ function setupClient(connection: IConnection): void {
     state: ClientStateType.CONNECTING,
     stateData: {},
     isTyping: false,
-    outputBuffer: []
+    outputBuffer: [],
+    connectedAt: Date.now(), // Add connectedAt property
+    lastActivity: Date.now()  // Add lastActivity property
   };
   
   const clientId = connection.getId();
@@ -113,7 +120,7 @@ function setupClient(connection: IConnection): void {
   
   // Handle data from client
   connection.on('data', (data) => {
-    // All connections should use the buffered approach, regardless of type
+    client.lastActivity = Date.now(); // Update lastActivity on data received
     handleClientData(client, data);
   });
   
@@ -127,7 +134,6 @@ function setupClient(connection: IConnection): void {
     }
     
     // Only unregister if the client is still authenticated
-    // This prevents unregistering a session that was already handed over via transfer
     if (client.user && client.authenticated) {
       // Remove player from all rooms when they disconnect
       const username = client.user.username;
@@ -320,6 +326,9 @@ function handleDownArrow(client: ConnectedClient): void {
 }
 
 function processInput(client: ConnectedClient, input: string): void {
+  // Command tracking for stats
+  serverStats.totalCommands++;
+  
   // Trim whitespace from beginning and end of input
   const trimmedInput = input.trim();
   
@@ -376,7 +385,8 @@ telnetServer.listen(TELNET_PORT, () => {
 });
 
 httpServer.listen(WS_PORT, () => {
-  console.log(`Socket.IO server running on port ${WS_PORT}`);
+  console.log(`HTTP and Socket.IO server running on port ${WS_PORT}`);
+  console.log(`Admin interface available at http://localhost:${WS_PORT}/admin`);
 });
 
 console.log(`Make sure you have the following state files configured correctly:`);

@@ -19,22 +19,11 @@
     
     // Initialize terminal
     function initTerminal() {
-        // Make terminal focusable
-        terminalOutput.tabIndex = 0;
-        terminalOutput.focus();
-        
-        // Add cursor to initial output
-        appendCursor();
-        
-        // Event listeners
-        terminalOutput.addEventListener('keydown', handleKeyDown);
-        terminalOutput.addEventListener('focus', () => { isFocused = true; cursor.style.display = 'inline-block'; });
-        terminalOutput.addEventListener('blur', () => { isFocused = false; cursor.style.display = 'none'; });
-        
-        // Click on terminal focuses it
-        document.querySelector('.terminal-container').addEventListener('click', () => {
+        terminalOutput.appendChild(cursor);
+        terminalOutput.addEventListener('click', () => {
             terminalOutput.focus();
         });
+        terminalOutput.addEventListener('keydown', handleKeyDown);
     }
     
     // Append cursor to terminal output
@@ -101,69 +90,38 @@
     
     // Add output to the terminal
     function addOutput(text, className = '') {
-        // Remove the cursor first
-        if (cursor.parentNode === terminalOutput) {
-            terminalOutput.removeChild(cursor);
-        }
-        
-        // Check for clear command
-        if (text.includes('<!-- clear -->')) {
-            terminalOutput.innerHTML = '';
-            text = text.replace('<!-- clear -->', '');
-        }
-        
-        // Process text as HTML or create text node
-        if (text.includes('<span') || text.includes('<br')) {
-            // Text contains HTML (from ANSI conversion)
-            const temp = document.createElement('div');
-            temp.innerHTML = text;
-            
-            // Add all child nodes to output
-            while (temp.firstChild) {
-                terminalOutput.appendChild(temp.firstChild);
-            }
-        } else {
-            // Simple text node
-            const textNode = document.createTextNode(text);
-            terminalOutput.appendChild(textNode);
-        }
-        
-        // Re-add cursor
+        const span = document.createElement('span');
+        span.className = className;
+        span.innerHTML = text;
+        terminalOutput.insertBefore(span, cursor);
         appendCursor();
-        
-        // Scroll to bottom
         terminalOutput.scrollTop = terminalOutput.scrollHeight;
     }
     
     // Delete the last character from the terminal
     function deleteLastCharacter() {
-        // Get the last text node before the cursor
-        let lastNode = cursor.previousSibling;
+        const lastChild = terminalOutput.lastChild;
+        if (lastChild && lastChild !== cursor) {
+            terminalOutput.removeChild(lastChild);
+        }
+    }
+    
+    // Handle keyboard events
+    function handleKeyDown(e) {
+        if (!connected) return;
         
-        if (lastNode && lastNode.nodeType === Node.TEXT_NODE) {
-            // Text node - remove last character
-            if (lastNode.textContent.length > 0) {
-                lastNode.textContent = lastNode.textContent.slice(0, -1);
-            }
-            
-            // If empty, remove the node
-            if (lastNode.textContent === '') {
-                terminalOutput.removeChild(lastNode);
-            }
-        } else if (lastNode && lastNode.nodeType === Node.ELEMENT_NODE) {
-            // Element node (like a span) - more complex
-            if (lastNode.textContent.length > 0) {
-                // For simplicity, just remove the last character from text content
-                lastNode.textContent = lastNode.textContent.slice(0, -1);
-                
-                // If empty, remove the node
-                if (lastNode.textContent === '') {
-                    terminalOutput.removeChild(lastNode);
-                }
-            } else {
-                // Empty element, remove it
-                terminalOutput.removeChild(lastNode);
-            }
+        const key = e.key;
+        
+        if (key === 'Enter') {
+            sendKeypress('\r');
+        } else if (key === 'Backspace') {
+            sendKeypress('\b');
+        } else if (key === 'ArrowUp') {
+            sendKeypress('up', 'special');
+        } else if (key === 'ArrowDown') {
+            sendKeypress('down', 'special');
+        } else if (key.length === 1) {
+            sendKeypress(key);
         }
     }
     
@@ -178,72 +136,6 @@
             socket.emit('special', { key: key });
         } else {
             socket.emit('keypress', key);
-        }
-    }
-    
-    // Handle keyboard events
-    function handleKeyDown(e) {
-        if (!isFocused) return;
-        
-        // Always prevent default to avoid browser actions
-        e.preventDefault();
-        
-        // Handle special keys
-        switch (e.key) {
-            case 'Enter':
-                // Send enter key
-                sendKeypress('\r\n', 'special');
-                
-                // Add to history if line is not empty
-                if (lineBuffer.trim() && (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== lineBuffer)) {
-                    commandHistory.push(lineBuffer);
-                }
-                
-                // Reset history index
-                historyIndex = -1;
-                break;
-                
-            case 'Backspace':
-                if (lineBuffer.length > 0) {
-                    // Send backspace to server
-                    sendKeypress('\b', 'special');
-                    // Update local buffer (server will echo back the result)
-                    lineBuffer = lineBuffer.substring(0, lineBuffer.length - 1);
-                }
-                break;
-                
-            case 'ArrowUp':
-                // Try different formats that different telnet clients might understand
-                sendKeypress('\u001b[A', 'special');
-                break;
-                
-            case 'ArrowDown':
-                // Try different formats that different telnet clients might understand
-                sendKeypress('\u001b[B', 'special');
-                break;
-                
-            case 'Tab':
-                sendKeypress('\t', 'special');
-                break;
-                
-            case 'Escape':
-                sendKeypress('ESC', 'special');
-                break;
-                
-            default:
-                // Handle control keys
-                if (e.ctrlKey || e.altKey) {
-                    const ctrlKey = e.key.toLowerCase();
-                    if (ctrlKey.length === 1) {
-                        sendKeypress(`CTRL+${ctrlKey}`, 'special');
-                    }
-                } 
-                // Handle printable characters
-                else if (e.key.length === 1) {
-                    sendKeypress(e.key);
-                    lineBuffer += e.key;
-                }
-                break;
         }
     }
     

@@ -1,63 +1,49 @@
-import { EventEmitter } from 'events';
 import { Socket } from 'socket.io';
+import { EventEmitter } from 'events';
 import { IConnection } from './interfaces/connection.interface';
 
 export class SocketIOConnection extends EventEmitter implements IConnection {
+  private socket: Socket;
   private id: string;
   private maskInput: boolean = false;
 
-  constructor(private socket: Socket) {
+  constructor(socket: Socket) {
     super();
-    this.id = `socketio:${socket.id}`;
-    
-    // Set up event listeners
-    socket.on('input', (data: string) => this.emit('data', data));
-    socket.on('keypress', (data: string) => this.emit('data', data));
-    socket.on('special', (data: { key: string }) => this.emit('data', data.key));
-    socket.on('disconnect', () => this.emit('end'));
-    socket.on('error', (err: Error) => this.emit('error', err));
+    this.socket = socket;
+    this.id = socket.id;
+    this.setupListeners();
   }
 
-  write(data: string): void {
-    // Convert ANSI color codes to HTML for web clients
-    const htmlData = this.convertAnsiToHtml(data);
-    
-    // Single character or special sequences (echo)
-    if (data.length === 1 || data === '\b \b' || data === '\r\n') {
-      this.socket.emit('echo', { char: data });
-    } else {
-      // Full output
-      this.socket.emit('output', { 
-        data: htmlData,
-        mask: this.maskInput 
-      });
-    }
-  }
+  private setupListeners(): void {
+    // Handle keypress events from the client
+    this.socket.on('keypress', (data) => {
+      this.emit('data', data);
+    });
 
-  end(): void {
-    this.socket.disconnect();
-  }
+    // Handle special key events
+    this.socket.on('special', (data) => {
+      // For arrow keys and other special inputs
+      if (data.key === 'up') {
+        this.emit('data', '\u001b[A');
+      } else if (data.key === 'down') {
+        this.emit('data', '\u001b[B');
+      }
+    });
 
-  getId(): string {
-    return this.id;
-  }
+    // Handle disconnect
+    this.socket.on('disconnect', () => {
+      this.emit('end');
+    });
 
-  getType(): 'telnet' | 'websocket' {
-    return 'websocket'; // We use the same type for backward compatibility
-  }
-
-  setMaskInput(mask: boolean): void {
-    this.maskInput = mask;
-    this.socket.emit('mask', { mask });
-  }
-
-  getRawConnection(): Socket {
-    return this.socket;
+    // Handle errors
+    this.socket.on('error', (err) => {
+      this.emit('error', err);
+    });
   }
 
   private convertAnsiToHtml(text: string): string {
     // More comprehensive conversion of ANSI color codes to HTML
-    return text
+    let htmlData = text
       .replace(/\r\n/g, '<br>')
       .replace(/\n/g, '<br>')
       .replace(/\r/g, '<br>') // Make sure standalone \r is also handled
@@ -75,5 +61,44 @@ export class SocketIOConnection extends EventEmitter implements IConnection {
       .replace(/\x1b\[37m/g, '<span class="white">')
       // Handle the clear screen command
       .replace(/\x1b\[2J\x1b\[0;0H/g, '<!-- clear -->');
+
+    return htmlData;
+  }
+
+  public write(data: string): void {
+    // Convert ANSI to HTML before sending to the client
+    const htmlData = this.convertAnsiToHtml(data);
+    this.socket.emit('output', { data: htmlData });
+
+    // If it's a single character, echo it back to the client
+    if (data.length === 1 || data === '\b \b') {
+      this.socket.emit('echo', { char: data });
+    }
+  }
+
+  public end(): void {
+    this.socket.disconnect();
+  }
+
+  public getId(): string {
+    return this.id;
+  }
+
+  public getType(): string {
+    return 'websocket';
+  }
+
+  public setMaskInput(mask: boolean): void {
+    this.maskInput = mask;
+    this.socket.emit('mask', { mask });
+  }
+
+  public getRawConnection(): Socket {
+    return this.socket;
+  }
+
+  // Expose the remote address
+  get remoteAddress(): string {
+    return this.socket.handshake.address || 'unknown';
   }
 }

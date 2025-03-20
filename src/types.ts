@@ -51,6 +51,10 @@ export interface ConnectedClient {
   // For output buffering
   isTyping: boolean;
   outputBuffer: string[];
+  
+  // Add connectedAt and lastActivity properties
+  connectedAt: number;
+  lastActivity: number;
 }
 
 export type StateHandler = (client: ConnectedClient, input: string) => void;
@@ -59,4 +63,19 @@ export interface ClientState {
   name: ClientStateType;
   enter: (client: ConnectedClient) => void;
   handle: StateHandler;
+}
+
+export interface ServerStats {
+  startTime: Date;
+  uptime: number; // in seconds
+  connectedClients: number;
+  authenticatedUsers: number;
+  totalConnections: number;
+  totalCommands: number;
+  memoryUsage: {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
 }
