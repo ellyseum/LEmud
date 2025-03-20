@@ -20,21 +20,21 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link active" href="#" data-tab-target="#dashboard-tab">Dashboard</a>
+                        <a class="nav-link active" href="#" data-tab-target="#dashboard-tab" data-bs-toggle="tooltip" data-bs-placement="bottom" title="System overview and connections">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" data-tab-target="#client-tab">MUD Client</a>
+                        <a class="nav-link" href="#" data-tab-target="#client-tab" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Monitor player connections">MUD Client</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" data-tab-target="#players-tab">Players</a>
+                        <a class="nav-link" href="#" data-tab-target="#players-tab" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Manage player accounts">Players</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" data-tab-target="#config-tab">Config</a>
+                        <a class="nav-link" href="#" data-tab-target="#config-tab" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Configure game settings">Config</a>
                     </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="#" id="logout-button">Logout</a>
+                        <a class="nav-link" href="#" id="logout-button" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Log out of the admin panel">Logout</a>
                     </li>
                 </ul>
             </div>
@@ -141,10 +141,10 @@
                                 <h5 class="mb-0">Game Timer Configuration</h5>
                             </div>
                             <div>
-                                <button class="btn btn-sm btn-primary" id="refresh-timer-config">
+                                <button class="btn btn-sm btn-primary" id="refresh-timer-config" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh timer settings">
                                     <i class="bi bi-arrow-clockwise"></i>
                                 </button>
-                                <button class="btn btn-sm btn-success" id="save-timer-config">
+                                <button class="btn btn-sm btn-success" id="save-timer-config" data-bs-toggle="tooltip" data-bs-placement="top" title="Save timer settings">
                                     <i class="bi bi-save"></i> Save
                                 </button>
                             </div>
@@ -173,7 +173,7 @@
                             <div class="row">
                                 <div class="col-12">
                                     <div class="d-grid gap-2">
-                                        <button class="btn btn-warning" id="force-save">
+                                        <button class="btn btn-warning" id="force-save" data-bs-toggle="tooltip" data-bs-placement="top" title="Force an immediate save of all game data">
                                             <i class="bi bi-database-down"></i> Force Save Now
                                         </button>
                                     </div>
@@ -191,7 +191,7 @@
                                 <i class="bi bi-people me-2"></i>
                                 <h5 class="mb-0">Connected Players</h5>
                             </div>
-                            <button class="btn btn-sm btn-primary" id="refresh-players">Refresh</button>
+                            <button class="btn btn-sm btn-primary" id="refresh-players" data-bs-toggle="tooltip" data-bs-placement="left" title="Refresh player list">Refresh</button>
                         </div>
                         <div class="card-body">
                             <!-- Add player list header -->
@@ -225,7 +225,7 @@
                     <div id="monitor-info" class="d-none">
                         Monitoring: <span class="text-warning">Player</span>
                     </div>
-                    <button id="stop-monitoring" class="btn btn-sm btn-warning d-none">
+                    <button id="stop-monitoring" class="btn btn-sm btn-warning d-none" data-bs-toggle="tooltip" data-bs-placement="left" title="Stop monitoring this player">
                         <i class="bi bi-stop-circle"></i> Stop Monitoring
                     </button>
                 </div>
@@ -252,10 +252,10 @@
                                 <h5 class="mb-0">MUD Configuration</h5>
                             </div>
                             <div>
-                                <button class="btn btn-sm btn-primary" id="refresh-config">
+                                <button class="btn btn-sm btn-primary" id="refresh-config" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh configuration">
                                     <i class="bi bi-arrow-clockwise"></i>
                                 </button>
-                                <button class="btn btn-sm btn-success" id="save-config">
+                                <button class="btn btn-sm btn-success" id="save-config" data-bs-toggle="tooltip" data-bs-placement="top" title="Save configuration">
                                     <i class="bi bi-save"></i> Save
                                 </button>
                             </div>
@@ -393,7 +393,7 @@
                                 <div class="input-group">
                                     <input type="text" id="player-search" class="form-control bg-dark text-light border-secondary" 
                                            placeholder="Search players...">
-                                    <button class="btn btn-primary" id="refresh-player-list">
+                                    <button class="btn btn-primary" id="refresh-player-list" data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh player list">
                                         <i class="bi bi-arrow-clockwise"></i> Refresh
                                     </button>
                                 </div>
@@ -477,10 +477,10 @@
                                             
                                             <div class="d-flex justify-content-between mt-4">
                                                 <div>
-                                                    <button type="button" class="btn btn-warning player-detail-reset-pwd">
+                                                    <button type="button" class="btn btn-warning player-detail-reset-pwd" data-bs-toggle="tooltip" data-bs-placement="top" title="Generate a new random password">
                                                         <i class="bi bi-key"></i> Generate New Password
                                                     </button>
-                                                    <button type="button" class="btn btn-danger player-detail-delete">
+                                                    <button type="button" class="btn btn-danger player-detail-delete" data-bs-toggle="tooltip" data-bs-placement="top" title="Permanently delete this player">
                                                         <i class="bi bi-trash"></i> Delete Player
                                                     </button>
                                                 </div>

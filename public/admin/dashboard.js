@@ -45,6 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fullTabId === '#players-tab') {
             loadPlayersTabContent();
         }
+
+        // Re-initialize tooltips after tab change
+        setTimeout(initTooltips, 100);
     }
     
     // Set up tab click handlers
@@ -484,10 +487,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             <div class="col-md-6">
                                 <div class="d-grid gap-2">
-                                    <button class="btn btn-primary monitor-player mb-2" data-id="${player.id}" data-name="${player.username}">
+                                    <button class="btn btn-primary monitor-player mb-2" data-id="${player.id}" data-name="${player.username}"
+                                           data-bs-toggle="tooltip" data-bs-placement="top" title="Monitor player's session">
                                         <i class="bi bi-display"></i> Monitor Player
                                     </button>
-                                    <button class="btn btn-danger kick-player" data-id="${player.id}" data-name="${player.username}">
+                                    <button class="btn btn-danger kick-player" data-id="${player.id}" data-name="${player.username}"
+                                           data-bs-toggle="tooltip" data-bs-placement="top" title="Disconnect player">
                                         <i class="bi bi-x-circle"></i> Kick Player
                                     </button>
                                 </div>
@@ -509,10 +514,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <p><strong>Last Activity:</strong> ${new Date(player.lastActivity).toLocaleString()}</p>
                                 <p><strong>Idle Time:</strong> ${formatTime(player.idleTime)}</p>
                                 <div class="d-grid gap-2 mt-3">
-                                    <button class="btn btn-primary monitor-player mb-2" data-id="${player.id}" data-name="${player.username}">
+                                    <button class="btn btn-primary monitor-player mb-2" data-id="${player.id}" data-name="${player.username}"
+                                           data-bs-toggle="tooltip" data-bs-placement="top" title="Monitor connection">
                                         <i class="bi bi-display"></i> Monitor Connection
                                     </button>
-                                    <button class="btn btn-danger kick-player" data-id="${player.id}" data-name="${player.username}">
+                                    <button class="btn btn-danger kick-player" data-id="${player.id}" data-name="${player.username}"
+                                           data-bs-toggle="tooltip" data-bs-placement="top" title="Disconnect user">
                                         <i class="bi bi-x-circle"></i> Disconnect User
                                     </button>
                                 </div>
@@ -529,6 +536,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Add event handlers for the newly created buttons
             attachPlayerButtonHandlers();
+            
+            // Re-initialize tooltips
+            initTooltips();
             
         } catch (error) {
             console.error('Error fetching player data:', error);
@@ -601,6 +611,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         });
+
+        // Re-initialize tooltips after adding dynamic elements
+        initTooltips();
     }
 
     // Monitor player functionality
@@ -1114,14 +1127,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${statusBadge}</td>
                 <td>
                     <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-primary toggle-player-detail" data-username="${player.username}">
+                        <button type="button" class="btn btn-primary toggle-player-detail" data-username="${player.username}" 
+                               data-bs-toggle="tooltip" data-bs-placement="top" title="Edit player">
                             <i class="bi bi-pencil"></i>
                         </button>
                         ${isOnline ? `
-                            <button type="button" class="btn btn-info monitor-player-managed" data-id="${connectedPlayer?.id}" data-name="${player.username}">
+                            <button type="button" class="btn btn-info monitor-player-managed" data-id="${connectedPlayer?.id}" data-name="${player.username}"
+                                   data-bs-toggle="tooltip" data-bs-placement="top" title="Monitor player's session">
                                 <i class="bi bi-display"></i>
                             </button>
-                            <button type="button" class="btn btn-warning kick-player-managed" data-id="${connectedPlayer?.id}" data-name="${player.username}">
+                            <button type="button" class="btn btn-warning kick-player-managed" data-id="${connectedPlayer?.id}" data-name="${player.username}"
+                                   data-bs-toggle="tooltip" data-bs-placement="top" title="Disconnect player">
                                 <i class="bi bi-box-arrow-right"></i>
                             </button>
                         ` : ''}
@@ -1153,6 +1169,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Attach event handlers to the newly created buttons
         attachPlayerManagementHandlers();
+        
+        // Initialize tooltips for the new buttons
+        initTooltips();
     }
     
     // Attach event handlers to player management buttons
@@ -1345,6 +1364,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // Re-attach event handlers for this form's buttons
                     attachPlayerDetailFormHandlers(detailForm);
+                    
+                    // Re-initialize tooltips
+                    initTooltips();
                 }
             } else {
                 // Show error in the form
@@ -1536,7 +1558,75 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper function to generate a random password (keep this existing function)
+    // Open the delete player modal
+    function openDeletePlayerModal(username) {
+        document.getElementById('delete-player-name').textContent = username;
+        document.getElementById('confirm-delete-check').checked = false;
+        document.getElementById('confirm-delete').disabled = true;
+        
+        const deletePlayerModal = new bootstrap.Modal(document.getElementById('deletePlayerModal'));
+        deletePlayerModal.show();
+    }
+    
+    // Handle the checkbox in delete player modal
+    document.getElementById('confirm-delete-check')?.addEventListener('change', (e) => {
+        document.getElementById('confirm-delete').disabled = !e.target.checked;
+    });
+    
+    // Handle confirming player deletion
+    document.getElementById('confirm-delete')?.addEventListener('click', async () => {
+        try {
+            const username = document.getElementById('delete-player-name').textContent;
+            
+            // Send delete request to server
+            const response = await fetch(`/api/admin/players/delete/${username}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`Player ${username} has been deleted successfully`);
+                const deletePlayerModal = bootstrap.Modal.getInstance(document.getElementById('deletePlayerModal'));
+                deletePlayerModal.hide();
+                
+                // Refresh the players list
+                loadPlayersTabContent();
+                
+                // If the player detail was open, close it
+                hidePlayerDetail(username);
+            } else {
+                alert('Failed to delete player: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error deleting player:', error);
+            alert('Error deleting player: ' + error.message);
+        }
+    });
+
+    // Initialize tooltips
+    function initTooltips() {
+        // Remove existing tooltips first to prevent duplicates
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        tooltipTriggerList.forEach(tooltipTriggerEl => {
+            const tooltip = bootstrap.Tooltip.getInstance(tooltipTriggerEl);
+            if (tooltip) {
+                tooltip.dispose();
+            }
+        });
+        
+        // Create new tooltips
+        const newTooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        [...newTooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+    }
+    
+    // Initialize tooltips on page load
+    initTooltips();
+
+    // Helper function to generate a random password
     function generateRandomPassword() {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         let password = '';
