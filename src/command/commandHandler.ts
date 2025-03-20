@@ -21,6 +21,7 @@ import { PickupCommand } from './commands/pickup.command';
 import { DropCommand } from './commands/drop.command';
 import { GetCommand } from './commands/get.command';
 import { YellCommand } from './commands/yell.command';
+import { HistoryCommand } from './commands/history.command';
 
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
@@ -51,7 +52,8 @@ export class CommandHandler {
       new PickupCommand(this.clients, this.userManager),
       new DropCommand(this.clients, this.userManager),
       new GetCommand(this.clients, this.userManager),
-      new YellCommand(this.clients)
+      new YellCommand(this.clients),
+      new HistoryCommand()
     ];
     
     // Register all commands
@@ -63,6 +65,7 @@ export class CommandHandler {
     this.commandAliases.set('l', 'look');
     this.commandAliases.set('i', 'inventory');
     this.commandAliases.set('inv', 'inventory');
+    this.commandAliases.set('hist', 'history'); // Add shortcut for history command
     // this.commandAliases.set('get', 'pickup');  // Remove this line since we have an explicit command now
     this.commandAliases.set('take', 'pickup');
     
@@ -99,6 +102,8 @@ export class CommandHandler {
 
     // Ensure input is trimmed
     const cleanInput = input.trim();
+    
+    // Skip empty commands and don't add them to history
     if (cleanInput === '') {
       // Do a brief look when user hits enter with no command
       this.roomManager.briefLookRoom(client);
@@ -106,7 +111,59 @@ export class CommandHandler {
       return;
     }
 
-    const parts = cleanInput.split(' ');
+    // Initialize command history if it doesn't exist
+    if (!client.user.commandHistory) {
+      client.user.commandHistory = [];
+    }
+
+    // Check for repeat command shortcut (single period)
+    if (cleanInput === '.') {
+      // If there's no command history, inform the user
+      if (client.user.commandHistory.length === 0) {
+        writeToClient(client, colorize('No previous command to repeat.\r\n', 'yellow'));
+        writeCommandPrompt(client);
+        return;
+      }
+
+      // Get the most recent command
+      const lastCommand = client.user.commandHistory[client.user.commandHistory.length - 1];
+      
+      // Display what we're executing
+      writeToClient(client, colorize(`Repeating: ${lastCommand}\r\n`, 'dim'));
+      
+      // Add the repeated command to history (key change!)
+      client.user.commandHistory.push(lastCommand);
+      
+      // Keep only the most recent 30 commands
+      if (client.user.commandHistory.length > 30) {
+        client.user.commandHistory.shift(); // Remove oldest command
+      }
+      
+      // Execute the last command (using existing logic)
+      this.executeCommand(client, lastCommand);
+      
+      return;
+    }
+
+    // Always add the command to history
+    client.user.commandHistory.push(cleanInput);
+    
+    // Keep only the most recent 30 commands
+    if (client.user.commandHistory.length > 30) {
+      client.user.commandHistory.shift(); // Remove oldest command
+    }
+    
+    // Reset history browsing state
+    client.user.currentHistoryIndex = -1;
+    client.user.savedCurrentCommand = '';
+
+    // Execute the command
+    this.executeCommand(client, cleanInput);
+  }
+
+  // New helper method to execute a command
+  private executeCommand(client: ConnectedClient, commandText: string): void {
+    const parts = commandText.split(' ');
     const commandName = parts[0].toLowerCase();
     const args = parts.slice(1).join(' ').trim(); // Also trim arguments
 

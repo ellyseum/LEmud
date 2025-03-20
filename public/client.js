@@ -213,55 +213,13 @@
                 break;
                 
             case 'ArrowUp':
-                if (historyIndex === -1) {
-                    currentInput = lineBuffer;
-                }
-                
-                if (historyIndex < commandHistory.length - 1) {
-                    // Clear current line
-                    while (lineBuffer.length > 0) {
-                        sendKeypress('\b', 'special');
-                    }
-                    
-                    // Increment history index and get command
-                    historyIndex++;
-                    const command = commandHistory[commandHistory.length - 1 - historyIndex];
-                    
-                    // Send each character to server
-                    for (let i = 0; i < command.length; i++) {
-                        sendKeypress(command[i]);
-                    }
-                    
-                    // Update local buffer (characters will be echoed back)
-                    lineBuffer = command;
-                }
+                // Try different formats that different telnet clients might understand
+                sendKeypress('\u001b[A', 'special');
                 break;
                 
             case 'ArrowDown':
-                if (historyIndex >= 0) {
-                    // Clear current line
-                    while (lineBuffer.length > 0) {
-                        sendKeypress('\b', 'special');
-                    }
-                    
-                    // Get the appropriate command
-                    let command = '';
-                    if (historyIndex === 0) {
-                        historyIndex = -1;
-                        command = currentInput;
-                    } else {
-                        historyIndex--;
-                        command = commandHistory[commandHistory.length - 1 - historyIndex];
-                    }
-                    
-                    // Send each character to server
-                    for (let i = 0; i < command.length; i++) {
-                        sendKeypress(command[i]);
-                    }
-                    
-                    // Update local buffer
-                    lineBuffer = command;
-                }
+                // Try different formats that different telnet clients might understand
+                sendKeypress('\u001b[B', 'special');
                 break;
                 
             case 'Tab':

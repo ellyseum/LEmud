@@ -209,6 +209,18 @@ function handleClientData(client: ConnectedClient, data: string): void {
     return;
   }
   
+  // Handle up arrow (various possible formats)
+  if (data === '\u001b[A' || data === '[A' || data === '\u001bOA' || data === 'OA') {
+    handleUpArrow(client);
+    return;
+  }
+  
+  // Handle down arrow (various possible formats)
+  if (data === '\u001b[B' || data === '[B' || data === '\u001bOB' || data === 'OB') {
+    handleDownArrow(client);
+    return;
+  }
+  
   // Handle normal input (excluding special sequences)
   client.buffer += data;
   
@@ -230,6 +242,80 @@ function handleClientData(client: ConnectedClient, data: string): void {
     delete client.stateData.forcedTransition;
     stateMachine.transitionTo(client, forcedState);
     return;
+  }
+}
+
+// Handle up arrow key press
+function handleUpArrow(client: ConnectedClient): void {
+  if (!client.user) return;
+  
+  // Initialize command history if necessary
+  if (!client.user.commandHistory) {
+    client.user.commandHistory = [];
+  }
+  
+  if (client.user.currentHistoryIndex === undefined) {
+    client.user.currentHistoryIndex = -1;
+  }
+  
+  // Save current command if we're just starting to browse history
+  if (client.user.currentHistoryIndex === -1 && client.buffer) {
+    client.user.savedCurrentCommand = client.buffer;
+  }
+  
+  // Move up in history if possible
+  if (client.user.commandHistory.length > 0 && 
+      client.user.currentHistoryIndex < client.user.commandHistory.length - 1) {
+    
+    // Clear current line
+    while (client.buffer.length > 0) {
+      client.connection.write('\b \b');
+      client.buffer = client.buffer.slice(0, -1);
+    }
+    
+    // Increment history index
+    client.user.currentHistoryIndex++;
+    
+    // Get the command from history
+    const historyCommand = client.user.commandHistory[client.user.commandHistory.length - 1 - client.user.currentHistoryIndex];
+    
+    // Set as current buffer and display
+    client.buffer = historyCommand;
+    client.connection.write(historyCommand);
+  }
+}
+
+// Handle down arrow key press
+function handleDownArrow(client: ConnectedClient): void {
+  if (!client.user) return;
+  
+  // Initialize history if necessary
+  if (!client.user.commandHistory) {
+    client.user.commandHistory = [];
+  }
+  
+  if (client.user.currentHistoryIndex === undefined || client.user.currentHistoryIndex < 0) {
+    return;
+  }
+  
+  // Clear current line
+  while (client.buffer.length > 0) {
+    client.connection.write('\b \b');
+    client.buffer = client.buffer.slice(0, -1);
+  }
+  
+  // Decrement history index
+  client.user.currentHistoryIndex--;
+  
+  // If we've moved past the first command, restore the saved current command
+  if (client.user.currentHistoryIndex === -1) {
+    client.buffer = client.user.savedCurrentCommand || '';
+    client.connection.write(client.buffer);
+  } else {
+    // Otherwise, get the command from history
+    const historyCommand = client.user.commandHistory[client.user.commandHistory.length - 1 - client.user.currentHistoryIndex];
+    client.buffer = historyCommand;
+    client.connection.write(historyCommand);
   }
 }
 
