@@ -46,6 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchServerStats();
     fetchPlayerData();
     fetchGameTimerConfig();
+    
+    // Add configuration loading
+    fetchMUDConfiguration();
 
     // Set up polling for stats and player data
     setInterval(fetchServerStats, 5000);
@@ -708,4 +711,184 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('force-save').addEventListener('click', () => {
         forceSaveData();
     });
+    
+    // Add event listeners for MUD Configuration
+    document.getElementById('refresh-config').addEventListener('click', () => {
+        fetchMUDConfiguration();
+    });
+    
+    document.getElementById('save-config').addEventListener('click', () => {
+        saveMUDConfiguration();
+    });
+    
+    // Fetch MUD configuration from API
+    async function fetchMUDConfiguration() {
+        try {
+            // Show loading indicator, hide form and error
+            document.getElementById('config-loading').classList.remove('d-none');
+            document.getElementById('mud-config-form').classList.add('d-none');
+            document.getElementById('config-error').classList.add('d-none');
+            
+            let response;
+            let usedMockAPI = false;
+            
+            try {
+                // Try the real API endpoint first
+                response = await fetch('/api/admin/mud-config', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                // If we get a non-OK response, try the mock API
+                if (!response.ok) {
+                    console.warn(`Real API returned status ${response.status}, trying mock API as fallback`);
+                    response = await fetch('/admin/mock-api/mud-config.json');
+                    usedMockAPI = true;
+                    
+                    if (!response.ok) {
+                        throw new Error(`Mock API also failed with status: ${response.status}`);
+                    }
+                }
+            } catch (initialError) {
+                console.warn('Error with primary API, trying mock API:', initialError);
+                // If the main API fails completely, try the mock API
+                response = await fetch('/admin/mock-api/mud-config.json');
+                usedMockAPI = true;
+            }
+            
+            // Hide loading regardless of outcome
+            document.getElementById('config-loading').classList.add('d-none');
+            
+            // Check if the response is expired or invalid
+            if (response.status === 401) {
+                localStorage.removeItem('mudAdminToken');
+                window.location.href = '/admin/login.html';
+                return;
+            }
+            
+            // Check if response is JSON by looking at content-type header
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                throw new Error(`Expected JSON but got ${contentType || 'unknown content type'}: ${text.substring(0, 100)}...`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // If we're using mock data, add a banner notification
+                if (usedMockAPI) {
+                    const errorElement = document.getElementById('config-error');
+                    errorElement.className = 'alert alert-warning';
+                    errorElement.textContent = 'Using mock configuration data for display purposes. Changes will not be saved.';
+                    errorElement.classList.remove('d-none');
+                }
+                
+                // Populate the form with configuration data
+                const config = data.config;
+                
+                // File paths
+                document.getElementById('players-path').value = config.dataFiles.players || '';
+                document.getElementById('rooms-path').value = config.dataFiles.rooms || '';
+                document.getElementById('items-path').value = config.dataFiles.items || '';
+                document.getElementById('npcs-path').value = config.dataFiles.npcs || '';
+                
+                // Game settings
+                document.getElementById('starting-room').value = config.game.startingRoom || '';
+                document.getElementById('max-players').value = config.game.maxPlayers || '';
+                document.getElementById('idle-timeout').value = config.game.idleTimeout || '';
+                document.getElementById('password-attempts').value = config.game.maxPasswordAttempts || '';
+                
+                // Advanced settings
+                document.getElementById('debug-mode').checked = config.advanced.debugMode || false;
+                document.getElementById('allow-registration').checked = config.advanced.allowRegistration || false;
+                document.getElementById('backup-interval').value = config.advanced.backupInterval || '';
+                document.getElementById('log-level').value = config.advanced.logLevel || 'info';
+                
+                // Show the form
+                document.getElementById('mud-config-form').classList.remove('d-none');
+            } else {
+                // Show error message
+                const errorElement = document.getElementById('config-error');
+                errorElement.textContent = data.message || 'Failed to load configuration data';
+                errorElement.classList.remove('d-none');
+            }
+        } catch (error) {
+            console.error('Error fetching MUD configuration:', error);
+            
+            // Hide loading, show error
+            document.getElementById('config-loading').classList.add('d-none');
+            const errorElement = document.getElementById('config-error');
+            errorElement.textContent = `Error loading configuration: ${error.message}`;
+            errorElement.classList.remove('d-none');
+        }
+    }
+
+    // Save MUD configuration to API
+    async function saveMUDConfiguration() {
+        try {
+            // Collect all values from the form
+            const configData = {
+                dataFiles: {
+                    players: document.getElementById('players-path').value,
+                    rooms: document.getElementById('rooms-path').value,
+                    items: document.getElementById('items-path').value,
+                    npcs: document.getElementById('npcs-path').value
+                },
+                game: {
+                    startingRoom: document.getElementById('starting-room').value,
+                    maxPlayers: parseInt(document.getElementById('max-players').value),
+                    idleTimeout: parseInt(document.getElementById('idle-timeout').value),
+                    maxPasswordAttempts: parseInt(document.getElementById('password-attempts').value)
+                },
+                advanced: {
+                    debugMode: document.getElementById('debug-mode').checked,
+                    allowRegistration: document.getElementById('allow-registration').checked,
+                    backupInterval: parseInt(document.getElementById('backup-interval').value),
+                    logLevel: document.getElementById('log-level').value
+                }
+            };
+            
+            // Basic validation
+            if (!configData.dataFiles.players || !configData.dataFiles.rooms) {
+                alert('Players and Rooms data paths are required');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('config-loading').classList.remove('d-none');
+            document.getElementById('mud-config-form').classList.add('d-none');
+            
+            const response = await fetch('/api/admin/mud-config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(configData)
+            });
+            
+            const data = await response.json();
+            
+            // Hide loading indicator
+            document.getElementById('config-loading').classList.add('d-none');
+            document.getElementById('mud-config-form').classList.remove('d-none');
+            
+            if (data.success) {
+                alert('Configuration updated successfully');
+                // Refresh with new server values
+                fetchMUDConfiguration();
+            } else {
+                alert('Failed to update configuration: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error saving MUD configuration:', error);
+            alert('Error saving configuration: ' + error.message);
+            
+            // Hide loading, show form again
+            document.getElementById('config-loading').classList.add('d-none');
+            document.getElementById('mud-config-form').classList.remove('d-none');
+        }
+    }
 });

@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "config": {
+    "dataFiles": {
+      "players": "./data/players.json",
+      "rooms": "./data/rooms.json",
+      "items": "./data/items.json",
+      "npcs": "./data/npcs.json"
+    },
+    "game": {
+      "startingRoom": "town-square",
+      "maxPlayers": 100,
+      "idleTimeout": 30,
+      "maxPasswordAttempts": 5
+    },
+    "advanced": {
+      "debugMode": false,
+      "allowRegistration": true,
+      "backupInterval": 6,
+      "logLevel": "info"
+    }
+  }
+}

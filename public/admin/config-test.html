@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Config API Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background-color: #1a1a2e;
+            color: #e6e6e6;
+        }
+        #output {
+            background-color: #000;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        button {
+            background-color: #533483;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #4a2d75;
+        }
+    </style>
+</head>
+<body>
+    <h1>MUD Config API Test</h1>
+    <p>This page tests the config API endpoint to help diagnose issues.</p>
+    
+    <button id="test-api">Test Config API</button>
+    <div id="output"></div>
+    
+    <script>
+        document.getElementById('test-api').addEventListener('click', async () => {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing API...\n';
+            
+            try {
+                const token = localStorage.getItem('mudAdminToken');
+                if (!token) {
+                    output.textContent += 'ERROR: No authentication token found. Please login first.\n';
+                    return;
+                }
+                
+                output.textContent += `Token found: ${token.substring(0, 15)}...\n`;
+                
+                // Test the API
+                output.textContent += 'Making request to /api/admin/mud-config...\n';
+                
+                const response = await fetch('/api/admin/mud-config', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                output.textContent += `Response status: ${response.status} ${response.statusText}\n`;
+                output.textContent += 'Response headers:\n';
+                
+                response.headers.forEach((value, name) => {
+                    output.textContent += `  ${name}: ${value}\n`;
+                });
+                
+                const contentType = response.headers.get('content-type');
+                output.textContent += `\nContent-Type: ${contentType || 'none'}\n\n`;
+                
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    output.textContent += 'Response JSON:\n' + JSON.stringify(data, null, 2);
+                } else {
+                    const text = await response.text();
+                    output.textContent += 'Response Text (first 500 chars):\n' + 
+                        text.substring(0, 500) + (text.length > 500 ? '...' : '');
+                }
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -21,6 +21,7 @@ import { RoomManager } from './room/roomManager';
 import * as AdminApi from './admin/adminApi';
 import { getPromptText } from './utils/promptFormatter';
 import { GameTimerManager } from './timer/gameTimerManager';
+import { getMUDConfig, updateMUDConfig, loadMUDConfig } from './admin/adminApi';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -76,6 +77,10 @@ app.post('/api/admin/players/:clientId/monitor', AdminApi.validateToken, AdminAp
 app.get('/api/admin/gametimer-config', AdminApi.validateToken, AdminApi.getGameTimerConfig(gameTimerManager));
 app.post('/api/admin/gametimer-config', AdminApi.validateToken, AdminApi.updateGameTimerConfig(gameTimerManager));
 app.post('/api/admin/force-save', AdminApi.validateToken, AdminApi.forceSave(gameTimerManager));
+
+// Add new MUD config endpoints
+app.get('/api/admin/mud-config', AdminApi.validateToken, AdminApi.getMUDConfig());
+app.post('/api/admin/mud-config', AdminApi.validateToken, AdminApi.updateMUDConfig());
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -535,6 +540,52 @@ function writeToClient(client: ConnectedClient, data: string): void {
   }
 }
 
+// After gameTimerManager initialization, set up idle timeout checker
+const IDLE_CHECK_INTERVAL = 60000; // Check for idle clients every minute
+
+// Function to check for and disconnect idle clients
+function checkForIdleClients() {
+  // Load the current configuration to get the idle timeout
+  const config = loadMUDConfig();
+  const idleTimeoutMinutes = config.game.idleTimeout;
+  
+  // If idle timeout is 0 or negative, idle timeout is disabled
+  if (!idleTimeoutMinutes || idleTimeoutMinutes <= 0) {
+    return;
+  }
+  
+  // Convert minutes to milliseconds
+  const idleTimeoutMs = idleTimeoutMinutes * 60 * 1000;
+  const now = Date.now();
+  
+  // Check each connected client
+  clients.forEach((client, clientId) => {
+    // Skip clients who aren't authenticated yet (in login process)
+    if (!client.authenticated) return;
+    
+    // Calculate how long the client has been idle
+    const idleTime = now - client.lastActivity;
+    
+    // If client has exceeded the idle timeout
+    if (idleTime > idleTimeoutMs) {
+      console.log(`Client ${clientId} idle for ${Math.floor(idleTime / 1000)}s, disconnecting (timeout: ${idleTimeoutMinutes}m)`);
+      
+      // Send a message to the client explaining the disconnection
+      if (client.connection) {
+        writeMessageToClient(client, colorize('\r\n\r\nYou have been disconnected due to inactivity.\r\n', 'brightRed'));
+        
+        // Give them a moment to see the message, then disconnect
+        setTimeout(() => {
+          client.connection.end();
+        }, 1000);
+      }
+    }
+  });
+}
+
+// Set up periodic checking for idle clients
+const idleCheckTimer = setInterval(checkForIdleClients, IDLE_CHECK_INTERVAL);
+
 // Start the servers
 telnetServer.listen(TELNET_PORT, () => {
   console.log(`TELNET server running on port ${TELNET_PORT}`);
@@ -555,11 +606,13 @@ process.on('SIGINT', () => {
   // Stop the game timer system
   gameTimerManager.stop();
   
+  // Clear the idle check interval
+  clearInterval(idleCheckTimer);
+  
   // Force a final save
   gameTimerManager.forceSave();
   
   // Reset the singleton instances if needed
-  // This isn't strictly necessary for normal shutdown, but helps with clean state
   GameTimerManager.resetInstance();
   
   // Exit the process

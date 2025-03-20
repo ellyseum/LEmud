@@ -25,6 +25,9 @@
                     <li class="nav-item">
                         <a class="nav-link" href="#" data-tab-target="#client-tab">MUD Client</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-tab-target="#config-tab">Config</a>
+                    </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
@@ -231,6 +234,144 @@
                             <button class="btn btn-outline-secondary text-light" type="submit">Send</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Config Tab Pane -->
+        <div class="tab-pane fade" id="config-tab">
+            <div class="row">
+                <div class="col-md-12 mb-4">
+                    <div class="card bg-dark border-secondary">
+                        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-gear me-2"></i>
+                                <h5 class="mb-0">MUD Configuration</h5>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-primary" id="refresh-config">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-success" id="save-config">
+                                    <i class="bi bi-save"></i> Save
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="config-loading" class="text-center p-3">
+                                <div class="spinner-border text-light" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading configuration...</p>
+                            </div>
+                            <div id="config-error" class="alert alert-danger d-none" role="alert">
+                                Error loading configuration
+                            </div>
+                            <form id="mud-config-form" class="d-none">
+                                <!-- Data File Paths Section -->
+                                <h6 class="text-light border-bottom border-secondary pb-2 mb-3">Data File Paths</h6>
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="players-path" class="form-label text-muted small text-uppercase">Players Data Path</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                                id="players-path" placeholder="Path to players data file">
+                                            <small class="form-text text-muted">Location where player data is stored</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="rooms-path" class="form-label text-muted small text-uppercase">Rooms Data Path</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                                id="rooms-path" placeholder="Path to rooms data file">
+                                            <small class="form-text text-muted">Location where room definitions are stored</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="items-path" class="form-label text-muted small text-uppercase">Items Data Path</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                                id="items-path" placeholder="Path to items data file">
+                                            <small class="form-text text-muted">Location where item definitions are stored</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="npcs-path" class="form-label text-muted small text-uppercase">NPCs Data Path</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                                id="npcs-path" placeholder="Path to NPCs data file">
+                                            <small class="form-text text-muted">Location where NPC definitions are stored</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Game Settings Section -->
+                                <h6 class="text-light border-bottom border-secondary pb-2 mb-3">Game Settings</h6>
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="starting-room" class="form-label text-muted small text-uppercase">Starting Room ID</label>
+                                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                                id="starting-room" placeholder="ID of the starting room">
+                                            <small class="form-text text-muted">Room where new players begin</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="max-players" class="form-label text-muted small text-uppercase">Max Players</label>
+                                            <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                                id="max-players" placeholder="Maximum number of players">
+                                            <small class="form-text text-muted">Maximum number of players allowed</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="idle-timeout" class="form-label text-muted small text-uppercase">Idle Timeout (minutes)</label>
+                                            <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                                id="idle-timeout" placeholder="Idle timeout in minutes">
+                                            <small class="form-text text-muted">Time before idle players are disconnected</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="password-attempts" class="form-label text-muted small text-uppercase">Max Password Attempts</label>
+                                            <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                                id="password-attempts" placeholder="Max password attempts">
+                                            <small class="form-text text-muted">Maximum failed login attempts before temporary lockout</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Advanced Settings Section -->
+                                <h6 class="text-light border-bottom border-secondary pb-2 mb-3">Advanced Settings</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3 form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="debug-mode">
+                                            <label class="form-check-label" for="debug-mode">Debug Mode</label>
+                                            <small class="d-block form-text text-muted">Enable extra logging and debug features</small>
+                                        </div>
+                                        <div class="mb-3 form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="allow-registration">
+                                            <label class="form-check-label" for="allow-registration">Allow New Player Registration</label>
+                                            <small class="d-block form-text text-muted">Allow new players to register accounts</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="backup-interval" class="form-label text-muted small text-uppercase">Backup Interval (hours)</label>
+                                            <input type="number" class="form-control bg-dark text-light border-secondary" 
+                                                id="backup-interval" placeholder="Backup interval in hours">
+                                            <small class="form-text text-muted">How often to create data backups (0 to disable)</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="log-level" class="form-label text-muted small text-uppercase">Log Level</label>
+                                            <select class="form-select bg-dark text-light border-secondary" id="log-level">
+                                                <option value="error">Error</option>
+                                                <option value="warn">Warning</option>
+                                                <option value="info">Info</option>
+                                                <option value="debug">Debug</option>
+                                                <option value="verbose">Verbose</option>
+                                            </select>
+                                            <small class="form-text text-muted">Detail level for system logs</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -3,10 +3,133 @@ import adminAuth from './adminAuth';
 import { ServerStats } from '../types';
 import jwt from 'jsonwebtoken';
 import { GameTimerManager } from '../timer/gameTimerManager';
+import fs from 'fs';
+import path from 'path';
 
 // Secret key for JWT tokens
 const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
 const TOKEN_EXPIRY = '1h';
+
+// Configuration file path
+const CONFIG_FILE = path.join(__dirname, '..', '..', 'data', 'mud-config.json');
+
+// Default configuration 
+const DEFAULT_CONFIG = {
+  dataFiles: {
+    players: './data/players.json',
+    rooms: './data/rooms.json',
+    items: './data/items.json',
+    npcs: './data/npcs.json'
+  },
+  game: {
+    startingRoom: 'town-square',
+    maxPlayers: 100,
+    idleTimeout: 30,
+    maxPasswordAttempts: 5
+  },
+  advanced: {
+    debugMode: false,
+    allowRegistration: true,
+    backupInterval: 6,
+    logLevel: 'info'
+  }
+};
+
+/**
+ * Load MUD configuration
+ * Creates default config if it doesn't exist
+ */
+export function loadMUDConfig() {
+  try {
+    // Create data directory if it doesn't exist
+    const dataDir = path.dirname(CONFIG_FILE);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    
+    // Create default config if file doesn't exist
+    if (!fs.existsSync(CONFIG_FILE)) {
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
+      return DEFAULT_CONFIG;
+    }
+    
+    // Read and parse config
+    const configData = fs.readFileSync(CONFIG_FILE, 'utf8');
+    return JSON.parse(configData);
+  } catch (error) {
+    console.error('Error loading MUD configuration:', error);
+    return DEFAULT_CONFIG;
+  }
+}
+
+/**
+ * Save MUD configuration
+ */
+function saveMUDConfig(config: any) {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Error saving MUD configuration:', error);
+    return false;
+  }
+}
+
+/**
+ * Get MUD configuration - API handler
+ */
+export function getMUDConfig() {
+  return (req: Request, res: Response) => {
+    try {
+      const config = loadMUDConfig();
+      res.json({ success: true, config });
+    } catch (error) {
+      console.error('Error getting MUD configuration:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve configuration'
+      });
+    }
+  };
+}
+
+/**
+ * Update MUD configuration - API handler
+ */
+export function updateMUDConfig() {
+  return (req: Request, res: Response) => {
+    try {
+      const newConfig = req.body;
+      
+      // Validate required fields
+      if (!newConfig.dataFiles || !newConfig.game || !newConfig.advanced) {
+        return res.status(400).json({
+          success: false,
+          message: 'Missing required configuration sections'
+        });
+      }
+      
+      // Save the configuration
+      if (saveMUDConfig(newConfig)) {
+        res.json({
+          success: true,
+          message: 'Configuration updated successfully'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to save configuration'
+        });
+      }
+    } catch (error) {
+      console.error('Error updating MUD configuration:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update configuration'
+      });
+    }
+  };
+}
 
 export function login(req: Request, res: Response) {
   const { username, password } = req.body;

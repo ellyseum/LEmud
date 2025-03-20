@@ -227,3 +227,33 @@ body {
 #admin-command-input {
     font-family: 'Courier New', monospace;
 }
+
+/* Config form styling */
+#mud-config-form h6 {
+    color: #a1a1c2;
+    font-weight: 600;
+    margin-top: 1rem;
+}
+
+.form-check-input {
+    background-color: #2c2c2c;
+    border-color: #444;
+}
+
+.form-check-input:checked {
+    background-color: #533483;
+    border-color: #4a2d75;
+}
+
+.form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+/* Loading indicator */
+#config-loading {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
