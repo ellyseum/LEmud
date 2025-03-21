@@ -4,11 +4,13 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { UserManager } from '../../user/userManager';
 import { RoomManager } from '../../room/roomManager';
+import { CombatSystem } from '../../combat/combatSystem';
 
 export class QuitCommand implements Command {
   name = 'quit';
   description = 'Disconnect from the server';
   private roomManager: RoomManager;
+  private combatSystem: CombatSystem;
 
   constructor(
     private userManager: UserManager,
@@ -16,10 +18,16 @@ export class QuitCommand implements Command {
   ) {
     // Use singleton instance
     this.roomManager = RoomManager.getInstance(clients);
+    this.combatSystem = CombatSystem.getInstance(userManager, this.roomManager);
   }
 
   execute(client: ConnectedClient): void {
     if (!client.user) return;
+
+    // Check if player is in combat and end it
+    if (client.user.inCombat) {
+      this.combatSystem.handlePlayerDisconnect(client);
+    }
 
     writeToClient(client, colorize('Thank you for playing! Goodbye.\r\n', 'yellow'));
     

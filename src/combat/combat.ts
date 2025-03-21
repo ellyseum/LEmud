@@ -27,6 +27,12 @@ export class Combat {
   }
 
   processRound(): void {
+    // First check if the player is still connected and authenticated
+    if (!this.isPlayerValid()) {
+      this.activeCombatants = []; // Clear combatants to end combat
+      return;
+    }
+    
     if (!this.player.user || this.isDone()) return;
 
     this.rounds++;
@@ -319,6 +325,11 @@ export class Combat {
   }
 
   isDone(): boolean {
+    // End combat if player is no longer valid
+    if (!this.isPlayerValid()) {
+      return true;
+    }
+    
     // Only end combat if we truly have no active combatants
     if (this.activeCombatants.length === 0) {
       return true;
@@ -389,5 +400,24 @@ export class Combat {
         );
       }
     }
+  }
+  
+  /**
+   * Check if the player is still valid (connected and authenticated)
+   */
+  private isPlayerValid(): boolean {
+    // Check if the player is still in the clients map
+    const client = this.combatSystem.findClientByUsername(this.player.user?.username || '');
+    if (!client || !client.user || !client.authenticated) {
+      return false;
+    }
+    
+    // Check if the player's state matches
+    if (client !== this.player) {
+      // Update the player reference if needed
+      this.player = client;
+    }
+    
+    return true;
   }
 }

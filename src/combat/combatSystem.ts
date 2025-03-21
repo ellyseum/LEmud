@@ -9,6 +9,7 @@ import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
 
 export class CombatSystem {
+  private static instance: CombatSystem | null = null;
   private combats: Map<string, Combat> = new Map();
   // Track entities by room ID and name to share them across players
   private sharedEntities: Map<string, Map<string, CombatEntity>> = new Map();
@@ -23,6 +24,16 @@ export class CombatSystem {
     private userManager: UserManager,
     private roomManager: RoomManager
   ) {}
+
+  /**
+   * Get the singleton instance of CombatSystem
+   */
+  public static getInstance(userManager: UserManager, roomManager: RoomManager): CombatSystem {
+    if (!CombatSystem.instance) {
+      CombatSystem.instance = new CombatSystem(userManager, roomManager);
+    }
+    return CombatSystem.instance;
+  }
 
   /**
    * Get or create a shared entity for a room
@@ -219,8 +230,18 @@ export class CombatSystem {
     // Increment the global combat round
     this.currentRound++;
     
-    // Process each combat
+    // First check for disconnected players and end their combat
+    const playersToRemove: string[] = [];
+    
     for (const [username, combat] of this.combats.entries()) {
+      // Check if player is still connected
+      const client = this.findClientByUsername(username);
+      if (!client || !client.authenticated || !client.user) {
+        // Player is no longer valid, mark for removal
+        playersToRemove.push(username);
+        continue;
+      }
+      
       // Set the current round on the combat instance
       combat.currentRound = this.currentRound;
       combat.processRound();
@@ -228,14 +249,19 @@ export class CombatSystem {
       // Check if combat is done
       if (combat.isDone()) {
         combat.endCombat();
-        this.combats.delete(username);
-        
-        // Clean up entity targeters for this player
-        for (const [entityId, targeters] of this.entityTargeters.entries()) {
-          targeters.delete(username);
-          if (targeters.size === 0) {
-            this.entityTargeters.delete(entityId);
-          }
+        playersToRemove.push(username);
+      }
+    }
+    
+    // Clean up any combats that are done or have disconnected players
+    for (const username of playersToRemove) {
+      this.combats.delete(username);
+      
+      // Clean up entity targeters for this player
+      for (const [entityId, targeters] of this.entityTargeters.entries()) {
+        targeters.delete(username);
+        if (targeters.size === 0) {
+          this.entityTargeters.delete(entityId);
         }
       }
     }
@@ -368,5 +394,43 @@ export class CombatSystem {
   removeCombatForPlayer(username: string): void {
     // Remove the combat instance for this player
     this.combats.delete(username);
+  }
+
+  /**
+   * Handle a player disconnecting
+   */
+  public handlePlayerDisconnect(player: ConnectedClient): void {
+    if (!player.user) return;
+    
+    const username = player.user.username;
+    
+    // End the player's combat
+    const combat = this.combats.get(username);
+    if (combat) {
+      // Remove combat for the player
+      this.combats.delete(username);
+      
+      // Notify others in the room that the player is no longer in combat
+      if (player.user.currentRoomId) {
+        const formattedUsername = formatUsername(username);
+        this.broadcastRoomCombatMessage(
+          player.user.currentRoomId,
+          `${formattedUsername} is no longer in combat (disconnected).\r\n`,
+          'yellow',
+          username
+        );
+      }
+    }
+    
+    // Remove player from all entity targeters
+    for (const [entityId, targeters] of this.entityTargeters.entries()) {
+      if (targeters.has(username)) {
+        this.removeEntityTargeter(entityId, username);
+      }
+    }
+    
+    // Update player's inCombat status before they disconnect
+    player.user.inCombat = false;
+    this.userManager.updateUserStats(username, { inCombat: false });
   }
 }

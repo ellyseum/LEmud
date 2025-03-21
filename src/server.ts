@@ -23,6 +23,7 @@ import * as AdminApi from './admin/adminApi';
 import { getPromptText } from './utils/promptFormatter';
 import { GameTimerManager } from './timer/gameTimerManager';
 import { getMUDConfig, updateMUDConfig, loadMUDConfig } from './admin/adminApi';
+import { CombatSystem } from './combat/combatSystem';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -268,9 +269,19 @@ function setupClient(connection: IConnection): void {
     
     // Only unregister if the client is still authenticated
     if (client.user && client.authenticated) {
+      // First get the roomManager
+      const roomManager = RoomManager.getInstance(clients);
+      
+      // Then get the combat system instance to clean up any active combat
+      const combatSystem = CombatSystem.getInstance(userManager, roomManager);
+      
+      // End combat for this player if they're in combat
+      if (client.user.inCombat) {
+        combatSystem.handlePlayerDisconnect(client);
+      }
+      
       // Remove player from all rooms when they disconnect
       const username = client.user.username;
-      const roomManager = RoomManager.getInstance(clients);
       roomManager.removePlayerFromAllRooms(username);
       
       // Unregister the user session
@@ -294,15 +305,60 @@ function setupClient(connection: IConnection): void {
     
     // Only unregister if the client is still authenticated
     if (client.user && client.authenticated) {
+      // First get the roomManager
+      const roomManager = RoomManager.getInstance(clients);
+      
+      // Then get the combat system instance to clean up any active combat
+      const combatSystem = CombatSystem.getInstance(userManager, roomManager);
+      
+      // End combat for this player if they're in combat
+      if (client.user.inCombat) {
+        combatSystem.handlePlayerDisconnect(client);
+      }
+      
       // Remove player from all rooms when they disconnect due to error
       const username = client.user.username;
-      const roomManager = RoomManager.getInstance(clients);
       roomManager.removePlayerFromAllRooms(username);
       
       // Unregister the user session
       userManager.unregisterUserSession(username);
     }
     
+    clients.delete(clientId);
+  });
+
+  connection.on('close', () => {
+    console.log(`Client disconnected: ${clientId}`);
+    
+    // Check if client was in a pending transfer
+    if (client.user && client.stateData.waitingForTransfer) {
+      userManager.cancelTransfer(client.user.username);
+    }
+    
+    // Only unregister if the client is still authenticated
+    if (client.user && client.authenticated) {
+      // First get the roomManager
+      const roomManager = RoomManager.getInstance(clients);
+      
+      // Then get the combat system instance to clean up any active combat
+      const combatSystem = CombatSystem.getInstance(userManager, roomManager);
+      
+      // End combat for this player if they're in combat
+      if (client.user.inCombat) {
+        combatSystem.handlePlayerDisconnect(client);
+      }
+      
+      // Remove player from all rooms when they disconnect
+      const username = client.user.username;
+      roomManager.removePlayerFromAllRooms(username);
+      
+      // Unregister the user session
+      userManager.unregisterUserSession(username);
+      
+      // Notify other users with formatted username
+      const formattedUsername = formatUsername(username);
+      broadcastSystemMessage(`${formattedUsername} has left the game.`, client);
+    }
     clients.delete(clientId);
   });
 }
