@@ -1,18 +1,19 @@
 import net from 'net';
 import http from 'http';
 import path from 'path';
-import fs from 'fs';
+// fs import is used indirectly via AdminApi
 import { Server as SocketIOServer } from 'socket.io';
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-import jwt from 'jsonwebtoken'; // Add this import
+import jwt from 'jsonwebtoken';
 import { ConnectedClient, ClientStateType, ServerStats } from './types';
 import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
 import { StateMachine } from './state/stateMachine';
 import { colorize } from './utils/colors';
 import { stopBuffering, writeMessageToClient } from './utils/socketWriter';
+import { writeCommandPrompt } from './utils/promptFormatter';
 import { TelnetConnection } from './connection/telnet.connection';
 import { SocketIOConnection } from './connection/socketio.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
@@ -116,7 +117,7 @@ io.on('connection', (socket) => {
     const { clientId, token } = data;
     
     // Verify admin token
-    jwt.verify(token, JWT_SECRET, (err: jwt.VerifyErrors | null, decoded: any) => {
+    jwt.verify(token, JWT_SECRET, (err: jwt.VerifyErrors | null) => {
       if (err) {
         socket.emit('monitor-error', { message: 'Authentication failed' });
         return;
@@ -557,7 +558,8 @@ function broadcastSystemMessage(message: string, excludeClient?: ConnectedClient
 }
 
 // Modify the writeToClient function to also send output to monitoring admins
-function writeToClient(client: ConnectedClient, data: string): void {
+// Rename to writeToClientWithMonitoring to avoid conflict with the imported function
+function writeToClientWithMonitoring(client: ConnectedClient, data: string): void {
   // Always write to the actual client
   client.connection.write(data);
   

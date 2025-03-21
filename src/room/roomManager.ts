@@ -3,7 +3,7 @@ import path from 'path';
 import { Room } from './room';
 import { ConnectedClient, Currency, Exit, Item } from '../types';
 import { colorize } from '../utils/colors';
-import { writeToClient, writeMessageToClient } from '../utils/socketWriter';
+import { writeToClient, writeFormattedMessageToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 import { NPC } from '../combat/npc';
 
@@ -241,25 +241,25 @@ export class RoomManager {
   }
 
   /**
-   * Notifies all players in a room with a message, excluding the specified player
+   * Helper method to notify all players in a room about something
    */
   private notifyPlayersInRoom(roomId: string, message: string, excludeUsername?: string): void {
     const room = this.getRoom(roomId);
     if (!room) return;
     
-    // Get all players in the room
-    for (const playerUsername of room.players) {
-      // Skip the excluded player if any
-      if (excludeUsername && playerUsername === excludeUsername) continue;
+    for (const playerName of room.players) {
+      // Skip excluded player if specified
+      if (excludeUsername && playerName.toLowerCase() === excludeUsername.toLowerCase()) {
+        continue;
+      }
       
-      // Find the client for this player
-      const client = this.findClientByUsername(playerUsername);
-      if (client) {
-        writeMessageToClient(client, colorize(message, 'cyan'));
+      const playerClient = this.findClientByUsername(playerName);
+      if (playerClient) {
+        writeFormattedMessageToClient(playerClient, message);
       }
     }
   }
-  
+
   /**
    * Find a client by username
    */
@@ -330,11 +330,11 @@ export class RoomManager {
     const room = this.getRoom(roomId);
 
     if (!room) {
-      writeToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
+      writeFormattedMessageToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
       return this.teleportToStartingRoom(client);
     }
 
-    // Use the Room's method for consistent formatting
+    // Use the Room's method for consistent formatting with formatted message writer
     writeToClient(client, room.getDescriptionExcludingPlayer(client.user.username));
     return true;
   }
@@ -348,11 +348,11 @@ export class RoomManager {
     const room = this.getRoom(roomId);
 
     if (!room) {
-      writeToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
+      writeFormattedMessageToClient(client, colorize(`You seem to be lost in the void. Teleporting to safety...\r\n`, 'red'));
       return this.teleportToStartingRoom(client);
     }
 
-    // Use the Room's brief description method for consistent formatting
+    // Use the Room's brief description method with formatted message writer
     writeToClient(client, room.getBriefDescriptionExcludingPlayer(client.user.username));
     return true;
   }
@@ -491,7 +491,7 @@ export class RoomManager {
       // Notify the player being looked at
       const targetClient = this.findClientByUsername(playerMatch);
       if (targetClient) {
-        writeMessageToClient(
+        writeFormattedMessageToClient(
           targetClient, 
           colorize(`${formatUsername(client.user.username)} looks you up and down.\r\n`, 'cyan')
         );
@@ -506,7 +506,7 @@ export class RoomManager {
         
         const otherClient = this.findClientByUsername(otherPlayerName);
         if (otherClient) {
-          writeMessageToClient(
+          writeFormattedMessageToClient(
             otherClient, 
             colorize(`${formatUsername(client.user.username)} looks ${formatUsername(playerMatch)} up and down.\r\n`, 'cyan')
           );
@@ -627,7 +627,6 @@ export class RoomManager {
     startingRoom.addPlayer(client.user.username);
 
     // Update the player's current room ID
-    const oldRoomId = client.user.currentRoomId;
     client.user.currentRoomId = startingRoomId;
 
     // Notify the player about the teleport

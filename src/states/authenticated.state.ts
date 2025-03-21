@@ -17,6 +17,18 @@ export class AuthenticatedState implements ClientState {
   enter(client: ConnectedClient): void {
     if (!client.user) return;
     
+    // Prevent duplicate welcome messages with a state flag
+    if (client.stateData.welcomeDisplayed) {
+      // Skip welcome message if already displayed
+      // Just ensure the player is in the correct room
+      this.ensurePlayerInRoom(client);
+      writeCommandPrompt(client);
+      return;
+    }
+    
+    // Set flag to prevent duplicate welcome messages
+    client.stateData.welcomeDisplayed = true;
+    
     writeToClient(client, colors.clear);
     writeToClient(client, colorize('========================================\r\n', 'bright'));
     writeToClient(client, colorize(`Welcome, ${formatUsername(client.user.username)}!\r\n`, 'green'));
@@ -26,6 +38,36 @@ export class AuthenticatedState implements ClientState {
     
     // Send login broadcast to all other users
     this.broadcastLogin(client);
+    
+    // Ensure user is properly placed in a room
+    this.ensurePlayerInRoom(client);
+    
+    // Add the command prompt showing HP status at the end
+    writeCommandPrompt(client);
+  }
+
+  handle(): void {
+    // Command handling is done separately in CommandHandler
+  }
+
+  // Broadcast login notification to all authenticated users except the one logging in
+  private broadcastLogin(joiningClient: ConnectedClient): void {
+    if (!joiningClient.user) return;
+
+    const username = formatUsername(joiningClient.user.username);
+    const message = `${username} has entered the game.\r\n`;
+    
+    for (const [_, client] of this.clients.entries()) {
+      // Only send to authenticated users who are not the joining client
+      if (client.authenticated && client !== joiningClient) {
+        writeMessageToClient(client, colorize(message, 'bright'));
+      }
+    }
+  }
+
+  // Helper method to ensure player is in the correct room
+  private ensurePlayerInRoom(client: ConnectedClient): void {
+    if (!client.user) return;
     
     // Ensure user is placed in a room if they don't have one
     if (!client.user.currentRoomId) {
@@ -50,28 +92,6 @@ export class AuthenticatedState implements ClientState {
     } else {
       // Player is in an invalid room, teleport them to the starting room
       this.roomManager.teleportToStartingRoom(client);
-    }
-    
-    // Add the command prompt showing HP status
-    writeCommandPrompt(client);
-  }
-
-  handle(): void {
-    // Command handling is done separately in CommandHandler
-  }
-
-  // Broadcast login notification to all authenticated users except the one logging in
-  private broadcastLogin(joiningClient: ConnectedClient): void {
-    if (!joiningClient.user) return;
-
-    const username = formatUsername(joiningClient.user.username);
-    const message = `${username} has entered the game.\r\n`;
-    
-    for (const [_, client] of this.clients.entries()) {
-      // Only send to authenticated users who are not the joining client
-      if (client.authenticated && client !== joiningClient) {
-        writeMessageToClient(client, colorize(message, 'bright'));
-      }
     }
   }
 }

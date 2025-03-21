@@ -1,7 +1,7 @@
 import { ConnectedClient } from '../types';
 import { CombatEntity } from './combatEntity.interface';
 import { colorize } from '../utils/colors';
-import { writeToClient, writeMessageToClient } from '../utils/socketWriter';
+import { writeToClient, writeMessageToClient, writeFormattedMessageToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
@@ -78,7 +78,7 @@ export class Combat {
       const actualDamage = target.takeDamage(damage);
       
       // Send message to the player
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         player,
         colorize(`You hit the ${target.name} with your fists for ${actualDamage} damage.\r\n`, 'red')
       );
@@ -90,7 +90,7 @@ export class Combat {
       }
     } else {
       // Send message to the player
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         player,
         colorize(`You swing at the ${target.name} with your fists, and miss!\r\n`, 'cyan')
       );
@@ -120,7 +120,7 @@ export class Combat {
       this.userManager.updateUserStats(player.user.username, { health: player.user.health });
       
       // Send message to the player
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         player,
         colorize(`The ${npc.name} ${npc.getAttackText('you')} for ${damage} damage.\r\n`, 'red')
       );
@@ -137,7 +137,7 @@ export class Combat {
       }
     } else {
       // Send message to the player
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         player,
         colorize(`The ${npc.name} ${npc.getAttackText('you')} and misses!\r\n`, 'cyan')
       );
@@ -160,12 +160,12 @@ export class Combat {
     this.userManager.updateUserStats(this.player.user.username, { experience: this.player.user.experience });
     
     // Send death message to the player
-    writeMessageToClient(
+    writeFormattedMessageToClient(
       this.player,
       colorize(`The ${npc.name} lets out a final sad meow, and dies.\r\n`, 'magenta')
     );
     
-    writeMessageToClient(
+    writeFormattedMessageToClient(
       this.player, 
       colorize(`You gain ${npc.experienceValue} experience!\r\n`, 'bright')
     );
@@ -189,7 +189,7 @@ export class Combat {
     if (!this.player.user) return;
     
     // Send death message to player
-    writeMessageToClient(
+    writeFormattedMessageToClient(
       this.player,
       colorize(`You have been defeated! Use "heal" to recover.\r\n`, 'red')
     );
@@ -220,7 +220,7 @@ export class Combat {
     
     if (this.activeCombatants.length === 0) {
       // Send message to player
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         this.player,
         colorize(`*Combat Off*\r\n`, 'boldYellow')
       );
@@ -232,7 +232,7 @@ export class Combat {
       }
     } else if (this.brokenByPlayer) {
       // Send message to player
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         this.player,
         colorize(`You try to break combat, but the enemies are still hostile!\r\n`, 'boldYellow')
       );

@@ -1,6 +1,6 @@
 import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
-import { writeToClient, writeMessageToClient } from '../../utils/socketWriter';
+import { writeToClient, writeFormattedMessageToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { formatUsername } from '../../utils/formatters';
 import { RoomManager } from '../../room/roomManager';
@@ -101,7 +101,8 @@ export class YellCommand implements Command {
           messageText = `${formatUsername(yellerUsername)} yells '${message}'\r\n`;
         }
           
-        writeMessageToClient(playerClient, colorize(messageText, 'red'));
+        // Use the formatted message function
+        writeFormattedMessageToClient(playerClient, colorize(messageText, 'red'));
       }
     }
   }

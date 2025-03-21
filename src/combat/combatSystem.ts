@@ -2,7 +2,7 @@ import { ConnectedClient } from '../types';
 import { Combat } from './combat';
 import { CombatEntity } from './combatEntity.interface';
 import { colorize } from '../utils/colors';
-import { writeMessageToClient } from '../utils/socketWriter';
+import { writeFormattedMessageToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { NPC } from './npc';
 import { RoomManager } from '../room/roomManager';
@@ -41,7 +41,7 @@ export class CombatSystem {
       this.userManager.updateUserStats(player.user.username, { inCombat: true });
       
       // Message to the player - this will now already use the combat prompt
-      writeMessageToClient(
+      writeFormattedMessageToClient(
         player,
         colorize(`*Combat Engaged*\r\n`, 'boldYellow')
       );
@@ -76,7 +76,7 @@ export class CombatSystem {
       // Find client for this player
       const client = this.findClientByUsername(playerName);
       if (client) {
-        writeMessageToClient(client, message);
+        writeFormattedMessageToClient(client, message);
       }
     }
   }
@@ -120,7 +120,7 @@ export class CombatSystem {
     
     combat.brokenByPlayer = true;
     
-    writeMessageToClient(
+    writeFormattedMessageToClient(
       player,
       colorize(`You attempt to break combat...\r\n`, 'boldYellow')
     );
@@ -139,7 +139,7 @@ export class CombatSystem {
           // Find client for this player
           const client = this.findClientByUsername(playerName);
           if (client) {
-            writeMessageToClient(client, message);
+            writeFormattedMessageToClient(client, message);
           }
         }
       }

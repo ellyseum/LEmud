@@ -1,7 +1,6 @@
 import { ConnectedClient } from '../types';
 import { colorize } from '../utils/colors';
-import { writeToClient } from '../utils/socketWriter';
-import { writeCommandPrompt } from '../utils/promptFormatter';
+import { writeToClient, writeMessageToClient, writeFormattedMessageToClient, writeCommandPrompt } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { Command } from './command.interface';
 import { RoomManager } from '../room/roomManager';
@@ -133,8 +132,7 @@ export class CommandHandler {
     if (cleanInput === '.') {
       // Make sure user and command history are defined
       if (!client.user.commandHistory || client.user.commandHistory.length === 0) {
-        writeToClient(client, colorize('No previous command to repeat.\r\n', 'yellow'));
-        writeCommandPrompt(client);
+        writeFormattedMessageToClient(client, colorize('No previous command to repeat.\r\n', 'yellow'));
         return;
       }
 
@@ -235,7 +233,7 @@ export class CommandHandler {
       // Display the command prompt after command execution
       writeCommandPrompt(client);
     } else {
-      writeToClient(client, colorize(`Unknown command: ${commandName}\r\n`, 'red'));
+      writeFormattedMessageToClient(client, colorize(`Unknown command: ${commandName}\r\n`, 'red'));
       
       // Show help for unknown commands
       const helpCommand = this.commands.get('help');

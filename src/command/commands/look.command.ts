@@ -2,7 +2,7 @@ import { ConnectedClient } from '../../types';
 import { Command } from '../command.interface';
 import { RoomManager } from '../../room/roomManager';
 import { colorize } from '../../utils/colors';
-import { writeToClient, writeMessageToClient } from '../../utils/socketWriter';
+import { writeToClient, writeMessageToClient, writeFormattedMessageToClient } from '../../utils/socketWriter';
 import { formatUsername } from '../../utils/formatters';
 
 export class LookCommand implements Command {
@@ -119,7 +119,7 @@ export class LookCommand implements Command {
       
       const playerClient = this.findClientByUsername(playerName);
       if (playerClient) {
-        writeMessageToClient(
+        writeFormattedMessageToClient(
           playerClient,
           colorize(`${formatUsername(username)} looks to the ${direction}.\r\n`, 'cyan')
         );
@@ -137,7 +137,7 @@ export class LookCommand implements Command {
     for (const playerName of room.players) {
       const playerClient = this.findClientByUsername(playerName);
       if (playerClient) {
-        writeMessageToClient(
+        writeFormattedMessageToClient(
           playerClient,
           colorize(`${formatUsername(username)} peeks into the room from the ${fromDirection}.\r\n`, 'cyan')
         );
@@ -161,7 +161,7 @@ export class LookCommand implements Command {
       
       const playerClient = this.findClientByUsername(playerName);
       if (playerClient) {
-        writeMessageToClient(
+        writeFormattedMessageToClient(
           playerClient,
           colorize(`${formatUsername(client.user.username)} looks around the room.\r\n`, 'cyan')
         );
@@ -179,14 +179,6 @@ export class LookCommand implements Command {
       }
     }
     return undefined;
-  }
-
-  private formatExits(exits: any[]): string {
-    if (exits.length === 0) {
-      return 'none';
-    }
-
-    return exits.map(exit => exit.direction).join(', ');
   }
 
   /**
