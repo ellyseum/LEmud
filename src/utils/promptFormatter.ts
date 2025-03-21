@@ -14,6 +14,16 @@ type ColorType = 'blink' | 'reset' | 'bright' | 'dim' | 'underscore' | 'reverse'
 export function writeCommandPrompt(client: ConnectedClient): void {
   if (!client.user) return;
   
+  const promptText = getPromptText(client);
+  writeToClient(client, promptText);
+}
+
+/**
+ * Returns the command prompt text (without writing to client)
+ */
+export function getPromptText(client: ConnectedClient): string {
+  if (!client.user) return '';
+  
   // Reset any previous color formatting
   const ANSI_RESET = '\x1b[0m';
   
@@ -27,35 +37,11 @@ export function writeCommandPrompt(client: ConnectedClient): void {
   
   // Add combat indicator if in combat
   if (client.user.inCombat) {
-    prompt += colorize(' [COMBAT]', 'white');
+    prompt += colorize(' [COMBAT]', 'boldYellow');
   }
   
   prompt += colorize(': ', 'white');
   
   // Write the prompt with a reset first to ensure clean formatting
-  writeToClient(client, ANSI_RESET + prompt);
-}
-
-/**
- * Returns the command prompt text (without writing to client)
- */
-export function getPromptText(client: ConnectedClient): string {
-  if (!client.user) return '';
-  
-  const health = client.user.health;
-  const maxHealth = client.user.maxHealth;
-  
-  // Format HP numbers in green
-  const hpNumbers = colorize(`${health}/${maxHealth}`, 'green');
-  
-  // Reset color first
-  const ANSI_RESET = '\x1b[0m';
-  
-  // Build the prompt with white base color and green HP numbers
-  const prompt = colorize(`[HP=`, 'white') + 
-                 hpNumbers + 
-                 colorize(`]: `, 'white');
-  
-  // Include the reset at the beginning
   return ANSI_RESET + prompt;
 }

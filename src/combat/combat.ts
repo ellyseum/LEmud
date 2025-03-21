@@ -269,7 +269,7 @@ export class Combat {
       
       const client = this.findClientByUsername(playerName);
       if (client) {
-        writeMessageToClient(client, coloredMessage);
+        writeFormattedMessageToClient(client, coloredMessage);
       }
     }
   }

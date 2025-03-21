@@ -1,6 +1,6 @@
 import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { colorize, colors } from '../utils/colors';
-import { writeToClient, writeMessageToClient } from '../utils/socketWriter';
+import { writeToClient, writeMessageToClient, writeFormattedMessageToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 import { writeCommandPrompt } from '../utils/promptFormatter';
 import { RoomManager } from '../room/roomManager';
@@ -60,7 +60,7 @@ export class AuthenticatedState implements ClientState {
     for (const [_, client] of this.clients.entries()) {
       // Only send to authenticated users who are not the joining client
       if (client.authenticated && client !== joiningClient) {
-        writeMessageToClient(client, colorize(message, 'bright'));
+        writeFormattedMessageToClient(client, colorize(message, 'bright'));
       }
     }
   }

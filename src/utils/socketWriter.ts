@@ -57,7 +57,7 @@ export function writeMessageToClient(client: ConnectedClient, message: string): 
     
     // For combat messages or if in combat, always redraw the prompt
     if (isCombatMessage || client.user.inCombat) {
-      // Redraw the prompt
+      // Redraw the prompt using our standard prompt formatter
       const promptText = getPromptText(client);
       writeToClient(client, promptText);
       
@@ -97,7 +97,7 @@ export function stopBuffering(client: ConnectedClient): void {
   // Reset isTyping flag
   client.isTyping = false;
   
-  // Redraw the prompt
+  // Redraw the prompt using our standard prompt formatter
   if (client.connection.getType() === 'telnet' && client.user) {
     const promptText = getPromptText(client);
     writeToClient(client, promptText);
@@ -135,7 +135,7 @@ export function writeFormattedMessageToClient(client: ConnectedClient, message: 
   // Write the message
   client.connection.write(message);
   
-  // Always redraw the prompt
+  // Always redraw the prompt using our standard prompt formatter
   const promptText = getPromptText(client);
   client.connection.write(promptText);
   

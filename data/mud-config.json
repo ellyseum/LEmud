@@ -8,7 +8,7 @@
   "game": {
     "startingRoom": "town-square",
     "maxPlayers": 100,
-    "idleTimeout": 1,
+    "idleTimeout": 9999,
     "maxPasswordAttempts": 5
   },
   "advanced": {
