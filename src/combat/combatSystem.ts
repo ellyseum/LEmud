@@ -17,6 +17,8 @@ export class CombatSystem {
   private entityTargeters: Map<string, Set<string>> = new Map();
   // Track the last combat round each entity attacked in
   private entityLastAttackRound: Map<string, number> = new Map();
+  // Track which entities have already attacked in the current round
+  private entitiesAttackedThisRound: Set<string> = new Set();
   // Current combat round
   private currentRound: number = 0;
   
@@ -230,6 +232,9 @@ export class CombatSystem {
     // Increment the global combat round
     this.currentRound++;
     
+    // Clear the list of entities that have attacked this round
+    this.entitiesAttackedThisRound.clear();
+    
     // First check for disconnected players and end their combat
     const playersToRemove: string[] = [];
     
@@ -279,6 +284,16 @@ export class CombatSystem {
    */
   markEntityAttacked(entityId: string): void {
     this.entityLastAttackRound.set(entityId, this.currentRound);
+  }
+
+  /**
+   * Reset entity attack status so it can attack again immediately
+   * Used when its current target disconnects
+   */
+  private resetEntityAttackStatus(entityId: string): void {
+    if (this.entityLastAttackRound.has(entityId)) {
+      this.entityLastAttackRound.delete(entityId);
+    }
   }
 
   /**
@@ -403,6 +418,7 @@ export class CombatSystem {
     if (!player.user) return;
     
     const username = player.user.username;
+    const roomId = player.user.currentRoomId;
     
     // End the player's combat
     const combat = this.combats.get(username);
@@ -411,10 +427,10 @@ export class CombatSystem {
       this.combats.delete(username);
       
       // Notify others in the room that the player is no longer in combat
-      if (player.user.currentRoomId) {
+      if (roomId) {
         const formattedUsername = formatUsername(username);
         this.broadcastRoomCombatMessage(
-          player.user.currentRoomId,
+          roomId,
           `${formattedUsername} is no longer in combat (disconnected).\r\n`,
           'yellow',
           username
@@ -422,10 +438,31 @@ export class CombatSystem {
       }
     }
     
-    // Remove player from all entity targeters
+    // Track which entities this player was targeting
+    const targetedEntities: string[] = [];
+    
+    // Remove player from all entity targeters and collect entities
     for (const [entityId, targeters] of this.entityTargeters.entries()) {
       if (targeters.has(username)) {
+        targetedEntities.push(entityId);
         this.removeEntityTargeter(entityId, username);
+      }
+    }
+    
+    // Check each entity to see if it needs to select a new target
+    for (const entityId of targetedEntities) {
+      // Parse the entity ID to get room and name
+      const [entityRoomId, entityName] = entityId.split('::');
+      
+      if (entityRoomId !== roomId) continue;
+      
+      // Get remaining targeters for this entity
+      const remainingTargeters = this.getEntityTargeters(entityId);
+      
+      // If there are still players targeting this entity, make sure the entity
+      // targets one of them in the next combat round
+      if (remainingTargeters.length > 0) {
+        this.resetEntityAttackStatus(entityId);
       }
     }
     

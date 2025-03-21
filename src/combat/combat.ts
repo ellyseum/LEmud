@@ -129,10 +129,30 @@ export class Combat {
     if (targetingPlayers.length === 0) return;
     
     // Choose a random player to attack
-    const randomPlayerName = targetingPlayers[Math.floor(Math.random() * targetingPlayers.length)];
-    const targetPlayer = this.combatSystem.findClientByUsername(randomPlayerName);
+    let validTarget = false;
+    let targetPlayer: ConnectedClient | undefined;
+    let attempts = 0;
+    const maxAttempts = targetingPlayers.length;
     
-    if (!targetPlayer || !targetPlayer.user) return;
+    // Try to find a valid target, attempting each player once
+    while (!validTarget && attempts < maxAttempts) {
+      attempts++;
+      const randomIndex = Math.floor(Math.random() * targetingPlayers.length);
+      const randomPlayerName = targetingPlayers[randomIndex];
+      targetPlayer = this.combatSystem.findClientByUsername(randomPlayerName);
+      
+      if (targetPlayer && targetPlayer.user && targetPlayer.authenticated) {
+        validTarget = true;
+      } else if (targetPlayer === undefined || !targetPlayer.authenticated) {
+        // If player no longer exists or not authenticated, remove from targeters
+        this.combatSystem.removeEntityTargeter(entityId, randomPlayerName);
+        // Remove player from the array too to avoid selecting again
+        targetingPlayers.splice(randomIndex, 1);
+      }
+    }
+    
+    // If no valid target found after checking all players, return
+    if (!validTarget || !targetPlayer || !targetPlayer.user) return;
     
     // Mark that this entity has attacked in this round
     this.combatSystem.markEntityAttacked(entityId);
@@ -203,7 +223,7 @@ export class Combat {
     const entityId = this.combatSystem.getEntityId(roomId, npc.name);
     
     // Get all players targeting this entity
-    const targetingPlayers = this.combatSystem.getEntityTargeters(entityId);
+    const targetingPlayers = [...this.combatSystem.getEntityTargeters(entityId)];
     
     // Calculate experience per player - divide the total experience by number of participants
     const experiencePerPlayer = Math.floor(npc.experienceValue / targetingPlayers.length);
@@ -249,29 +269,32 @@ export class Combat {
     // End combat for all players who were targeting this entity
     // This ensures all players receive the Combat Off message
     for (const playerName of targetingPlayers) {
-      if (playerName !== this.player.user.username) { // Skip the player who landed the killing blow (handled in endCombat)
-        const client = this.combatSystem.findClientByUsername(playerName);
-        if (client && client.user) {
-          // Set inCombat to false
-          client.user.inCombat = false;
-          this.userManager.updateUserStats(client.user.username, { inCombat: false });
-          
-          // Clear the line first
-          const clearLineSequence = '\r\x1B[K';
-          writeToClient(client, clearLineSequence);
-          
-          // Send Combat Off message
-          writeToClient(
-            client,
-            colorize(`*Combat Off*\r\n`, 'boldYellow')
-          );
-          
-          // Draw the prompt explicitly once
-          drawCommandPrompt(client);
-          
-          // Remove from combat system
-          this.combatSystem.removeCombatForPlayer(playerName);
-        }
+      // Skip processing for invalid players (already disconnected)
+      const client = this.combatSystem.findClientByUsername(playerName);
+      if (!client || !client.user) continue;
+      
+      // Only process combat end for players other than the one who landed the killing blow
+      // (the player who killed it has their combat ended separately)
+      if (playerName !== this.player.user.username) {
+        // Set inCombat to false
+        client.user.inCombat = false;
+        this.userManager.updateUserStats(client.user.username, { inCombat: false });
+        
+        // Clear the line first
+        const clearLineSequence = '\r\x1B[K';
+        writeToClient(client, clearLineSequence);
+        
+        // Send Combat Off message
+        writeToClient(
+          client,
+          colorize(`*Combat Off*\r\n`, 'boldYellow')
+        );
+        
+        // Draw the prompt explicitly once
+        drawCommandPrompt(client);
+        
+        // Remove from combat system
+        this.combatSystem.removeCombatForPlayer(playerName);
       }
     }
     
@@ -409,6 +432,7 @@ export class Combat {
     // Check if the player is still in the clients map
     const client = this.combatSystem.findClientByUsername(this.player.user?.username || '');
     if (!client || !client.user || !client.authenticated) {
+      // Player is disconnected or not authenticated
       return false;
     }
     
