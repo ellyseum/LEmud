@@ -1,5 +1,4 @@
 import { IConnection } from './connection/interfaces/connection.interface';
-import { Currency } from './room/room';
 
 // Define state enum
 export enum ClientStateType {
@@ -9,6 +8,25 @@ export enum ClientStateType {
   CONFIRMATION = 'confirmation',
   AUTHENTICATED = 'authenticated',
   TRANSFER_REQUEST = 'transfer_request'  // New state for handling session transfers
+}
+
+// Define Item interface
+export interface Item {
+  name: string;
+  description?: string;
+}
+
+// Define Exit interface
+export interface Exit {
+  direction: string;
+  roomId: string;
+}
+
+// Define Currency interface
+export interface Currency {
+  gold: number;
+  silver: number;
+  copper: number;
 }
 
 export interface User {
@@ -30,6 +48,7 @@ export interface User {
   commandHistory?: string[]; // Store the user's command history (up to 30 entries)
   currentHistoryIndex?: number; // Current position in command history when browsing
   savedCurrentCommand?: string; // Save the current command when browsing history
+  inCombat?: boolean; // Add combat status
 }
 
 export interface ConnectedClient {
@@ -76,4 +95,19 @@ export interface ServerStats {
     heapUsed: number;
     external: number;
   }
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  description: string;
+  exits: Exit[];
+  players: string[];
+  items: Item[];
+  currency: {
+    gold: number;
+    silver: number;
+    copper: number;
+  };
+  npcs?: string[]; // Add NPCs array to track monsters in the room
 }

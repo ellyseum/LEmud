@@ -1,27 +1,32 @@
 import fs from 'fs';
 import path from 'path';
-import { Room, Exit, Currency } from './room';
-import { ConnectedClient } from '../types';
+import { Room } from './room';
+import { ConnectedClient, Currency, Exit, Item } from '../types';
 import { colorize } from '../utils/colors';
 import { writeToClient, writeMessageToClient } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
+import { NPC } from '../combat/npc';
 
 const ROOMS_FILE = path.join(__dirname, '..', '..', 'data', 'rooms.json');
 const DEFAULT_ROOM_ID = 'start'; // ID for the starting room
 
 interface RoomData {
   id: string;
-  shortDescription: string;
-  longDescription: string;
+  shortDescription?: string;
+  longDescription?: string;
+  name?: string;
+  description?: string;
   exits: Exit[];
-  objects: string[];
-  npcs: string[];
+  items?: string[];
+  players?: string[];
+  npcs?: string[];
   currency: Currency;
 }
 
 export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private clients: Map<string, ConnectedClient>;
+  private npcs: Map<string, NPC> = new Map();
   
   // Add static instance for singleton pattern
   private static instance: RoomManager | null = null;
@@ -52,17 +57,7 @@ export class RoomManager {
         const roomDataArray: RoomData[] = JSON.parse(data);
         
         roomDataArray.forEach(roomData => {
-          const room = new Room({
-            id: roomData.id,
-            shortDescription: roomData.shortDescription,
-            longDescription: roomData.longDescription,
-            exits: roomData.exits || [],
-            objects: roomData.objects || [],
-            npcs: roomData.npcs || [],
-            players: [], // Players are tracked at runtime, not saved
-            currency: roomData.currency || { gold: 0, silver: 0, copper: 0 }
-          });
-          
+          const room = new Room(roomData);
           this.rooms.set(room.id, room);
         });
       } else {
@@ -73,6 +68,9 @@ export class RoomManager {
       console.error('Error loading rooms:', error);
       this.ensureStartingRoom(); // Make sure we have at least the starting room
     }
+
+    // Add NPC initialization after loading rooms
+    this.initializeNPCs();
   }
 
   private saveRooms(): void {
@@ -80,10 +78,10 @@ export class RoomManager {
       // Convert rooms to storable format (without players)
       const roomsData = Array.from(this.rooms.values()).map(room => ({
         id: room.id,
-        shortDescription: room.shortDescription,
-        longDescription: room.longDescription,
+        name: room.name,
+        description: room.description,
         exits: room.exits,
-        objects: room.objects,
+        items: room.items,
         npcs: room.npcs,
         currency: room.currency
       }));
@@ -99,21 +97,21 @@ export class RoomManager {
       // Create a default starting room if none exists
       const startingRoom = new Room({
         id: DEFAULT_ROOM_ID,
-        shortDescription: 'The Starting Room',
-        longDescription: 'You are in the starting room. It is small and musty and smells like old clothes and cheese.',
+        name: 'The Starting Room',
+        description: 'You are in the starting room. It is small and musty and smells like old clothes and cheese.',
         exits: [{ direction: 'north', roomId: 'room2' }],
-        objects: ['sword', 'shield'],
-        npcs: ['dog', 'cat'],
+        items: ['sword', 'shield'],
+        npcs: [],
         currency: { gold: 5, silver: 3, copper: 10 }
       });
       
       // Create a second room to demonstrate movement
       const secondRoom = new Room({
         id: 'room2',
-        shortDescription: 'A New Room',
-        longDescription: 'You are in a new room.',
+        name: 'A New Room',
+        description: 'You are in a new room.',
         exits: [{ direction: 'south', roomId: DEFAULT_ROOM_ID }],
-        objects: [],
+        items: [],
         npcs: []
       });
       
@@ -403,21 +401,23 @@ export class RoomManager {
     }
 
     // Then check if it's an object in the room
-    const objectMatch = room.objects.find(obj => 
-      obj.toLowerCase() === normalizedName || 
-      obj.toLowerCase().includes(normalizedName)
-    );
+    const objectMatch = room.items.find((item: Item | string) => {
+      const itemName = typeof item === 'string' ? item : item.name;
+      return itemName.toLowerCase() === normalizedName || 
+             itemName.toLowerCase().includes(normalizedName);
+    });
     
     if (objectMatch) {
       // Display object description
-      writeToClient(client, colorize(`You look at the ${objectMatch}.\r\n`, 'cyan'));
+      const itemName = typeof objectMatch === 'string' ? objectMatch : objectMatch.name;
+      writeToClient(client, colorize(`You look at the ${itemName}.\r\n`, 'cyan'));
       // Here we can add more detailed description based on the object type
-      writeToClient(client, colorize(`It's a ${objectMatch} lying on the ground.\r\n`, 'cyan'));
+      writeToClient(client, colorize(`It's a ${itemName} lying on the ground.\r\n`, 'cyan'));
       
       // Notify other players in the room
       this.notifyPlayersInRoom(
         roomId,
-        `${formatUsername(client.user.username)} examines the ${objectMatch} closely.\r\n`,
+        `${formatUsername(client.user.username)} examines the ${itemName} closely.\r\n`,
         client.user.username
       );
       
@@ -652,5 +652,70 @@ export class RoomManager {
    */
   public forceSave(): void {
     this.saveRooms();
+  }
+
+  /**
+   * Initialize NPCs in rooms
+   */
+  private initializeNPCs(): void {
+    // Add some cats to the starting room for testing
+    const startingRoom = this.getRoom('start');
+    if (startingRoom) {
+      // Add 3 cats to the starting room
+      for (let i = 0; i < 3; i++) {
+        const catNPC = new NPC('cat', 20, 20, [1, 3], false, false, 100);
+        const npcId = `cat-${Date.now()}-${i}`;
+        this.npcs.set(npcId, catNPC);
+        startingRoom.addNPC('cat');
+      }
+      this.updateRoom(startingRoom);
+    }
+  }
+
+  /**
+   * Get an NPC from the room by name
+   */
+  public getNPCFromRoom(roomId: string, npcName: string): NPC | null {
+    const room = this.getRoom(roomId);
+    if (!room) return null;
+
+    // Look for the NPC name in the room
+    const foundNPCName = room.npcs.find(name => name.toLowerCase() === npcName.toLowerCase());
+    if (!foundNPCName) return null;
+
+    // Create a new NPC instance (we'll improve this with proper NPC storage later)
+    return new NPC(
+      foundNPCName,
+      20,  // health
+      20,  // maxHealth
+      [1, 3],  // damage range
+      false,  // isHostile
+      false,  // isPassive
+      100  // experienceValue
+    );
+  }
+
+  /**
+   * Remove an NPC from a room (when it dies)
+   */
+  public removeNPCFromRoom(roomId: string, npcName: string): boolean {
+    const room = this.getRoom(roomId);
+    if (!room) return false;
+
+    // Find the index of the first matching NPC
+    const index = room.npcs.findIndex(name => name.toLowerCase() === npcName.toLowerCase());
+    if (index === -1) return false;
+
+    // Remove just one instance of this NPC
+    room.npcs.splice(index, 1);
+    this.updateRoom(room);
+    return true;
+  }
+
+  /**
+   * Store an NPC instance in the manager
+   */
+  public storeNPC(npcId: string, npc: NPC): void {
+    this.npcs.set(npcId, npc);
   }
 }

@@ -2,14 +2,38 @@ import { ConnectedClient } from '../types';
 import { colorize } from './colors';
 import { writeToClient } from './socketWriter';
 
+// Define valid color types to match what colorize accepts
+type ColorType = 'blink' | 'reset' | 'bright' | 'dim' | 'underscore' | 'reverse' | 'hidden' |
+                'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white' |
+                'boldBlack' | 'boldRed' | 'boldGreen' | 'boldYellow' | 'boldBlue' |
+                'boldMagenta' | 'boldCyan' | 'boldWhite' | 'clear';
+
 /**
  * Writes a command prompt to the client based on their stats
  */
 export function writeCommandPrompt(client: ConnectedClient): void {
   if (!client.user) return;
   
-  const healthStr = getPromptText(client);
-  writeToClient(client, healthStr);
+  // Reset any previous color formatting
+  const ANSI_RESET = '\x1b[0m';
+  
+  // Format the HP numbers in green
+  const hpNumbers = colorize(`${client.user.health}/${client.user.maxHealth}`, 'green');
+  
+  // Build the prompt with white base color and green HP numbers
+  let prompt = colorize(`[HP=`, 'white') + 
+               hpNumbers + 
+               colorize(`]`, 'white');
+  
+  // Add combat indicator if in combat
+  if (client.user.inCombat) {
+    prompt += colorize(' [COMBAT]', 'white');
+  }
+  
+  prompt += colorize(': ', 'white');
+  
+  // Write the prompt with a reset first to ensure clean formatting
+  writeToClient(client, ANSI_RESET + prompt);
 }
 
 /**
@@ -21,14 +45,17 @@ export function getPromptText(client: ConnectedClient): string {
   const health = client.user.health;
   const maxHealth = client.user.maxHealth;
   
-  // Color the health portion based on health percentage
-  let healthColor: 'red' | 'yellow' | 'green' = 'green';
-  const healthPercentage = (health / maxHealth) * 100;
+  // Format HP numbers in green
+  const hpNumbers = colorize(`${health}/${maxHealth}`, 'green');
   
-  if (healthPercentage < 30) healthColor = 'red';
-  else if (healthPercentage < 70) healthColor = 'yellow';
+  // Reset color first
+  const ANSI_RESET = '\x1b[0m';
   
-  const healthDisplay = colorize(`${health}/${maxHealth}`, healthColor);
-  // Remove the \r\n at the beginning to avoid extra blank lines
-  return `[HP=${healthDisplay}]: `;
+  // Build the prompt with white base color and green HP numbers
+  const prompt = colorize(`[HP=`, 'white') + 
+                 hpNumbers + 
+                 colorize(`]: `, 'white');
+  
+  // Include the reset at the beginning
+  return ANSI_RESET + prompt;
 }

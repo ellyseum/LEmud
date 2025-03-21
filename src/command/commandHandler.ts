@@ -22,6 +22,10 @@ import { DropCommand } from './commands/drop.command';
 import { GetCommand } from './commands/get.command';
 import { YellCommand } from './commands/yell.command';
 import { HistoryCommand } from './commands/history.command';
+import { AttackCommand } from './commands/attack.command';
+import { BreakCommand } from './commands/break.command';
+import { GameTimerManager } from '../timer/gameTimerManager';
+import { SpawnCommand } from './commands/spawn.command';
 
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
@@ -38,6 +42,9 @@ export class CommandHandler {
   }
 
   private registerCommands(): void {
+    // Get combat system from GameTimerManager
+    const combatSystem = GameTimerManager.getInstance(this.userManager, this.roomManager).getCombatSystem();
+
     // Create command instances
     const commands: Command[] = [
       new SayCommand(this.clients),
@@ -53,7 +60,10 @@ export class CommandHandler {
       new DropCommand(this.clients, this.userManager),
       new GetCommand(this.clients, this.userManager),
       new YellCommand(this.clients),
-      new HistoryCommand()
+      new HistoryCommand(),
+      new AttackCommand(combatSystem, this.roomManager),
+      new BreakCommand(combatSystem),
+      new SpawnCommand(this.roomManager) // Add the spawn command
     ];
     
     // Register all commands
@@ -68,6 +78,9 @@ export class CommandHandler {
     this.commandAliases.set('hist', 'history'); // Add shortcut for history command
     // this.commandAliases.set('get', 'pickup');  // Remove this line since we have an explicit command now
     this.commandAliases.set('take', 'pickup');
+    this.commandAliases.set('a', 'attack');
+    this.commandAliases.set('br', 'break');
+    this.commandAliases.set('sp', 'spawn'); // Add an alias for spawn
     
     // Register direction shortcuts
     const moveCommand = commands.find(cmd => cmd.name === 'move') as MoveCommand;

@@ -1,45 +1,26 @@
 import { formatUsername } from '../utils/formatters';
 import { colorize } from '../utils/colors';
-
-export interface Currency {
-  gold: number;
-  silver: number;
-  copper: number;
-}
-
-export interface Exit {
-  direction: string;
-  roomId: string;
-}
+import { Currency, Exit, Item } from '../types';
 
 export class Room {
   id: string;
-  shortDescription: string;
-  longDescription: string;
+  name: string;
+  description: string;
   exits: Exit[];
-  objects: string[];
-  npcs: string[];
-  players: string[];
-  currency: Currency;
+  players: string[] = [];
+  items: Item[] = [];
+  currency: Currency = { gold: 0, silver: 0, copper: 0 };
+  npcs: string[] = []; // Add NPCs array to track monsters in the room
 
-  constructor(data: {
-    id: string;
-    shortDescription: string;
-    longDescription: string;
-    exits?: Exit[];
-    objects?: string[];
-    npcs?: string[];
-    players?: string[];
-    currency?: Currency;
-  }) {
-    this.id = data.id;
-    this.shortDescription = data.shortDescription;
-    this.longDescription = data.longDescription;
-    this.exits = data.exits || [];
-    this.objects = data.objects || [];
-    this.npcs = data.npcs || [];
-    this.players = data.players || [];
-    this.currency = data.currency || { gold: 0, silver: 0, copper: 0 };
+  constructor(room: any) {
+    this.id = room.id;
+    this.name = room.name || room.shortDescription;
+    this.description = room.description || room.longDescription;
+    this.exits = room.exits || [];
+    this.players = room.players || [];
+    this.items = room.items || room.objects || [];
+    this.currency = room.currency || { gold: 0, silver: 0, copper: 0 };
+    this.npcs = room.npcs || []; // Initialize NPCs
   }
 
   addPlayer(username: string): void {
@@ -52,8 +33,49 @@ export class Room {
     this.players = this.players.filter(player => player !== username);
   }
 
+  /**
+   * Add an NPC to the room
+   */
+  addNPC(npcName: string): void {
+    if (!this.npcs.includes(npcName)) {
+      this.npcs.push(npcName);
+    }
+  }
+
+  /**
+   * Remove an NPC from the room
+   */
+  removeNPC(npcName: string): void {
+    this.npcs = this.npcs.filter(name => name !== npcName);
+  }
+
+  // Update getDescription method to include NPCs
   getDescription(): string {
-    return this.getFormattedDescription(true);
+    let output = this.getFormattedDescription(true);
+
+    // Add NPCs to description if any
+    if (this.npcs.length > 0) {
+      // Count occurrences of each NPC type
+      const npcCounts = new Map<string, number>();
+      this.npcs.forEach(npc => {
+        npcCounts.set(npc, (npcCounts.get(npc) || 0) + 1);
+      });
+
+      output += '\r\nAlso here: ';
+      
+      const npcStrings: string[] = [];
+      npcCounts.forEach((count, npc) => {
+        if (count === 1) {
+          npcStrings.push(`a ${npc}`);
+        } else {
+          npcStrings.push(`${count} ${npc}s`);
+        }
+      });
+      
+      output += npcStrings.join(', ') + '.\r\n';
+    }
+
+    return output;
   }
 
   getDescriptionExcludingPlayer(username: string): string {
@@ -72,8 +94,8 @@ export class Room {
    * Generate a description for someone looking into the room from outside
    */
   getDescriptionForPeeking(fromDirection: string): string {
-    let description = colorize(this.shortDescription, 'cyan') + '\r\n';
-    description += colorize(this.longDescription, 'white') + '\r\n';
+    let description = colorize(this.name, 'cyan') + '\r\n';
+    description += colorize(this.description, 'white') + '\r\n';
     
     // Show players in the room
     if (this.players.length > 0) {
@@ -85,8 +107,8 @@ export class Room {
       description += colorize(`You can see some creatures moving around.\r\n`, 'yellow');
     }
     
-    // Show objects in the room (simplified view when peeking)
-    if (this.objects.length > 0 || 
+    // Show items in the room (simplified view when peeking)
+    if (this.items.length > 0 || 
         (this.currency.gold > 0 || this.currency.silver > 0 || this.currency.copper > 0)) {
       description += colorize(`You can see some items in the distance.\r\n`, 'green');
     }
@@ -107,10 +129,10 @@ export class Room {
 
   // Centralized method to format room descriptions
   private getFormattedDescription(includeLongDesc: boolean, excludePlayer?: string): string {
-    let description = colorize(this.shortDescription, 'cyan') + '\r\n';
+    let description = colorize(this.name, 'cyan') + '\r\n';
     
     if (includeLongDesc) {
-      description += colorize(this.longDescription, 'white') + '\r\n';
+      description += colorize(this.description, 'white') + '\r\n';
     }
     
     // Add the common parts
@@ -145,14 +167,14 @@ export class Room {
       description += colorize(`You notice ${currencyText} here.`, 'green') + '\r\n';
     }
 
-    // Add objects description
-    if (this.objects.length > 0) {
-      if (this.objects.length === 1) {
-        description += colorize(`You see a ${this.objects[0]}.`, 'green') + '\r\n';
+    // Add items description
+    if (this.items.length > 0) {
+      if (this.items.length === 1) {
+        description += colorize(`You see a ${this.items[0]}.`, 'green') + '\r\n';
       } else {
-        const lastObject = this.objects[this.objects.length - 1];
-        const otherObjects = this.objects.slice(0, -1).map(obj => `a ${obj}`).join(', ');
-        description += colorize(`You see ${otherObjects}, and a ${lastObject}.`, 'green') + '\r\n';
+        const lastItem = this.items[this.items.length - 1];
+        const otherItems = this.items.slice(0, -1).map(item => `a ${item}`).join(', ');
+        description += colorize(`You see ${otherItems}, and a ${lastItem}.`, 'green') + '\r\n';
       }
     }
 

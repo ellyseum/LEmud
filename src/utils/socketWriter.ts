@@ -1,11 +1,12 @@
 import { ConnectedClient } from '../types';
-import { writeCommandPrompt, getPromptText } from './promptFormatter';
+import { getPromptText } from './promptFormatter';
 
-/**
- * Writes data to the client connection, buffering if the client is currently typing
- */
+// Max delay between messages when buffering
+const MAX_OUTPUT_DELAY = 100;
+
+// Write directly to the client without buffering
 export function writeToClient(client: ConnectedClient, data: string): void {
-  // Always write to the actual client
+  // Write directly to the connection
   client.connection.write(data);
   
   // If this client is being monitored, also send to the admin
@@ -14,60 +15,102 @@ export function writeToClient(client: ConnectedClient, data: string): void {
   }
 }
 
-/**
- * Writes data to client, erasing and restoring the command prompt if necessary
- * This is used for real-time messages like chat or system notifications
- */
+// Write message to client with proper handling of the prompt
 export function writeMessageToClient(client: ConnectedClient, message: string): void {
-  // If the client is currently typing (has a prompt displayed)
+  if (!client.user) {
+    writeToClient(client, message);
+    return;
+  }
+  
+  // If user is actively typing (has something in buffer), buffer the output
   if (client.isTyping && client.buffer.length > 0) {
-    // Save current input
-    const currentInput = client.buffer;
-    const promptLength = getPromptText(client).length;
-    
-    // Clear the current line
-    client.connection.write('\r' + ' '.repeat(promptLength + currentInput.length) + '\r');
-    
-    // Write the message
+    // Add to output buffer
+    client.outputBuffer.push(message);
+    return;
+  }
+  
+  // Special case for combat engagement message to prevent double prompt
+  if (message.includes('*Combat Engaged*')) {
+    // For combat engagement, just write the message - the prompt has already been cleared
     writeToClient(client, message);
     
-    // Restore the prompt and current input
+    // Write the prompt again
     const promptText = getPromptText(client);
-    writeToClient(client, promptText + currentInput);
+    writeToClient(client, promptText);
+    return;
+  }
+  
+  // Check if this is combat-related message
+  const isCombatMessage = 
+    message.includes('swing') || 
+    message.includes('hit') || 
+    message.includes('attacks') ||
+    message.includes('miss') ||
+    message.includes('Combat') ||
+    message.includes('combat') ||
+    message.includes('moves to attack');
+  
+  if (client.connection.getType() === 'telnet') {
+    // First, clear the current line for all combat-related messages regardless of combat status
+    // This ensures no prompt doubling or line issues
+    if (isCombatMessage) {
+      const clearLineSequence = '\r\x1B[K';
+      writeToClient(client, clearLineSequence);
+    }
     
-    // Buffer the message for later if we're in a buffering state
-    if (client.isTyping) {
-      client.outputBuffer.push(message);
+    // Write the actual message
+    writeToClient(client, message);
+    
+    // For combat messages, we always need to redraw the prompt
+    if (isCombatMessage) {
+      // Redraw the prompt
+      const promptText = getPromptText(client);
+      writeToClient(client, promptText);
+      
+      // Redraw any partially typed command
+      if (client.buffer.length > 0) {
+        writeToClient(client, client.buffer);
+      }
     }
   } else {
-    // Just write the message directly
+    // For websocket clients, just write the message
     writeToClient(client, message);
   }
 }
 
-/**
- * Buffers output to be sent later
- */
-export function bufferOutput(client: ConnectedClient, data: string): void {
-  client.outputBuffer.push(data);
-}
-
-/**
- * Flushes all buffered output to the client
- */
-export function flushClientBuffer(client: ConnectedClient): void {
-  if (client.outputBuffer.length > 0) {
-    // Send all buffered messages
-    const output = client.outputBuffer.join('');
-    client.connection.write(output);
-    client.outputBuffer = [];
-  }
-}
-
-/**
- * Stops buffering and flushes all buffered output
- */
+// Function to stop buffering and flush any buffered output
 export function stopBuffering(client: ConnectedClient): void {
+  // Only proceed if client is buffering
+  if (!client.isTyping || client.outputBuffer.length === 0) {
+    client.isTyping = false;
+    return;
+  }
+  
+  // Clear current line first if telnet
+  if (client.connection.getType() === 'telnet' && client.buffer.length > 0) {
+    const clearLineSequence = '\r\x1B[K';
+    writeToClient(client, clearLineSequence);
+  }
+  
+  // Process all buffered messages
+  for (const message of client.outputBuffer) {
+    writeToClient(client, message);
+  }
+  
+  // Clear the buffer
+  client.outputBuffer = [];
+  
+  // Reset isTyping flag
   client.isTyping = false;
-  flushClientBuffer(client);
+  
+  // Redraw the prompt
+  if (client.connection.getType() === 'telnet' && client.user) {
+    const promptText = getPromptText(client);
+    writeToClient(client, promptText);
+    
+    // Redraw any partially typed command
+    if (client.buffer.length > 0) {
+      writeToClient(client, client.buffer);
+    }
+  }
 }

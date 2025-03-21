@@ -25,13 +25,15 @@ import { getMUDConfig, updateMUDConfig, loadMUDConfig } from './admin/adminApi';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
+
+// Initialize server components
 const userManager = new UserManager();
 const clients = new Map<string, ConnectedClient>();
-const commandHandler = new CommandHandler(clients, userManager);
-const stateMachine = new StateMachine(userManager, clients); // Add clients parameter
 const roomManager = RoomManager.getInstance(clients);
+const commandHandler = new CommandHandler(clients, userManager);
+const stateMachine = new StateMachine(userManager, clients);
 
-// Initialize the game timer manager
+// Initialize the game timer manager with userManager and roomManager
 const gameTimerManager = GameTimerManager.getInstance(userManager, roomManager);
 
 // Secret key for JWT tokens - same as in adminApi.ts

@@ -3,6 +3,7 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { RoomManager } from '../room/roomManager';
 import { UserManager } from '../user/userManager';
+import { CombatSystem } from '../combat/combatSystem';
 
 // Configuration interface for the game timer system
 export interface GameTimerConfig {
@@ -62,6 +63,7 @@ export class GameTimerManager extends EventEmitter {
   private running: boolean = false;
   private userManager: UserManager;
   private roomManager: RoomManager;
+  private combatSystem: CombatSystem;
   
   private constructor(userManager: UserManager, roomManager: RoomManager) {
     super();
@@ -69,6 +71,7 @@ export class GameTimerManager extends EventEmitter {
     this.config = loadGameTimerConfig();
     this.userManager = userManager;
     this.roomManager = roomManager;
+    this.combatSystem = new CombatSystem(userManager, roomManager);
   }
   
   /**
@@ -167,17 +170,16 @@ export class GameTimerManager extends EventEmitter {
    */
   private tick(): void {
     this.tickCount++;
-    const currentTick = this.tickCount;
+    console.log(`Game tick ${this.tickCount}`);
     
-    // Log tick to console with tick number
-    console.log(`Game tick ${currentTick}`);
+    // Process all combat rounds
+    this.combatSystem.processCombatRound();
     
-    // Emit tick event first so subscribers can process
-    this.emit('tick', currentTick);
-    
-    // Save data if we've hit the save interval
-    if (currentTick % this.config.saveInterval === 0) {
-      this.saveData();
+    // Check if it's time to save
+    if (this.tickCount % this.config.saveInterval === 0) {
+      console.log('Saving all game data...');
+      this.forceSave();
+      console.log('Game data saved successfully');
     }
   }
   
@@ -215,5 +217,12 @@ export class GameTimerManager extends EventEmitter {
    */
   public resetTickCount(): void {
     this.tickCount = 0;
+  }
+  
+  /**
+   * Get the combat system instance
+   */
+  public getCombatSystem(): CombatSystem {
+    return this.combatSystem;
   }
 }

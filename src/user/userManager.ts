@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { User, ConnectedClient, ClientStateType } from '../types';
-import { writeToClient, flushClientBuffer, writeMessageToClient } from '../utils/socketWriter';
+import { writeToClient, stopBuffering, writeMessageToClient } from '../utils/socketWriter';
 import { colorize } from '../utils/colors';
 import { standardizeUsername } from '../utils/formatters';
 
@@ -228,7 +228,7 @@ export class UserManager {
     } else {
       writeToClient(client, '');
     }
-    flushClientBuffer(client);
+    stopBuffering(client);
   }
 
   // Approve or deny a session transfer
