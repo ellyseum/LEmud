@@ -21,6 +21,12 @@ export class AttackCommand implements Command {
       return;
     }
     
+    // Check if combat system is unavailable
+    if (!this.combatSystem) {
+      writeFormattedMessageToClient(client, colorize(`Combat system is currently unavailable.\r\n`, 'red'));
+      return;
+    }
+    
     // Get current room
     const roomId = client.user.currentRoomId || this.roomManager.getStartingRoomId();
     

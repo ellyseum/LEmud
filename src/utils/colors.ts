@@ -1,4 +1,4 @@
-// ANSI color codes
+// Export color codes for ANSI terminal coloring
 export const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',
@@ -7,8 +7,7 @@ export const colors = {
   blink: '\x1b[5m',
   reverse: '\x1b[7m',
   hidden: '\x1b[8m',
-
-  // Regular Colors
+  
   black: '\x1b[30m',
   red: '\x1b[31m',
   green: '\x1b[32m',
@@ -17,28 +16,7 @@ export const colors = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
-
-  // Bold Colors
-  boldBlack: '\x1b[1;30m',
-  boldRed: '\x1b[1;31m',
-  boldGreen: '\x1b[1;32m',
-  boldYellow: '\x1b[1;33m',
-  boldBlue: '\x1b[1;34m',
-  boldMagenta: '\x1b[1;35m',
-  boldCyan: '\x1b[1;36m',
-  boldWhite: '\x1b[1;37m',
-
-  // Underline Colors
-  underlineBlack: '\x1b[4;30m',
-  underlineRed: '\x1b[4;31m',
-  underlineGreen: '\x1b[4;32m',
-  underlineYellow: '\x1b[4;33m',
-  underlineBlue: '\x1b[4;34m',
-  underlineMagenta: '\x1b[4;35m',
-  underlineCyan: '\x1b[4;36m',
-  underlineWhite: '\x1b[4;37m',
-
-  // Background Colors
+  
   bgBlack: '\x1b[40m',
   bgRed: '\x1b[41m',
   bgGreen: '\x1b[42m',
@@ -47,8 +25,18 @@ export const colors = {
   bgMagenta: '\x1b[45m',
   bgCyan: '\x1b[46m',
   bgWhite: '\x1b[47m',
-
-  // High Intensity Colors
+  
+  // Bold colors
+  boldBlack: '\x1b[1m\x1b[30m',
+  boldRed: '\x1b[1m\x1b[31m',
+  boldGreen: '\x1b[1m\x1b[32m',
+  boldYellow: '\x1b[1m\x1b[33m',
+  boldBlue: '\x1b[1m\x1b[34m',
+  boldMagenta: '\x1b[1m\x1b[35m',
+  boldCyan: '\x1b[1m\x1b[36m',
+  boldWhite: '\x1b[1m\x1b[37m',
+  
+  // Bright colors (some terminals interpret these as bold)
   brightBlack: '\x1b[90m',
   brightRed: '\x1b[91m',
   brightGreen: '\x1b[92m',
@@ -57,18 +45,8 @@ export const colors = {
   brightMagenta: '\x1b[95m',
   brightCyan: '\x1b[96m',
   brightWhite: '\x1b[97m',
-
-  // Bold High Intensity Colors
-  boldBrightBlack: '\x1b[1;90m',
-  boldBrightRed: '\x1b[1;91m',
-  boldBrightGreen: '\x1b[1;92m',
-  boldBrightYellow: '\x1b[1;93m',
-  boldBrightBlue: '\x1b[1;94m',
-  boldBrightMagenta: '\x1b[1;95m',
-  boldBrightCyan: '\x1b[1;96m',
-  boldBrightWhite: '\x1b[1;97m',
-
-  // High Intensity Background Colors
+  
+  // Bright background colors
   bgBrightBlack: '\x1b[100m',
   bgBrightRed: '\x1b[101m',
   bgBrightGreen: '\x1b[102m',
@@ -77,12 +55,31 @@ export const colors = {
   bgBrightMagenta: '\x1b[105m',
   bgBrightCyan: '\x1b[106m',
   bgBrightWhite: '\x1b[107m',
-
-  clear: '\x1b[2J\x1b[0;0H',
+  
+  // Special codes
+  clear: '\x1B[2J\x1B[0f'  // Clear the entire screen and move cursor to 0,0
 };
 
-export function colorize(text: string, color: keyof typeof colors): string {
-  return `${colors[color]}${text}${colors.reset}`;
+// Define the color type to explicitly export it
+export type ColorType = 'blink' | 'reset' | 'bright' | 'dim' | 'underscore' | 'reverse' | 'hidden' |
+                'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white' |
+                'boldBlack' | 'boldRed' | 'boldGreen' | 'boldYellow' | 'boldBlue' |
+                'boldMagenta' | 'boldCyan' | 'boldWhite' | 'clear' |
+                'brightBlack' | 'brightRed' | 'brightGreen' | 'brightYellow' |
+                'brightBlue' | 'brightMagenta' | 'brightCyan' | 'brightWhite' |
+                'bgBlack' | 'bgRed' | 'bgGreen' | 'bgYellow' | 'bgBlue' | 'bgMagenta' |
+                'bgCyan' | 'bgWhite' | 'bgBrightBlack' | 'bgBrightRed' | 'bgBrightGreen' |
+                'bgBrightYellow' | 'bgBrightBlue' | 'bgBrightMagenta' | 'bgBrightCyan' | 'bgBrightWhite';
+
+/**
+ * Apply ANSI color codes to a string
+ * @param text The text to colorize
+ * @param color The color to apply
+ * @returns The colorized text
+ */
+export function colorize(text: string, color: ColorType): string {
+  const colorCode = colors[color] || '';
+  return `${colorCode}${text}${colors.reset}`;
 }
 
 export function rainbow(text: string): string {

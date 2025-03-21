@@ -1,34 +1,28 @@
 import { ConnectedClient } from '../types';
 import { CombatEntity } from './combatEntity.interface';
-import { colorize } from '../utils/colors';
-import { writeToClient, writeMessageToClient, writeFormattedMessageToClient } from '../utils/socketWriter';
+import { colorize, ColorType } from '../utils/colors';
+import { writeFormattedMessageToClient, drawCommandPrompt, writeToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
-
-// Define color type to match what colorize accepts
-type ColorType = 'blink' | 'reset' | 'bright' | 'dim' | 'underscore' | 'reverse' | 'hidden' |
-                'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white' |
-                'boldBlack' | 'boldRed' | 'boldGreen' | 'boldYellow' | 'boldBlue' |
-                'boldMagenta' | 'boldCyan' | 'boldWhite' | 'clear';
+import { CombatSystem } from './combatSystem';
 
 export class Combat {
   rounds: number = 0;
   activeCombatants: CombatEntity[] = [];
   brokenByPlayer: boolean = false;
+  currentRound: number = 0; // Track the current global combat round
   
   constructor(
     public player: ConnectedClient,
     private userManager: UserManager,
-    private roomManager: RoomManager
+    private roomManager: RoomManager,
+    private combatSystem: CombatSystem
   ) {}
 
   addTarget(target: CombatEntity): void {
     if (!this.activeCombatants.includes(target)) {
       this.activeCombatants.push(target);
-      
-      // The initial attack message will be handled solely by CombatSystem.engageCombat
-      // Removing broadcast from here to prevent duplication
     }
   }
 
@@ -41,24 +35,25 @@ export class Combat {
     for (let i = 0; i < this.activeCombatants.length; i++) {
       const target = this.activeCombatants[i];
       
+      // Check if target is already dead (killed by another player)
       if (!target.isAlive()) {
-        // Process death
-        this.handleNpcDeath(target);
+        // Don't process death again, just remove from active combatants
+        this.activeCombatants = this.activeCombatants.filter(c => c !== target);
         continue;
       }
       
       // Player attacks target
       this.processAttack(this.player, target);
       
-      // If target dies from the attack, continue to next target
+      // If target dies from the attack, process death
       if (!target.isAlive()) {
         this.handleNpcDeath(target);
         continue;
       }
       
-      // Target counterattacks if not passive
+      // Target counterattacks if not passive - but chooses target randomly among all attackers
       if (!target.isPassive) {
-        this.processCounterAttack(target, this.player);
+        this.processCounterAttack(target);
       }
     }
     
@@ -67,10 +62,13 @@ export class Combat {
   }
 
   private processAttack(player: ConnectedClient, target: CombatEntity): void {
-    if (!player.user) return;
+    if (!player.user || !player.user.currentRoomId) return;
     
     // 50% chance to hit
     const hit = Math.random() >= 0.5;
+    
+    // Get the room for broadcasting
+    const roomId = player.user.currentRoomId;
     
     if (hit) {
       // Calculate damage (temporary range of 5-10)
@@ -83,11 +81,14 @@ export class Combat {
         colorize(`You hit the ${target.name} with your fists for ${actualDamage} damage.\r\n`, 'red')
       );
       
-      // Broadcast to others using RED color for hits
-      if (player.user) {
-        const username = formatUsername(player.user.username);
-        this.broadcastCombatMessage(`${username} hits the ${target.name} with their fists for ${actualDamage} damage.\r\n`, 'red', true);
-      }
+      // Broadcast to ALL other players in room instead of just combat participants
+      const username = formatUsername(player.user.username);
+      this.combatSystem.broadcastRoomCombatMessage(
+        roomId,
+        `${username} hits the ${target.name} with their fists for ${actualDamage} damage.\r\n`,
+        'red' as ColorType,
+        player.user.username
+      );
     } else {
       // Send message to the player
       writeFormattedMessageToClient(
@@ -95,117 +96,238 @@ export class Combat {
         colorize(`You swing at the ${target.name} with your fists, and miss!\r\n`, 'cyan')
       );
       
-      // Broadcast to others using CYAN color for misses
-      if (player.user) {
-        const username = formatUsername(player.user.username);
-        this.broadcastCombatMessage(`${username} swings at the ${target.name} with their fists, and misses!\r\n`, 'cyan', true);
-      }
+      // Broadcast to ALL other players in room
+      const username = formatUsername(player.user.username);
+      this.combatSystem.broadcastRoomCombatMessage(
+        roomId,
+        `${username} swings at the ${target.name} with their fists, and misses!\r\n`,
+        'cyan' as ColorType,
+        player.user.username
+      );
     }
   }
 
-  private processCounterAttack(npc: CombatEntity, player: ConnectedClient): void {
-    if (!player.user) return;
+  private processCounterAttack(npc: CombatEntity): void {
+    if (!this.player.user || !this.player.user.currentRoomId) return;
+    
+    // Get the entity ID
+    const entityId = this.combatSystem.getEntityId(this.player.user.currentRoomId, npc.name);
+    
+    // Check if this entity has already attacked in this round
+    if (this.combatSystem.hasEntityAttackedThisRound(entityId)) {
+      return; // Skip attack if entity already attacked this round
+    }
+    
+    // Get all players targeting this entity
+    const targetingPlayers = this.combatSystem.getEntityTargeters(entityId);
+    if (targetingPlayers.length === 0) return;
+    
+    // Choose a random player to attack
+    const randomPlayerName = targetingPlayers[Math.floor(Math.random() * targetingPlayers.length)];
+    const targetPlayer = this.combatSystem.findClientByUsername(randomPlayerName);
+    
+    if (!targetPlayer || !targetPlayer.user) return;
+    
+    // Mark that this entity has attacked in this round
+    this.combatSystem.markEntityAttacked(entityId);
     
     // 50% chance to hit
     const hit = Math.random() >= 0.5;
     
+    // Get the room for broadcasting
+    const roomId = this.player.user.currentRoomId;
+    
     if (hit) {
       const damage = npc.getAttackDamage();
-      player.user.health -= damage;
+      targetPlayer.user.health -= damage;
       
       // Ensure health doesn't go below 0
-      if (player.user.health < 0) player.user.health = 0;
+      if (targetPlayer.user.health < 0) targetPlayer.user.health = 0;
       
       // Update the player's health
-      this.userManager.updateUserStats(player.user.username, { health: player.user.health });
+      this.userManager.updateUserStats(targetPlayer.user.username, { health: targetPlayer.user.health });
       
-      // Send message to the player
+      // Format the target name for messages
+      const targetNameFormatted = formatUsername(targetPlayer.user.username);
+      
+      // Send message to the targeted player
       writeFormattedMessageToClient(
-        player,
+        targetPlayer,
         colorize(`The ${npc.name} ${npc.getAttackText('you')} for ${damage} damage.\r\n`, 'red')
       );
       
-      // Broadcast to others using RED color for hits
-      if (player.user) {
-        const username = formatUsername(player.user.username);
-        this.broadcastCombatMessage(`The ${npc.name} ${npc.getAttackText(username)} for ${damage} damage.\r\n`, 'red', true);
-      }
+      // Broadcast to ALL players in room except the target
+      this.combatSystem.broadcastRoomCombatMessage(
+        roomId,
+        `The ${npc.name} ${npc.getAttackText(targetNameFormatted)} for ${damage} damage.\r\n`,
+        'red' as ColorType,
+        targetPlayer.user.username
+      );
       
       // Check if player died
-      if (player.user.health <= 0) {
-        this.handlePlayerDeath();
+      if (targetPlayer.user.health <= 0) {
+        this.handlePlayerDeath(targetPlayer);
       }
     } else {
-      // Send message to the player
+      // Format the target name for messages
+      const targetNameFormatted = formatUsername(targetPlayer.user.username);
+      
+      // Send message to the targeted player
       writeFormattedMessageToClient(
-        player,
+        targetPlayer,
         colorize(`The ${npc.name} ${npc.getAttackText('you')} and misses!\r\n`, 'cyan')
       );
       
-      // Broadcast to others using CYAN color for misses
-      if (player.user) {
-        const username = formatUsername(player.user.username);
-        this.broadcastCombatMessage(`The ${npc.name} ${npc.getAttackText(username)} and misses!\r\n`, 'cyan', true);
-      }
+      // Broadcast to ALL players in room except the target
+      this.combatSystem.broadcastRoomCombatMessage(
+        roomId,
+        `The ${npc.name} ${npc.getAttackText(targetNameFormatted)} and misses!\r\n`,
+        'cyan' as ColorType,
+        targetPlayer.user.username
+      );
     }
   }
 
   private handleNpcDeath(npc: CombatEntity): void {
-    if (!this.player.user) return;
+    if (!this.player.user || !this.player.user.currentRoomId) return;
     
-    // Award experience to the player
-    this.player.user.experience += npc.experienceValue;
+    const roomId = this.player.user.currentRoomId;
     
-    // Update the player's experience
-    this.userManager.updateUserStats(this.player.user.username, { experience: this.player.user.experience });
+    // Get the entity ID
+    const entityId = this.combatSystem.getEntityId(roomId, npc.name);
     
-    // Send death message to the player
+    // Get all players targeting this entity
+    const targetingPlayers = this.combatSystem.getEntityTargeters(entityId);
+    
+    // Calculate experience per player - divide the total experience by number of participants
+    const experiencePerPlayer = Math.floor(npc.experienceValue / targetingPlayers.length);
+    
+    // Award experience to all participating players
+    for (const playerName of targetingPlayers) {
+      const client = this.combatSystem.findClientByUsername(playerName);
+      if (client && client.user) {
+        // Award experience to this player
+        client.user.experience += experiencePerPlayer;
+        
+        // Update the player's experience
+        this.userManager.updateUserStats(client.user.username, { experience: client.user.experience });
+        
+        // Notify the player about experience gained
+        writeFormattedMessageToClient(
+          client,
+          colorize(`You gain ${experiencePerPlayer} experience from the ${npc.name}!\r\n`, 'bright')
+        );
+      }
+    }
+    
+    // Send death message to all players in the room
+    const deathMessage = `The ${npc.name} lets out a final sad meow, and dies.\r\n`;
+    
+    // For main killer (the one whose combat instance is processing this death)
     writeFormattedMessageToClient(
       this.player,
-      colorize(`The ${npc.name} lets out a final sad meow, and dies.\r\n`, 'magenta')
+      colorize(deathMessage, 'magenta')
     );
     
-    writeFormattedMessageToClient(
-      this.player, 
-      colorize(`You gain ${npc.experienceValue} experience!\r\n`, 'bright')
-    );
-    
-    // Broadcast death to others using the default boldYellow for status messages
+    // Broadcast to everyone else in the room
     if (this.player.user) {
-      const username = formatUsername(this.player.user.username);
-      this.broadcastCombatMessage(`The ${npc.name} fighting ${username} lets out a final sad meow, and dies.\r\n`, 'magenta', true);
+      const killerUsername = formatUsername(this.player.user.username);
+      this.combatSystem.broadcastRoomCombatMessage(
+        roomId,
+        `The ${npc.name} fighting ${killerUsername} lets out a final sad meow, and dies.\r\n`,
+        'magenta',
+        this.player.user.username
+      );
+    }
+    
+    // End combat for all players who were targeting this entity
+    // This ensures all players receive the Combat Off message
+    for (const playerName of targetingPlayers) {
+      if (playerName !== this.player.user.username) { // Skip the player who landed the killing blow (handled in endCombat)
+        const client = this.combatSystem.findClientByUsername(playerName);
+        if (client && client.user) {
+          // Set inCombat to false
+          client.user.inCombat = false;
+          this.userManager.updateUserStats(client.user.username, { inCombat: false });
+          
+          // Clear the line first
+          const clearLineSequence = '\r\x1B[K';
+          writeToClient(client, clearLineSequence);
+          
+          // Send Combat Off message
+          writeToClient(
+            client,
+            colorize(`*Combat Off*\r\n`, 'boldYellow')
+          );
+          
+          // Draw the prompt explicitly once
+          drawCommandPrompt(client);
+          
+          // Remove from combat system
+          this.combatSystem.removeCombatForPlayer(playerName);
+        }
+      }
     }
     
     // Remove the NPC from the room
-    if (this.player.user.currentRoomId) {
-      this.roomManager.removeNPCFromRoom(this.player.user.currentRoomId, npc.name);
+    this.roomManager.removeNPCFromRoom(roomId, npc.name);
+    
+    // Clean up the shared entity reference
+    this.combatSystem.cleanupDeadEntity(roomId, npc.name);
+    
+    // Remove all players from targeting this entity
+    for (const playerName of targetingPlayers) {
+      this.combatSystem.removeEntityTargeter(entityId, playerName);
     }
     
     // Remove the NPC from active combatants
     this.activeCombatants = this.activeCombatants.filter(c => c !== npc);
   }
 
-  private handlePlayerDeath(): void {
-    if (!this.player.user) return;
+  private handlePlayerDeath(targetPlayer: ConnectedClient): void {
+    if (!targetPlayer.user) return;
     
     // Send death message to player
     writeFormattedMessageToClient(
-      this.player,
+      targetPlayer,
       colorize(`You have been defeated! Use "heal" to recover.\r\n`, 'red')
     );
     
     // Broadcast to others using the default boldYellow for status messages
-    if (this.player.user) {
-      const username = formatUsername(this.player.user.username);
-      this.broadcastCombatMessage(`${username} has been defeated in combat!\r\n`, 'boldYellow', true);
+    const username = formatUsername(targetPlayer.user.username);
+    const message = `${username} has been defeated in combat!\r\n`;
+    
+    // If this player died, end combat for them
+    if (targetPlayer === this.player) {
+      this.activeCombatants = [];
     }
     
-    // End combat when player dies
-    this.activeCombatants = [];
+    // Broadcast to all other players in the room
+    if (targetPlayer.user.currentRoomId) {
+      const room = this.roomManager.getRoom(targetPlayer.user.currentRoomId);
+      if (room) {
+        for (const playerName of room.players) {
+          if (playerName !== targetPlayer.user.username) {
+            const client = this.combatSystem.findClientByUsername(playerName);
+            if (client) {
+              writeFormattedMessageToClient(client, colorize(message, 'boldYellow'));
+            }
+          }
+        }
+      }
+    }
   }
 
   isDone(): boolean {
-    return this.activeCombatants.length === 0 || 
+    // Only end combat if we truly have no active combatants
+    if (this.activeCombatants.length === 0) {
+      return true;
+    }
+    
+    // Check if all combatants are dead
+    const allDead = this.activeCombatants.every(c => !c.isAlive());
+    
+    return allDead || 
            this.brokenByPlayer ||
            !this.player.user ||
            this.player.user.health <= 0;
@@ -219,70 +341,53 @@ export class Combat {
     this.userManager.updateUserStats(this.player.user.username, { inCombat: false });
     
     if (this.activeCombatants.length === 0) {
-      // Send message to player
-      writeFormattedMessageToClient(
+      // Clear the line first
+      const clearLineSequence = '\r\x1B[K';
+      writeToClient(this.player, clearLineSequence);
+      
+      // Send message to player without drawing prompt yet
+      writeToClient(
         this.player,
         colorize(`*Combat Off*\r\n`, 'boldYellow')
       );
       
-      // Broadcast to others using the default boldYellow for status messages
-      if (this.player.user) {
+      // Now draw the prompt explicitly once
+      drawCommandPrompt(this.player);
+      
+      // Broadcast to ALL players in the room
+      if (this.player.user && this.player.user.currentRoomId) {
         const username = formatUsername(this.player.user.username);
-        this.broadcastCombatMessage(`${username} is no longer in combat.\r\n`, 'boldYellow', true);
+        this.combatSystem.broadcastRoomCombatMessage(
+          this.player.user.currentRoomId,
+          `${username} is no longer in combat.\r\n`,
+          'boldYellow' as ColorType,
+          this.player.user.username
+        );
       }
     } else if (this.brokenByPlayer) {
-      // Send message to player
-      writeFormattedMessageToClient(
+      // Clear the line first
+      const clearLineSequence = '\r\x1B[K';
+      writeToClient(this.player, clearLineSequence);
+      
+      // Send message to player without drawing prompt yet
+      writeToClient(
         this.player,
         colorize(`You try to break combat, but the enemies are still hostile!\r\n`, 'boldYellow')
       );
       
+      // Now draw the prompt explicitly once
+      drawCommandPrompt(this.player);
+      
       // Broadcast to others using the default boldYellow for status messages
       if (this.player.user) {
         const username = formatUsername(this.player.user.username);
-        this.broadcastCombatMessage(`${username} tries to flee from combat!\r\n`, 'boldYellow', true);
+        this.combatSystem.broadcastRoomCombatMessage(
+          this.player.user.currentRoomId,
+          `${username} tries to flee from combat!\r\n`,
+          'boldYellow' as ColorType,
+          this.player.user.username
+        );
       }
     }
-  }
-
-  /**
-   * Broadcast combat messages to all players in the room
-   */
-  private broadcastCombatMessage(message: string, color: ColorType = 'boldYellow', excludePlayer: boolean = false): void {
-    if (!this.player.user) return;
-    
-    const roomId = this.player.user.currentRoomId;
-    if (!roomId) return;
-    
-    // Get the room and all players in it
-    const room = this.roomManager.getRoom(roomId);
-    if (!room) return;
-    
-    // Format the message with specified color
-    // Don't add extra newlines for observers - the message already should have proper line endings
-    const coloredMessage = colorize(message, color);
-    
-    // Send to all players in the room except possibly the combatant
-    for (const playerName of room.players) {
-      // Skip the combatant if excludePlayer is true
-      if (excludePlayer && this.player.user.username === playerName) continue;
-      
-      const client = this.findClientByUsername(playerName);
-      if (client) {
-        writeFormattedMessageToClient(client, coloredMessage);
-      }
-    }
-  }
-  
-  /**
-   * Find a client by username
-   */
-  private findClientByUsername(username: string): ConnectedClient | undefined {
-    for (const client of this.roomManager['clients'].values()) {
-      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
-        return client;
-      }
-    }
-    return undefined;
   }
 }

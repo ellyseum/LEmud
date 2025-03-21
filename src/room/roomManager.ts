@@ -695,20 +695,23 @@ export class RoomManager {
   }
 
   /**
-   * Remove an NPC from a room (when it dies)
+   * Remove an NPC from a room
    */
   public removeNPCFromRoom(roomId: string, npcName: string): boolean {
     const room = this.getRoom(roomId);
     if (!room) return false;
 
-    // Find the index of the first matching NPC
-    const index = room.npcs.findIndex(name => name.toLowerCase() === npcName.toLowerCase());
-    if (index === -1) return false;
-
-    // Remove just one instance of this NPC
-    room.npcs.splice(index, 1);
-    this.updateRoom(room);
-    return true;
+    const index = room.npcs.indexOf(npcName);
+    if (index !== -1) {
+      room.npcs.splice(index, 1);
+      
+      // Note: We would also want to inform the combat system here
+      // but that would create a circular dependency
+      // Instead, the combat system will handle this through the cleanupDeadEntity method
+      
+      return true;
+    }
+    return false;
   }
 
   /**

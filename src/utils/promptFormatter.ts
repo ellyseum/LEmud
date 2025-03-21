@@ -1,12 +1,6 @@
 import { ConnectedClient } from '../types';
-import { colorize } from './colors';
+import { colorize, ColorType } from './colors';
 import { writeToClient } from './socketWriter';
-
-// Define valid color types to match what colorize accepts
-type ColorType = 'blink' | 'reset' | 'bright' | 'dim' | 'underscore' | 'reverse' | 'hidden' |
-                'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white' |
-                'boldBlack' | 'boldRed' | 'boldGreen' | 'boldYellow' | 'boldBlue' |
-                'boldMagenta' | 'boldCyan' | 'boldWhite' | 'clear';
 
 /**
  * Writes a command prompt to the client based on their stats
@@ -44,4 +38,27 @@ export function getPromptText(client: ConnectedClient): string {
   
   // Write the prompt with a reset first to ensure clean formatting
   return ANSI_RESET + prompt;
+}
+
+/**
+ * Clears the current line and draws the command prompt
+ * This function ensures that the prompt is properly displayed
+ * without duplicates by always clearing the line first
+ */
+export function drawCommandPrompt(client: ConnectedClient): void {
+  if (!client.user) return;
+  
+  // ANSI sequence to clear the current line
+  const clearLineSequence = '\r\x1B[K';
+  
+  // Get the prompt text
+  const promptText = getPromptText(client);
+  
+  // Write the clear line sequence followed by the prompt
+  writeToClient(client, clearLineSequence + promptText);
+  
+  // Redraw any partially typed command
+  if (client.buffer && client.buffer.length > 0) {
+    writeToClient(client, client.buffer);
+  }
 }

@@ -1,5 +1,5 @@
 import { ConnectedClient } from '../types';
-import { getPromptText } from './promptFormatter';
+import { drawCommandPrompt, getPromptText } from './promptFormatter';
 
 // Max message buffering delay - not currently used but kept for potential future use
 // const MAX_OUTPUT_DELAY = 100;
@@ -57,14 +57,8 @@ export function writeMessageToClient(client: ConnectedClient, message: string): 
     
     // For combat messages or if in combat, always redraw the prompt
     if (isCombatMessage || client.user.inCombat) {
-      // Redraw the prompt using our standard prompt formatter
-      const promptText = getPromptText(client);
-      writeToClient(client, promptText);
-      
-      // Redraw any partially typed command
-      if (client.buffer.length > 0) {
-        writeToClient(client, client.buffer);
-      }
+      // Use our new utility function to draw the prompt
+      drawCommandPrompt(client);
     }
   } else {
     // For websocket clients, just write the message
@@ -80,12 +74,6 @@ export function stopBuffering(client: ConnectedClient): void {
     return;
   }
   
-  // Clear current line first if telnet
-  if (client.connection.getType() === 'telnet' && client.buffer.length > 0) {
-    const clearLineSequence = '\r\x1B[K';
-    writeToClient(client, clearLineSequence);
-  }
-  
   // Process all buffered messages
   for (const message of client.outputBuffer) {
     writeToClient(client, message);
@@ -97,15 +85,9 @@ export function stopBuffering(client: ConnectedClient): void {
   // Reset isTyping flag
   client.isTyping = false;
   
-  // Redraw the prompt using our standard prompt formatter
+  // Use our new utility function to draw the prompt
   if (client.connection.getType() === 'telnet' && client.user) {
-    const promptText = getPromptText(client);
-    writeToClient(client, promptText);
-    
-    // Redraw any partially typed command
-    if (client.buffer.length > 0) {
-      writeToClient(client, client.buffer);
-    }
+    drawCommandPrompt(client);
   }
 }
 
@@ -114,8 +96,13 @@ export function stopBuffering(client: ConnectedClient): void {
  * Ensures the line is cleared first, then adds the message, then redraws the prompt
  * @param client The connected client to write to
  * @param message The message to send
+ * @param drawPrompt Whether to redraw the prompt after writing the message (default: true)
  */
-export function writeFormattedMessageToClient(client: ConnectedClient, message: string): void {
+export function writeFormattedMessageToClient(
+  client: ConnectedClient, 
+  message: string,
+  drawPrompt: boolean = true
+): void {
   // For users who are not authenticated, use simple writeToClient
   if (!client.authenticated || !client.user) {
     writeToClient(client, message);
@@ -135,15 +122,12 @@ export function writeFormattedMessageToClient(client: ConnectedClient, message: 
   // Write the message
   client.connection.write(message);
   
-  // Always redraw the prompt using our standard prompt formatter
-  const promptText = getPromptText(client);
-  client.connection.write(promptText);
-  
-  // Redraw any partially typed command
-  if (client.buffer.length > 0) {
-    client.connection.write(client.buffer);
+  // Only draw the prompt if requested
+  if (drawPrompt) {
+    // Use our utility function to draw the prompt
+    drawCommandPrompt(client);
   }
 }
 
-// Re-export writeCommandPrompt to make it available to importers
-export { writeCommandPrompt } from './promptFormatter';
+// Re-export our prompt functions to make them available to importers
+export { writeCommandPrompt, drawCommandPrompt, getPromptText } from './promptFormatter';
