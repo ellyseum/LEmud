@@ -56,6 +56,10 @@ export class AuthenticatedState implements ClientState {
     this.drawBanner(client);
     this.roomManager.lookRoom(client);
     
+    // FIX: Explicitly draw the command prompt after room description
+    // This ensures there's no extra line between room description and prompt
+    drawCommandPrompt(client);
+    
     // If player is in combat, make sure the prompt shows the correct state
     if (client.user.inCombat) {
       console.log(`[AuthenticatedState] User ${client.user.username} entered with inCombat flag set`);
