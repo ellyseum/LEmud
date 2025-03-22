@@ -5,6 +5,8 @@ import { User, ConnectedClient, ClientStateType } from '../types';
 import { writeToClient, stopBuffering, writeMessageToClient } from '../utils/socketWriter';
 import { colorize } from '../utils/colors';
 import { standardizeUsername } from '../utils/formatters';
+import { CombatSystem } from '../combat/combatSystem';
+import { RoomManager } from '../room/roomManager';
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -13,6 +15,15 @@ export class UserManager {
   private users: User[] = [];
   private activeUserSessions: Map<string, ConnectedClient> = new Map();
   private pendingTransfers: Map<string, ConnectedClient> = new Map();
+
+  private static instance: UserManager | null = null;
+
+  public static getInstance(): UserManager {
+    if (!UserManager.instance) {
+      UserManager.instance = new UserManager();
+    }
+    return UserManager.instance;
+  }
 
   constructor() {
     this.loadUsers();
@@ -243,43 +254,68 @@ export class UserManager {
       // Inform the existing client they're being disconnected
       writeToClient(existingClient, colorize('\r\n\r\nYou approved the session transfer. Disconnecting...\r\n', 'yellow'));
 
-      // Save the user state before disconnecting
+      // Mark both clients as being in a transfer
+      existingClient.stateData.transferInProgress = true;
+      newClient.stateData.isSessionTransfer = true;
+      
+      // CRITICAL FIX: Keep references to both clients temporarily
+      // This helps prevent combat from seeing "no valid clients" during transfer
+      
       if (existingClient.user) {
-        this.updateUserStats(username, { lastLogin: new Date() });
+        // Capture if user is in combat BEFORE making any changes
+        const inCombat = existingClient.user.inCombat || false;
+        console.log(`[UserManager] User ${username} inCombat status: ${inCombat}`);
+        
+        // Clone the user from existing client
+        const user = this.getUser(username);
+        if (user) {
+          // Setup the new client
+          newClient.user = {...user}; // Clone to avoid reference issues
+          newClient.authenticated = true;
+          newClient.stateData.waitingForTransfer = false;
+          
+          // CRITICAL: Always register the new session FIRST
+          this.registerUserSession(username, newClient);
+          
+          // Transfer combat state if needed
+          if (inCombat) {
+            // Explicitly preserve combat flag
+            if (newClient.user) {
+              newClient.user.inCombat = true;
+              // Update user data store immediately
+              this.updateUserStats(username, { inCombat: true });
+            }
+            
+            // Notify combat system to transfer combat state
+            try {
+              const roomManager = RoomManager.getInstance(this.activeUserSessions);
+              const combatSystem = CombatSystem.getInstance(this, roomManager);
+              combatSystem.handleSessionTransfer(existingClient, newClient);
+            } catch (error) {
+              console.error('Error transferring combat state:', error);
+            }
+          }
+          
+          // Save user stats
+          this.updateUserStats(username, { lastLogin: new Date() });
+          
+          // Inform new client they can proceed
+          writeToClient(newClient, colorize('\r\n\r\nSession transfer approved. Logging in...\r\n', 'green'));
+          
+          // Transition new client to authenticated state
+          newClient.stateData.transitionTo = ClientStateType.AUTHENTICATED;
+        }
       }
 
-      // IMPORTANT: Explicitly unregister the existing session first
-      this.unregisterUserSession(username);
-
-      // Get the user object
-      const user = this.getUser(username);
-      if (user) {
-        // Set up the new client
-        newClient.user = user;
-        newClient.authenticated = true;
-        newClient.stateData.waitingForTransfer = false;
-
-        // Update last login time
-        this.updateLastLogin(username);
-
-        // Register the new session (will replace the existing one)
-        this.registerUserSession(username, newClient);
-
-        // Inform the new client they can proceed
-        writeToClient(newClient, colorize('\r\n\r\nSession transfer approved. Logging in...\r\n', 'green'));
-
-        // Transition the new client to authenticated state
-        newClient.stateData.transitionTo = ClientStateType.AUTHENTICATED;
-      }
-
-      // Disconnect the existing client after a brief delay
+      // Disconnect existing client after a longer delay
+      // This ensures all combat processing has a chance to complete
       setTimeout(() => {
-        // Mark the client as no longer authenticated to prevent re-registration on disconnect
+        console.log(`[UserManager] Disconnecting old client for ${username} after transfer`);
+        // Only now mark the client as not authenticated
         existingClient.authenticated = false;
         existingClient.user = null;
         existingClient.connection.end();
-      }, 1000);
-
+      }, 7000); // Increased to 7 seconds
     } else {
       // Transfer denied - restore the new client to previous state
       newClient.stateData.waitingForTransfer = false;
@@ -293,7 +329,7 @@ export class UserManager {
       writeToClient(existingClient, colorize('\r\n\r\nYou denied the session transfer. Continuing your session.\r\n', 'green'));
     }
 
-    // Clean up the pending transfer
+    // Clean up the pending transfer 
     this.pendingTransfers.delete(lowerUsername);
   }
 

@@ -12,6 +12,8 @@ export class Combat {
   activeCombatants: CombatEntity[] = [];
   brokenByPlayer: boolean = false;
   currentRound: number = 0; // Track the current global combat round
+  // Add timestamp to track last activity
+  lastActivityTime: number = Date.now();
   
   constructor(
     public player: ConnectedClient,
@@ -29,13 +31,18 @@ export class Combat {
   processRound(): void {
     // First check if the player is still connected and authenticated
     if (!this.isPlayerValid()) {
+      console.log(`[Combat] Player ${this.player.user?.username || 'unknown'} is no longer valid, ending combat`);
       this.activeCombatants = []; // Clear combatants to end combat
       return;
     }
     
-    if (!this.player.user || this.isDone()) return;
+    if (!this.player.user || this.isDone()) {
+      console.log(`[Combat] Cannot process round: player user is ${this.player.user ? 'valid' : 'invalid'}, isDone=${this.isDone()}`);
+      return;
+    }
 
     this.rounds++;
+    console.log(`[Combat] Processing round ${this.rounds} for ${this.player.user.username} against ${this.activeCombatants.length} combatants`);
     
     // Process each combatant
     for (let i = 0; i < this.activeCombatants.length; i++) {
@@ -65,6 +72,9 @@ export class Combat {
     
     // Remove dead combatants
     this.activeCombatants = this.activeCombatants.filter(c => c.isAlive());
+    
+    // Update the activity timestamp whenever a round is processed
+    this.lastActivityTime = Date.now();
   }
 
   private processAttack(player: ConnectedClient, target: CombatEntity): void {
@@ -429,19 +439,97 @@ export class Combat {
    * Check if the player is still valid (connected and authenticated)
    */
   private isPlayerValid(): boolean {
-    // Check if the player is still in the clients map
-    const client = this.combatSystem.findClientByUsername(this.player.user?.username || '');
-    if (!client || !client.user || !client.authenticated) {
-      // Player is disconnected or not authenticated
+    // CRITICAL FIX: More aggressive client reference updating
+    
+    // Special case: Consider valid during transfers regardless of other checks
+    if (this.player && this.player.stateData && 
+       (this.player.stateData.transferInProgress || this.player.stateData.isSessionTransfer)) {
+      console.log(`[Combat] Session transfer in progress for player, considering valid`);
+      return true;
+    }
+    
+    // Case where player reference is completely broken
+    if (!this.player || !this.player.user) {
+      console.log(`[Combat] Player is invalid: null player or user`);
+      
+      // Add an additional 5-second grace period for lost references during transfers
+      const currentTime = Date.now();
+      if (this.lastActivityTime && currentTime - this.lastActivityTime < 5000) {
+        console.log(`[Combat] Within grace period (${currentTime - this.lastActivityTime}ms), temporarily considering valid`);
+        return true;
+      }
+      
       return false;
     }
     
-    // Check if the player's state matches
-    if (client !== this.player) {
-      // Update the player reference if needed
-      this.player = client;
+    const username = this.player.user.username;
+    
+    // Find by username - more reliable than checking specific client
+    // This handles the case where client reference changed but username is the same
+    const allClients = this.combatSystem.findAllClientsByUsername(username);
+    if (allClients.length > 0) {
+      // Use the first connected client with this username
+      const newClient = allClients[0];
+      
+      // Don't log if it's the same client to reduce noise
+      if (newClient !== this.player) {
+        console.log(`[Combat] Updating player reference from ${this.player.id || 'unknown'} to ${newClient.id || 'unknown'}`);
+        this.player = newClient;
+      }
+      return true;
     }
     
-    return true;
+    console.log(`[Combat] No valid clients found for ${username}, marking invalid`);
+    return false;
+  }
+
+  /**
+   * Update the client reference when a session transfer happens
+   * This ensures combat continues with the new client
+   */
+  public updateClientReference(newClient: ConnectedClient): void {
+    if (!newClient.user) return;
+    
+    // Only update if this is the same user
+    if (this.player.user && newClient.user.username === this.player.user.username) {
+      const oldClientId = this.player.id || 'unknown';
+      const newClientId = newClient.id || 'unknown';
+      
+      console.log(`[Combat] Updating client reference for ${newClient.user.username} from ${oldClientId} to ${newClientId}`);
+      
+      // CRITICAL: Make sure we preserve the combat state if needed
+      const hadActiveCombatants = this.activeCombatants.length > 0;
+      const activeCombatantsCopy = [...this.activeCombatants];
+      
+      // Add a stronger reference binding to prevent GC issues
+      newClient.stateData.combatInstance = this;
+      
+      // Simply update the reference
+      this.player = newClient;
+      
+      // Make sure the combat flag is set
+      if (newClient.user) {
+        newClient.user.inCombat = true;
+      }
+      
+      // Handle case where active combatants might be lost during transfer
+      if (hadActiveCombatants && this.activeCombatants.length === 0) {
+        console.log(`[Combat] Restoring ${activeCombatantsCopy.length} combatants that were lost in transfer`);
+        this.activeCombatants = activeCombatantsCopy;
+      }
+      
+      // Update the activity timestamp
+      this.lastActivityTime = Date.now();
+      
+      // Log combat status
+      console.log(`[Combat] After update, player.user.inCombat = ${newClient.user.inCombat}`);
+      console.log(`[Combat] Active combatants after update: ${this.activeCombatants.length}`);
+    } else {
+      if (!this.player.user) {
+        console.log(`[Combat] Cannot update client reference: player has no user property`);
+      } else {
+        console.log(`[Combat] Username mismatch: expected ${this.player.user.username}, got ${newClient.user.username}`);
+      }
+    }
   }
 }

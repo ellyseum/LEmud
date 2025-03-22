@@ -138,6 +138,13 @@ export class LoginState implements ClientState {
         client.user = user;
         client.authenticated = true;
         
+        // Only reset combat flag for normal logins, not for session transfers
+        // Session transfers should preserve the combat state from the previous session
+        if (client.user.inCombat && !client.stateData.isSessionTransfer) {
+          client.user.inCombat = false;
+          this.userManager.updateUserStats(username, { inCombat: false });
+        }
+        
         // Update last login time and register new session
         this.userManager.updateLastLogin(username);
         this.userManager.registerUserSession(username, client);

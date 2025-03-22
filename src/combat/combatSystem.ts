@@ -226,11 +226,27 @@ export class CombatSystem {
   }
 
   /**
+   * Find all clients with the same username
+   * Used during session transfers to ensure we don't prematurely end combat
+   */
+  findAllClientsByUsername(username: string): ConnectedClient[] {
+    const results: ConnectedClient[] = [];
+    for (const client of this.roomManager['clients'].values()) {
+      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
+        results.push(client);
+      }
+    }
+    return results;
+  }
+
+  /**
    * Process combat rounds for all active combats
    */
   processCombatRound(): void {
     // Increment the global combat round
     this.currentRound++;
+    
+    console.log(`[CombatSystem] Processing combat round ${this.currentRound} for ${this.combats.size} active combats`);
     
     // Clear the list of entities that have attacked this round
     this.entitiesAttackedThisRound.clear();
@@ -241,11 +257,30 @@ export class CombatSystem {
     for (const [username, combat] of this.combats.entries()) {
       // Check if player is still connected
       const client = this.findClientByUsername(username);
-      if (!client || !client.authenticated || !client.user) {
+      
+      // ROBUSTNESS FIX: Only end combat if really disconnected
+      // Add timeout check to handle temporary disconnects during transfers
+      const currentTime = Date.now();
+      const MAX_INACTIVE_TIME = 10000; // 10 seconds grace period
+      
+      if ((!client || !client.authenticated || !client.user) &&
+          (!combat.lastActivityTime || currentTime - combat.lastActivityTime > MAX_INACTIVE_TIME)) {
+        console.log(`[CombatSystem] Player ${username} is no longer valid, marking for removal`);
         // Player is no longer valid, mark for removal
         playersToRemove.push(username);
         continue;
       }
+      
+      // CRITICAL: Ensure player reference is updated
+      if (client && client.user && client !== combat.player) {
+        console.log(`[CombatSystem] Updating combat player reference for ${username}`);
+        combat.updateClientReference(client);
+      }
+      
+      console.log(`[CombatSystem] Processing combat for ${username} with ${combat.activeCombatants.length} combatants`);
+      
+      // Update last activity time
+      combat.lastActivityTime = currentTime;
       
       // Set the current round on the combat instance
       combat.currentRound = this.currentRound;
@@ -253,6 +288,7 @@ export class CombatSystem {
       
       // Check if combat is done
       if (combat.isDone()) {
+        console.log(`[CombatSystem] Combat for ${username} is done, cleaning up`);
         combat.endCombat();
         playersToRemove.push(username);
       }
@@ -260,6 +296,7 @@ export class CombatSystem {
     
     // Clean up any combats that are done or have disconnected players
     for (const username of playersToRemove) {
+      console.log(`[CombatSystem] Removing combat for ${username}`);
       this.combats.delete(username);
       
       // Clean up entity targeters for this player
@@ -290,7 +327,7 @@ export class CombatSystem {
    * Reset entity attack status so it can attack again immediately
    * Used when its current target disconnects
    */
-  private resetEntityAttackStatus(entityId: string): void {
+  resetEntityAttackStatus(entityId: string): void {
     if (this.entityLastAttackRound.has(entityId)) {
       this.entityLastAttackRound.delete(entityId);
     }
@@ -469,5 +506,114 @@ export class CombatSystem {
     // Update player's inCombat status before they disconnect
     player.user.inCombat = false;
     this.userManager.updateUserStats(username, { inCombat: false });
+  }
+
+  /**
+   * Handle a session transfer for a player in combat
+   * Makes sure the combat continues with the new client
+   */
+  public handleSessionTransfer(oldClient: ConnectedClient, newClient: ConnectedClient): void {
+    if (!oldClient.user || !newClient.user) return;
+    
+    const username = oldClient.user.username;
+    console.log(`[CombatSystem] Handling session transfer for ${username}`);
+    
+    // Mark the transfer in progress to prevent combat from ending prematurely
+    if (oldClient.stateData) {
+      oldClient.stateData.transferInProgress = true;
+    }
+    if (newClient.stateData) {
+      newClient.stateData.isSessionTransfer = true;
+    }
+    
+    // CRITICAL FIX: Always preserve the inCombat flag
+    const inCombat = oldClient.user.inCombat;
+    if (inCombat) {
+      console.log(`[CombatSystem] User ${username} is in combat, preserving combat state`);
+      newClient.user.inCombat = true;
+      this.userManager.updateUserStats(username, { inCombat: true });
+      
+      // Get existing combat instance
+      let combat = this.combats.get(username);
+      
+      if (combat) {
+        console.log(`[CombatSystem] Found existing combat instance for ${username}`);
+        
+        // IMPORTANT - Clone info from old combat before updating reference
+        const activeCombatantsCopy = [...combat.activeCombatants];
+        
+        // Update the combat instance with the new client reference
+        combat.updateClientReference(newClient);
+        
+        // Verify active combatants are still present after reference update
+        if (combat.activeCombatants.length === 0 && activeCombatantsCopy.length > 0) {
+          console.log(`[CombatSystem] Warning: Lost combatants during reference update, restoring`);
+          combat.activeCombatants = activeCombatantsCopy;
+        }
+      } else {
+        // No existing combat found but user is in combat - recreate it
+        console.log(`[CombatSystem] No combat instance found but user ${username} has inCombat flag, recreating`);
+        combat = new Combat(newClient, this.userManager, this.roomManager, this);
+        
+        // Add stronger reference binding to prevent it from being garbage collected
+        newClient.stateData.combatInstance = combat;
+        
+        // Store in the combats map
+        this.combats.set(username, combat);
+        
+        // If in a room, add a target
+        if (newClient.user.currentRoomId) {
+          const room = this.roomManager.getRoom(newClient.user.currentRoomId);
+          if (room && room.npcs.length > 0) {
+            // Force recreation of combat with the first NPC in the room
+            const npcName = room.npcs[0];
+            const npc = this.getSharedEntity(newClient.user.currentRoomId, npcName);
+            if (npc) {
+              combat.addTarget(npc);
+              const entityId = this.getEntityId(newClient.user.currentRoomId, npcName);
+              this.trackEntityTargeter(entityId, username);
+              console.log(`[CombatSystem] Added ${npcName} as target for ${username} during transfer recreation`);
+              
+              // Reset NPC attack state to prevent immediate attack
+              this.resetEntityAttackStatus(entityId);
+            }
+          }
+        }
+      }
+      
+      // Always notify the player they're still in combat
+      writeToClient(newClient, colorize('\r\nCombat state transferred. You are still in combat!\r\n', 'boldYellow'));
+      
+      // CRITICAL FIX: Make sure the client's UI state shows they're in combat
+      // This ensures the prompt will show [COMBAT] and player can continue combat
+      if (combat && combat.activeCombatants.length > 0) {
+        // Force the combat prompt to appear by explicitly setting inCombat
+        const clearLineSequence = '\r\x1B[K';
+        writeToClient(newClient, clearLineSequence);
+        
+        // This draws the [COMBAT] prompt properly
+        drawCommandPrompt(newClient);
+        
+        // Skip the next NPC attack to prevent double attacking
+        // This fixes the issue of NPC attacking right after transfer but player not getting a turn
+        for (const combatant of combat.activeCombatants) {
+          const entityId = this.getEntityId(newClient.user.currentRoomId, combatant.name);
+          this.markEntityAttacked(entityId);
+        }
+        
+        // Add a timestamp to track last activity
+        combat.lastActivityTime = Date.now();
+      }
+    } else {
+      console.log(`[CombatSystem] User ${username} is not in combat, nothing to transfer`);
+      newClient.user.inCombat = false;
+    }
+    
+    // Remove the transfer in progress flag after a delay
+    setTimeout(() => {
+      if (oldClient.stateData) {
+        delete oldClient.stateData.transferInProgress;
+      }
+    }, 10000);
   }
 }
