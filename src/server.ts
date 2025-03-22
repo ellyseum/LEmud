@@ -1,7 +1,6 @@
 import net from 'net';
 import http from 'http';
 import path from 'path';
-// fs import is used indirectly via AdminApi
 import { Server as SocketIOServer } from 'socket.io';
 import express from 'express';
 import bodyParser from 'body-parser';
@@ -12,8 +11,7 @@ import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
 import { StateMachine } from './state/stateMachine';
 import { colorize } from './utils/colors';
-import { stopBuffering, writeMessageToClient } from './utils/socketWriter';
-import { writeCommandPrompt } from './utils/promptFormatter';
+import { stopBuffering, writeMessageToClient, writeFormattedMessageToClient } from './utils/socketWriter';
 import { TelnetConnection } from './connection/telnet.connection';
 import { SocketIOConnection } from './connection/socketio.connection';
 import { IConnection } from './connection/interfaces/connection.interface';
@@ -22,7 +20,6 @@ import { RoomManager } from './room/roomManager';
 import * as AdminApi from './admin/adminApi';
 import { getPromptText } from './utils/promptFormatter';
 import { GameTimerManager } from './timer/gameTimerManager';
-import { getMUDConfig, updateMUDConfig, loadMUDConfig } from './admin/adminApi';
 import { CombatSystem } from './combat/combatSystem';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
@@ -261,106 +258,55 @@ function setupClient(connection: IConnection): void {
   // Handle client disconnect
   connection.on('end', () => {
     console.log(`Client disconnected: ${clientId}`);
-    
-    // Check if client was in a pending transfer
-    if (client.user && client.stateData.waitingForTransfer) {
-      userManager.cancelTransfer(client.user.username);
-    }
-    
-    // Only unregister if the client is still authenticated
-    if (client.user && client.authenticated) {
-      // First get the roomManager
-      const roomManager = RoomManager.getInstance(clients);
-      
-      // Then get the combat system instance to clean up any active combat
-      const combatSystem = CombatSystem.getInstance(userManager, roomManager);
-      
-      // End combat for this player if they're in combat
-      if (client.user.inCombat) {
-        combatSystem.handlePlayerDisconnect(client);
-      }
-      
-      // Remove player from all rooms when they disconnect
-      const username = client.user.username;
-      roomManager.removePlayerFromAllRooms(username);
-      
-      // Unregister the user session
-      userManager.unregisterUserSession(username);
-      
-      // Notify other users with formatted username
-      const formattedUsername = formatUsername(username);
-      broadcastSystemMessage(`${formattedUsername} has left the game.`, client);
-    }
-    clients.delete(clientId);
+    handleClientDisconnect(client, clientId, true);
   });
   
   // Handle connection errors similarly
   connection.on('error', (err) => {
     console.error(`Error with client ${clientId}:`, err);
-    
-    // Check if client was in a pending transfer
-    if (client.user && client.stateData.waitingForTransfer) {
-      userManager.cancelTransfer(client.user.username);
-    }
-    
-    // Only unregister if the client is still authenticated
-    if (client.user && client.authenticated) {
-      // First get the roomManager
-      const roomManager = RoomManager.getInstance(clients);
-      
-      // Then get the combat system instance to clean up any active combat
-      const combatSystem = CombatSystem.getInstance(userManager, roomManager);
-      
-      // End combat for this player if they're in combat
-      if (client.user.inCombat) {
-        combatSystem.handlePlayerDisconnect(client);
-      }
-      
-      // Remove player from all rooms when they disconnect due to error
-      const username = client.user.username;
-      roomManager.removePlayerFromAllRooms(username);
-      
-      // Unregister the user session
-      userManager.unregisterUserSession(username);
-    }
-    
-    clients.delete(clientId);
+    handleClientDisconnect(client, clientId, false);
   });
 
   connection.on('close', () => {
     console.log(`Client disconnected: ${clientId}`);
+    handleClientDisconnect(client, clientId, true);
+  });
+}
+
+// New function to handle client disconnection cleanup
+function handleClientDisconnect(client: ConnectedClient, clientId: string, broadcastMessage: boolean): void {
+  // Check if client was in a pending transfer
+  if (client.user && client.stateData.waitingForTransfer) {
+    userManager.cancelTransfer(client.user.username);
+  }
+  
+  // Only unregister if the client is still authenticated
+  if (client.user && client.authenticated) {
+    // First get the roomManager
+    const roomManager = RoomManager.getInstance(clients);
     
-    // Check if client was in a pending transfer
-    if (client.user && client.stateData.waitingForTransfer) {
-      userManager.cancelTransfer(client.user.username);
+    // Then get the combat system instance to clean up any active combat
+    const combatSystem = CombatSystem.getInstance(userManager, roomManager);
+    
+    // End combat for this player if they're in combat
+    if (client.user.inCombat) {
+      combatSystem.handlePlayerDisconnect(client);
     }
     
-    // Only unregister if the client is still authenticated
-    if (client.user && client.authenticated) {
-      // First get the roomManager
-      const roomManager = RoomManager.getInstance(clients);
-      
-      // Then get the combat system instance to clean up any active combat
-      const combatSystem = CombatSystem.getInstance(userManager, roomManager);
-      
-      // End combat for this player if they're in combat
-      if (client.user.inCombat) {
-        combatSystem.handlePlayerDisconnect(client);
-      }
-      
-      // Remove player from all rooms when they disconnect
-      const username = client.user.username;
-      roomManager.removePlayerFromAllRooms(username);
-      
-      // Unregister the user session
-      userManager.unregisterUserSession(username);
-      
-      // Notify other users with formatted username
+    // Remove player from all rooms when they disconnect
+    const username = client.user.username;
+    roomManager.removePlayerFromAllRooms(username);
+    
+    // Unregister the user session
+    userManager.unregisterUserSession(username);
+    
+    // Notify other users with formatted username if requested
+    if (broadcastMessage) {
       const formattedUsername = formatUsername(username);
       broadcastSystemMessage(`${formattedUsername} has left the game.`, client);
     }
-    clients.delete(clientId);
-  });
+  }
+  clients.delete(clientId);
 }
 
 // Unified handler for client data (both TELNET and WebSocket)
@@ -608,7 +554,7 @@ function broadcastSystemMessage(message: string, excludeClient?: ConnectedClient
   clients.forEach(client => {
     if (client.authenticated && client !== excludeClient) {
       // Use the new message writing function that handles prompt management
-      writeMessageToClient(client, colorize(message + '\r\n', 'bright'));
+      writeFormattedMessageToClient(client, colorize(message + '\r\n', 'bright'));
     }
   });
 }
@@ -631,7 +577,7 @@ const IDLE_CHECK_INTERVAL = 60000; // Check for idle clients every minute
 // Function to check for and disconnect idle clients
 function checkForIdleClients() {
   // Load the current configuration to get the idle timeout
-  const config = loadMUDConfig();
+  const config = AdminApi.loadMUDConfig();
   const idleTimeoutMinutes = config.game.idleTimeout;
   
   // If idle timeout is 0 or negative, idle timeout is disabled
