@@ -44,15 +44,13 @@ export class CombatSystem {
     if (!this.sharedEntities.has(roomId)) {
       this.sharedEntities.set(roomId, new Map());
     }
-    
     const roomEntities = this.sharedEntities.get(roomId)!;
     
-    // Try to find an existing entity with this name
+    // Try to find an existing entity
     if (roomEntities.has(entityName)) {
       const existingEntity = roomEntities.get(entityName)!;
-      
-      // If the entity exists but is dead, remove it and create a new one
       if (!existingEntity.isAlive()) {
+        // Remove if dead, then recreate
         roomEntities.delete(entityName);
       } else {
         return existingEntity;
@@ -63,16 +61,15 @@ export class CombatSystem {
     const room = this.roomManager.getRoom(roomId);
     if (!room) return null;
     
-    // Verify the NPC actually exists in this room
+    // Verify the NPC is actually in this room
     if (!room.npcs.includes(entityName)) {
       console.log(`[CombatSystem] NPC ${entityName} not found in room ${roomId}`);
       return null;
     }
     
-    // Since npcs in room are strings, we need to create a new NPC instance
+    // Create a new NPC instance
     const npc = this.createTestNPC(entityName);
     
-    // Add to shared entities
     roomEntities.set(entityName, npc);
     return npc;
   }
@@ -147,44 +144,39 @@ export class CombatSystem {
   engageCombat(player: ConnectedClient, target: CombatEntity): boolean {
     if (!player.user || !player.user.currentRoomId) return false;
 
-    // Get roomId and check if the target is already being tracked
     const roomId = player.user.currentRoomId;
     const entityId = this.getEntityId(roomId, target.name);
     
-    // Try to get a shared entity if one exists
     const sharedTarget = this.getSharedEntity(roomId, target.name);
     if (!sharedTarget) return false;
     
-    // Track this player as targeting this entity
     this.trackEntityTargeter(entityId, player.user.username);
 
-    // Check if player is already in combat
     let combat = this.combats.get(player.user.username);
     
-    // If not, create a new combat
+    // If a combat instance exists but the player's inCombat flag is off, re-engage combat.
+    if (combat && !player.user.inCombat) {
+      console.log(`[CombatSystem] Re-engaging combat for ${player.user.username}`);
+      player.user.inCombat = true;
+      this.userManager.updateUserStats(player.user.username, { inCombat: true });
+      writeToClient(player, colorize(`*Combat Engaged*\r\n`, 'boldYellow'));
+      drawCommandPrompt(player);
+    }
+    
+    // If no combat instance exists, create a new one.
     if (!combat) {
       combat = new Combat(player, this.userManager, this.roomManager, this);
       this.combats.set(player.user.username, combat);
       
-      // Set the inCombat flag
       player.user.inCombat = true;
       this.userManager.updateUserStats(player.user.username, { inCombat: true });
-      
-      // Use the clear line sequence explicitly to avoid any prompt duplication
       const clearLineSequence = '\r\x1B[K';
       writeToClient(player, clearLineSequence);
-      
-      // Write the combat engaged message
       writeToClient(player, colorize(`*Combat Engaged*\r\n`, 'boldYellow'));
-      
-      // Draw a fresh prompt once, using our utility function
       drawCommandPrompt(player);
-      
-      // Broadcast initial attack message to others
       this.broadcastCombatStart(player, sharedTarget);
     }
     
-    // Add the target to combat
     combat.addTarget(sharedTarget);
     
     return true;
@@ -376,11 +368,13 @@ export class CombatSystem {
     const combat = this.combats.get(player.user.username);
     if (!combat) return false;
     
-    combat.brokenByPlayer = true;
+    // Set player's inCombat to false, but do not end the combat.
+    player.user.inCombat = false;
+    this.userManager.updateUserStats(player.user.username, { inCombat: false });
     
     writeFormattedMessageToClient(
       player,
-      colorize(`You attempt to break combat...\r\n`, 'boldYellow')
+      colorize(`*Combat Off*\r\n`, 'boldYellow')
     );
     
     // Broadcast to room with proper line handling

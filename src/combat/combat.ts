@@ -97,12 +97,14 @@ export class Combat {
       }
       
       // Player attacks target
-      this.processAttack(this.player, target);
-      
-      // If target dies from the attack, process death
-      if (!target.isAlive()) {
-        this.handleNpcDeath(target);
-        continue;
+      if (this.player.user.inCombat) {
+        this.processAttack(this.player, target);
+        
+        // If target dies from the attack, process death
+        if (!target.isAlive()) {
+          this.handleNpcDeath(target);
+          continue;
+        }
       }
       
       // Target counterattacks if not passive - but chooses target randomly among all attackers
@@ -398,22 +400,12 @@ export class Combat {
     }
   }
 
-  isDone(): boolean {
-    // End combat if player is no longer valid
-    if (!this.isPlayerValid()) {
-      return true;
-    }
-    
-    // Only end combat if we truly have no active combatants
-    if (this.activeCombatants.length === 0) {
-      return true;
-    }
-    
-    // Check if all combatants are dead
+  public isDone(): boolean {
+    // Remove or change the “brokenByPlayer” check so the enemy can still attack.
+    // For example, simply remove `|| this.brokenByPlayer`:
     const allDead = this.activeCombatants.every(c => !c.isAlive());
-    
-    return allDead || 
-           this.brokenByPlayer ||
+    return allDead ||
+           /* this.brokenByPlayer || */  // <-- Remove this to allow combat to continue
            !this.player.user ||
            this.player.user.health <= 0;
   }
