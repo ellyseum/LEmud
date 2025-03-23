@@ -41,6 +41,47 @@ export class Combat {
       return;
     }
 
+    // Check if player is still in the correct room with the NPCs
+    const playerRoomId = this.player.user.currentRoomId;
+    if (!playerRoomId) {
+      console.log(`[Combat] Player ${this.player.user.username} has no room, ending combat`);
+      this.activeCombatants = []; // End combat
+      return;
+    }
+
+    // Check if any combatants are in a different room
+    const invalidCombatants: CombatEntity[] = [];
+    
+    // Get the room to check for NPCs directly
+    const room = this.roomManager.getRoom(playerRoomId);
+    if (!room) {
+      console.log(`[Combat] Player ${this.player.user.username} is in non-existent room ${playerRoomId}, ending combat`);
+      this.activeCombatants = []; // End combat
+      return;
+    }
+    
+    for (const combatant of this.activeCombatants) {
+      // Check if the NPC is still in the room by name
+      if (!room.npcs.includes(combatant.name)) {
+        console.log(`[Combat] NPC ${combatant.name} is no longer in room ${playerRoomId}`);
+        invalidCombatants.push(combatant);
+      }
+    }
+    
+    // Remove combatants that are in a different room
+    if (invalidCombatants.length > 0) {
+      console.log(`[Combat] Removing ${invalidCombatants.length} combatants not in the same room as player`);
+      this.activeCombatants = this.activeCombatants.filter(
+        c => !invalidCombatants.includes(c)
+      );
+      
+      // If no valid combatants remain, end combat
+      if (this.activeCombatants.length === 0) {
+        console.log(`[Combat] No valid combatants remain in player's room, ending combat`);
+        return;
+      }
+    }
+
     this.rounds++;
     console.log(`[Combat] Processing round ${this.rounds} for ${this.player.user.username} against ${this.activeCombatants.length} combatants`);
     
@@ -377,23 +418,31 @@ export class Combat {
            this.player.user.health <= 0;
   }
 
-  endCombat(): void {
+  endCombat(playerFled: boolean = false): void {
     if (!this.player.user) return;
     
     // Update the player's combat status
     this.player.user.inCombat = false;
     this.userManager.updateUserStats(this.player.user.username, { inCombat: false });
     
-    if (this.activeCombatants.length === 0) {
+    if (this.activeCombatants.length === 0 || playerFled) {
       // Clear the line first
       const clearLineSequence = '\r\x1B[K';
       writeToClient(this.player, clearLineSequence);
       
       // Send message to player without drawing prompt yet
-      writeToClient(
-        this.player,
-        colorize(`*Combat Off*\r\n`, 'boldYellow')
-      );
+      if (playerFled) {
+        writeToClient(
+          this.player,
+          colorize(`*Combat Off - You fled from combat*\r\n`, 'boldYellow')
+        );
+      } else {
+        // Simplified message that doesn't mention target no longer in room
+        writeToClient(
+          this.player,
+          colorize(`*Combat Off*\r\n`, 'boldYellow')
+        );
+      }
       
       // Now draw the prompt explicitly once
       drawCommandPrompt(this.player);
@@ -401,12 +450,22 @@ export class Combat {
       // Broadcast to ALL players in the room
       if (this.player.user && this.player.user.currentRoomId) {
         const username = formatUsername(this.player.user.username);
-        this.combatSystem.broadcastRoomCombatMessage(
-          this.player.user.currentRoomId,
-          `${username} is no longer in combat.\r\n`,
-          'boldYellow' as ColorType,
-          this.player.user.username
-        );
+        
+        if (playerFled) {
+          this.combatSystem.broadcastRoomCombatMessage(
+            this.player.user.currentRoomId,
+            `${username} fled from combat!\r\n`,
+            'boldYellow' as ColorType,
+            this.player.user.username
+          );
+        } else {
+          this.combatSystem.broadcastRoomCombatMessage(
+            this.player.user.currentRoomId,
+            `${username} is no longer in combat.\r\n`,
+            'boldYellow' as ColorType,
+            this.player.user.username
+          );
+        }
       }
     } else if (this.brokenByPlayer) {
       // Clear the line first
@@ -439,9 +498,8 @@ export class Combat {
    * Check if the player is still valid (connected and authenticated)
    */
   private isPlayerValid(): boolean {
-    // CRITICAL FIX: More aggressive client reference updating
-    
     // Special case: Consider valid during transfers regardless of other checks
+    // CRITICAL FIX: More aggressive client reference updating
     if (this.player && this.player.stateData && 
        (this.player.stateData.transferInProgress || this.player.stateData.isSessionTransfer)) {
       console.log(`[Combat] Session transfer in progress for player, considering valid`);
@@ -463,14 +521,12 @@ export class Combat {
     }
     
     const username = this.player.user.username;
-    
     // Find by username - more reliable than checking specific client
     // This handles the case where client reference changed but username is the same
     const allClients = this.combatSystem.findAllClientsByUsername(username);
     if (allClients.length > 0) {
       // Use the first connected client with this username
       const newClient = allClients[0];
-      
       // Don't log if it's the same client to reduce noise
       if (newClient !== this.player) {
         console.log(`[Combat] Updating player reference from ${this.player.id || 'unknown'} to ${newClient.id || 'unknown'}`);
@@ -482,7 +538,7 @@ export class Combat {
     console.log(`[Combat] No valid clients found for ${username}, marking invalid`);
     return false;
   }
-
+  
   /**
    * Update the client reference when a session transfer happens
    * This ensures combat continues with the new client
@@ -494,7 +550,6 @@ export class Combat {
     if (this.player.user && newClient.user.username === this.player.user.username) {
       const oldClientId = this.player.id || 'unknown';
       const newClientId = newClient.id || 'unknown';
-      
       console.log(`[Combat] Updating client reference for ${newClient.user.username} from ${oldClientId} to ${newClientId}`);
       
       // CRITICAL: Make sure we preserve the combat state if needed

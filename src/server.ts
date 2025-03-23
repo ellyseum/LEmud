@@ -623,15 +623,177 @@ function checkForIdleClients() {
 // Set up periodic checking for idle clients
 const idleCheckTimer = setInterval(checkForIdleClients, IDLE_CHECK_INTERVAL);
 
-// Start the servers
-telnetServer.listen(TELNET_PORT, () => {
-  console.log(`TELNET server running on port ${TELNET_PORT}`);
-});
+const startServer = () => {
+  // Try to create the TELNET server with error handling
+  const telnetServer = net.createServer((socket) => {
+    // Create our custom connection wrapper
+    const connection = new TelnetConnection(socket);
+  
+    // TelnetConnection class now handles all the TELNET negotiation
+    setupClient(connection);
+  
+    // Track total connections
+    serverStats.totalConnections++;
+  });
 
-httpServer.listen(WS_PORT, () => {
-  console.log(`HTTP and Socket.IO server running on port ${WS_PORT}`);
-  console.log(`Admin interface available at http://localhost:${WS_PORT}/admin`);
-});
+  telnetServer.on('error', (err: Error & {code?: string}) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${TELNET_PORT} is already in use. Is another instance running?`);
+      console.log(`Trying alternative port ${TELNET_PORT + 1}...`);
+      telnetServer.listen(TELNET_PORT + 1);
+    } else {
+      console.error('TELNET server error:', err);
+    }
+  });
+
+  telnetServer.listen(TELNET_PORT, () => {
+    const address = telnetServer.address();
+    if (address && typeof address !== 'string') {
+      console.log(`TELNET server running on port ${address.port}`);
+    } else {
+      console.log(`TELNET server running`);
+    }
+  });
+
+  // Similar approach for WebSocket server
+  const httpServer = http.createServer(app);
+  const io = new SocketIOServer(httpServer);
+  
+  httpServer.on('error', (err: Error & {code?: string}) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${WS_PORT} is already in use. Is another instance running?`);
+      console.log(`Trying alternative port ${WS_PORT + 1}...`);
+      httpServer.listen(WS_PORT + 1);
+    } else {
+      console.error('HTTP server error:', err);
+    }
+  });
+  
+  // Add Socket.IO handler
+  io.on('connection', (socket) => {
+    console.log(`Socket.IO client connected: ${socket.id}`);
+    
+    // Create our custom connection wrapper
+    const connection = new SocketIOConnection(socket);
+    setupClient(connection);
+    
+    // Track total connections
+    serverStats.totalConnections++;
+    
+    // Handle monitoring requests
+    socket.on('monitor-user', (data) => {
+      const { clientId, token } = data;
+      
+      // Verify admin token
+      jwt.verify(token, JWT_SECRET, (err: jwt.VerifyErrors | null) => {
+        if (err) {
+          socket.emit('monitor-error', { message: 'Authentication failed' });
+          return;
+        }
+        
+        const client = clients.get(clientId);
+        if (!client) {
+          socket.emit('monitor-error', { message: 'Client not found' });
+          return;
+        }
+        
+        // Store the admin socket for this client and set monitoring flag
+        client.adminMonitorSocket = socket;
+        client.isBeingMonitored = true;
+        
+        console.log(`Admin is now monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+        
+        // Send initial data to the admin
+        socket.emit('monitor-connected', { 
+          username: client.user ? client.user.username : 'Unknown',
+          message: 'Monitoring session established'
+        });
+        
+        // Send current room description if user is authenticated
+        if (client.authenticated && client.user) {
+          const roomManager = RoomManager.getInstance(clients);
+          const room = roomManager.getRoom(client.user.currentRoomId);
+          if (room) {
+            socket.emit('monitor-output', { 
+              data: `\r\n${colorize(`Current location: ${client.user.currentRoomId}`, 'cyan')}\r\n${room.getDescription()}\r\n` 
+            });
+          }
+        }
+        
+        // Set up handler for admin commands
+        socket.on('admin-command', (commandData) => {
+          if (commandData.clientId === clientId && client.authenticated) {
+            // Process the command as if it came from the user
+            const commandStr = commandData.command;
+            
+            // Echo the command to admin's terminal
+            socket.emit('monitor-output', { data: `${colorize('> ' + commandStr, 'green')}\r\n` });
+            
+            // If the user is currently typing something, clear their input first
+            if (client.buffer.length > 0) {
+              // Get the current prompt length
+              const promptText = getPromptText(client);
+              const promptLength = promptText.length;
+              
+              // Clear the entire line and return to beginning
+              client.connection.write('\r' + ' '.repeat(promptLength + client.buffer.length) + '\r');
+              
+              // Redisplay the prompt (since we cleared it as well)
+              client.connection.write(promptText);
+              
+              // Clear the buffer
+              client.buffer = '';
+            }
+            
+            // Pause briefly to ensure the line is cleared
+            setTimeout(() => {
+              // Simulate the user typing this command by sending each character
+              for (const char of commandStr) {
+                handleClientData(client, char);
+              }
+              // Send enter key to execute the command
+              handleClientData(client, '\r');
+            }, 50);
+          }
+        });
+        
+        // Handle admin disconnect
+        socket.on('disconnect', () => {
+          if (client && client.adminMonitorSocket === socket) {
+            delete client.adminMonitorSocket;
+            client.isBeingMonitored = false;
+          }
+        });
+      });
+    });
+  
+    // Explicitly handle the stop-monitoring event
+    socket.on('stop-monitoring', (data) => {
+      const clientId = data.clientId;
+      if (!clientId) return;
+      
+      const client = clients.get(clientId);
+      if (client && client.adminMonitorSocket === socket) {
+        console.log(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+        client.isBeingMonitored = false;
+        client.adminMonitorSocket = undefined;
+      }
+    });
+  });
+  
+  httpServer.listen(WS_PORT, () => {
+    const address = httpServer.address();
+    if (address && typeof address !== 'string') {
+      console.log(`HTTP and Socket.IO server running on port ${address.port}`);
+      console.log(`Admin interface available at http://localhost:${address.port}/admin`);
+    } else {
+      console.log(`HTTP and Socket.IO server running`);
+      console.log(`Admin interface available`);
+    }
+  });
+};
+
+startServer();
 
 // Start the game timer system
 gameTimerManager.start();

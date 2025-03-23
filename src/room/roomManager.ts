@@ -208,12 +208,35 @@ export class RoomManager {
     // Update user's current room
     client.user.currentRoomId = nextRoomId;
 
+    // Note: We removed the combat handling code here since it's now in the MoveCommand
+
     writeToClient(client, colorize(`Moving...\r\n`, 'green'));
     
     // Show the new room description - use the Room's method for consistent formatting
     writeToClient(client, nextRoom.getDescriptionExcludingPlayer(client.user.username));
     
     return true;
+  }
+
+  /**
+   * Get the CombatSystem instance (to avoid circular dependencies)
+   */
+  private getCombatSystem(): any {
+    try {
+      // Access the CombatSystem directly
+      const { CombatSystem } = require('../combat/combatSystem');
+      if (CombatSystem && CombatSystem.getInstance) {
+        const { UserManager } = require('../user/userManager');
+        return CombatSystem.getInstance(
+          UserManager.getInstance(),
+          this
+        );
+      }
+      return null;
+    } catch (err) {
+      console.error('[RoomManager] Error getting CombatSystem instance:', err);
+      return null;
+    }
   }
 
   /**
@@ -246,7 +269,7 @@ export class RoomManager {
   private notifyPlayersInRoom(roomId: string, message: string, excludeUsername?: string): void {
     const room = this.getRoom(roomId);
     if (!room) return;
-    
+
     for (const playerName of room.players) {
       // Skip excluded player if specified
       if (excludeUsername && playerName.toLowerCase() === excludeUsername.toLowerCase()) {
@@ -271,7 +294,7 @@ export class RoomManager {
     }
     return undefined;
   }
-  
+
   /**
    * Get the opposite direction of movement
    */
@@ -406,7 +429,7 @@ export class RoomManager {
       return itemName.toLowerCase() === normalizedName || 
              itemName.toLowerCase().includes(normalizedName);
     });
-    
+
     if (objectMatch) {
       // Display object description
       const itemName = typeof objectMatch === 'string' ? objectMatch : objectMatch.name;
@@ -468,12 +491,12 @@ export class RoomManager {
       player.toLowerCase() === normalizedName || 
       player.toLowerCase().includes(normalizedName)
     );
-    
+
     if (playerMatch) {
       // Don't let players look at themselves
       if (playerMatch.toLowerCase() === client.user.username.toLowerCase()) {
         writeToClient(client, colorize(`You look at yourself. You look... like yourself.\r\n`, 'cyan'));
-        
+            
         // Notify other players that this player is looking at themselves
         this.notifyPlayersInRoom(
           roomId,
@@ -503,7 +526,7 @@ export class RoomManager {
             otherPlayerName.toLowerCase() === playerMatch.toLowerCase()) {
           continue;
         }
-        
+
         const otherClient = this.findClientByUsername(otherPlayerName);
         if (otherClient) {
           writeFormattedMessageToClient(
@@ -522,7 +545,7 @@ export class RoomManager {
         item.toLowerCase() === normalizedName || 
         item.toLowerCase().includes(normalizedName)
       );
-      
+
       if (inventoryMatch) {
         // Display inventory item description
         writeToClient(client, colorize(`You look at the ${inventoryMatch} in your inventory.\r\n`, 'cyan'));
@@ -622,10 +645,8 @@ export class RoomManager {
 
     // Remove the player from any room they might be in
     this.removePlayerFromAllRooms(client.user.username);
-
     // Add the player to the starting room
     startingRoom.addPlayer(client.user.username);
-
     // Update the player's current room ID
     client.user.currentRoomId = startingRoomId;
 
@@ -634,7 +655,7 @@ export class RoomManager {
     
     // Show the new room description
     writeToClient(client, startingRoom.getDescriptionExcludingPlayer(client.user.username));
-
+    
     // Announce player's arrival in the starting room
     this.notifyPlayersInRoom(
       startingRoomId,
@@ -704,7 +725,6 @@ export class RoomManager {
     const index = room.npcs.indexOf(npcName);
     if (index !== -1) {
       room.npcs.splice(index, 1);
-      
       // Note: We would also want to inform the combat system here
       // but that would create a circular dependency
       // Instead, the combat system will handle this through the cleanupDeadEntity method

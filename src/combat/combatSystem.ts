@@ -63,18 +63,18 @@ export class CombatSystem {
     const room = this.roomManager.getRoom(roomId);
     if (!room) return null;
     
-    // Create a new NPC if it doesn't exist in shared entities
-    // Since npcs in room are strings, we need to create a new NPC instance
-    if (room.npcs.includes(entityName)) {
-      // Create a new NPC with the same name
-      const npc = this.createTestNPC(entityName);
-      
-      // Add to shared entities
-      roomEntities.set(entityName, npc);
-      return npc;
+    // Verify the NPC actually exists in this room
+    if (!room.npcs.includes(entityName)) {
+      console.log(`[CombatSystem] NPC ${entityName} not found in room ${roomId}`);
+      return null;
     }
     
-    return null;
+    // Since npcs in room are strings, we need to create a new NPC instance
+    const npc = this.createTestNPC(entityName);
+    
+    // Add to shared entities
+    roomEntities.set(entityName, npc);
+    return npc;
   }
 
   /**
@@ -118,13 +118,15 @@ export class CombatSystem {
    */
   entityIsDead(entityId: string): boolean {
     // Parse the entity ID to get room and name
-    const [roomId, entityName] = entityId.split('::');
+    const [roomId] = entityId.split('::');
     
     if (!this.sharedEntities.has(roomId)) {
       return true;
     }
     
     const roomEntities = this.sharedEntities.get(roomId)!;
+    // Extract the entity name from the ID
+    const entityName = entityId.split('::')[1];
     if (!roomEntities.has(entityName)) {
       return true;
     }
@@ -615,5 +617,29 @@ export class CombatSystem {
         delete oldClient.stateData.transferInProgress;
       }
     }, 10000);
+  }
+
+  /**
+   * Handle a player moving to a different room during combat
+   */
+  public handlePlayerMovedRooms(player: ConnectedClient): void {
+    if (!player.user) return;
+    
+    const username = player.user.username;
+    const combat = this.combats.get(username);
+    
+    if (combat) {
+      console.log(`[CombatSystem] Player ${username} moved rooms during combat, ending combat`);
+      
+      // End combat and broadcast flee message to the old room
+      combat.endCombat(true); // Pass true to indicate player fled
+      
+      // Delete the combat instance
+      this.combats.delete(username);
+      
+      // Update player state
+      player.user.inCombat = false;
+      this.userManager.updateUserStats(username, { inCombat: false });
+    }
   }
 }

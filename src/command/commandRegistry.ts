@@ -27,8 +27,8 @@ import { BreakCommand } from './commands/break.command';
 import { SpawnCommand } from './commands/spawn.command';
 
 export class CommandRegistry {
-  private commands: Map<string, Command> = new Map();
-  private aliases: Map<string, string> = new Map();
+  private commands: Map<string, Command>;
+  private aliases: Map<string, {commandName: string, args?: string}>;
 
   constructor(
     private clients: Map<string, ConnectedClient>,
@@ -36,6 +36,8 @@ export class CommandRegistry {
     private combatSystem: CombatSystem,
     private userManager: UserManager
   ) {
+    this.commands = new Map<string, Command>();
+    this.aliases = new Map<string, {commandName: string, args?: string}>();
     this.registerCommands();
   }
 
@@ -78,37 +80,64 @@ export class CommandRegistry {
   }
 
   private registerAliases(): void {
-    this.aliases.set('l', 'look');
-    this.aliases.set('i', 'inventory');
-    this.aliases.set('inv', 'inventory');
-    this.aliases.set('hist', 'history');
-    this.aliases.set('take', 'pickup');
-    this.aliases.set('a', 'attack');
-    this.aliases.set('br', 'break');
-    this.aliases.set('sp', 'spawn');
+    this.aliases.set('l', {commandName: 'look'});
+    this.aliases.set('i', {commandName: 'inventory'});
+    this.aliases.set('inv', {commandName: 'inventory'});
+    this.aliases.set('hist', {commandName: 'history'});
+    this.aliases.set('take', {commandName: 'pickup'});
+    this.aliases.set('a', {commandName: 'attack'});
+    this.aliases.set('br', {commandName: 'break'});
+    this.aliases.set('sp', {commandName: 'spawn'});
   }
 
   private registerDirectionCommands(): void {
-    const moveCommand = this.commands.get('move');
-    if (moveCommand) {
-      // Register direction aliases as separate commands
-      const directions = [
-        'north', 'south', 'east', 'west',
-        'northeast', 'northwest', 'southeast', 'southwest',
-        'up', 'down',
-        'n', 's', 'e', 'w',
-        'ne', 'nw', 'se', 'sw',
-        'u', 'd'
-      ];
-      
-      directions.forEach(direction => {
-        this.commands.set(direction, {
-          name: direction,
-          description: `Move ${direction}`,
-          execute: (client, _) => moveCommand.execute(client, direction)
-        });
-      });
+    const directions = ['north', 'south', 'east', 'west', 'up', 'down', 'northeast', 'northwest', 'southeast', 'southwest'];
+    const shortDirections = ['n', 's', 'e', 'w', 'u', 'd', 'ne', 'nw', 'se', 'sw'];
+
+    // Register direction commands as aliases/shortcuts to the move command
+    for (const dir of directions) {
+      this.registerAlias(dir, 'move', dir);
+      console.log(`Registered direction alias: ${dir} -> move ${dir}`);
     }
+
+    for (const shortDir of shortDirections) {
+      const fullDir = this.convertShortToFullDirection(shortDir);
+      this.registerAlias(shortDir, 'move', fullDir);
+      console.log(`Registered short direction alias: ${shortDir} -> move ${fullDir}`);
+    }
+  }
+
+  /**
+   * Register an alias for a command
+   */
+  public registerAlias(alias: string, commandName: string, args?: string): void {
+    this.aliases.set(alias, { commandName, args });
+  }
+
+  private convertShortToFullDirection(shortDir: string): string {
+    switch (shortDir) {
+      case 'n': return 'north';
+      case 's': return 'south';
+      case 'e': return 'east';
+      case 'w': return 'west';
+      case 'u': return 'up';
+      case 'd': return 'down';
+      case 'ne': return 'northeast';
+      case 'nw': return 'northwest';
+      case 'se': return 'southeast';
+      case 'sw': return 'southwest';
+      default: return shortDir;  // If not recognized, return as is
+    }
+  }
+
+  /**
+   * Check if a command is a direction command
+   */
+  public isDirectionCommand(name: string): boolean {
+    const directions = ['north', 'south', 'east', 'west', 'up', 'down', 'northeast', 'northwest', 'southeast', 'southwest'];
+    const shortDirections = ['n', 's', 'e', 'w', 'u', 'd', 'ne', 'nw', 'se', 'sw'];
+    
+    return directions.includes(name) || shortDirections.includes(name);
   }
 
   public getCommand(name: string): Command | undefined {
@@ -117,29 +146,26 @@ export class CommandRegistry {
     
     // If not found, check aliases
     if (!command && this.aliases.has(name)) {
-      const aliasedName = this.aliases.get(name);
+      const aliasedName = this.aliases.get(name)?.commandName;
       if (aliasedName) {
         command = this.commands.get(aliasedName);
       }
     }
-    
+        
     return command;
   }
 
   public showAvailableCommands(client: ConnectedClient): void {
     writeToClient(client, colorize(`=== Available Commands ===\n`, 'boldCyan'));
-    
-    // Get unique commands (excluding direction shortcuts)
     const uniqueCommands = new Map<string, Command>();
     
     for (const [name, command] of this.commands.entries()) {
       // Skip directions which are specialized move commands
-      if (['north', 'south', 'east', 'west', 'up', 'down', 
+      if (['north', 'south', 'east', 'west', 'up', 'down',
            'northeast', 'northwest', 'southeast', 'southwest',
            'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd'].includes(name)) {
         continue;
       }
-      
       uniqueCommands.set(name, command);
     }
     
@@ -153,5 +179,72 @@ export class CommandRegistry {
     }
     
     writeToClient(client, colorize(`==========================\n`, 'boldCyan'));
+  }
+
+  /**
+   * Execute a command with the given input
+   */
+  public executeCommand(client: ConnectedClient, input: string): void {
+    const [commandName, ...args] = input.split(' ');
+    const lowercaseCommand = commandName.toLowerCase();
+    
+    // Special case for direction commands
+    if (this.isDirectionCommand(lowercaseCommand)) {
+      const moveCommand = this.commands.get('move');
+      if (moveCommand) {
+        try {
+          // If it's a shorthand (n, s, e, w), convert to full direction
+          const direction = this.convertShortToFullDirection(lowercaseCommand);
+          moveCommand.execute(client, direction);
+        } catch (err: unknown) {
+          console.error(`Error executing direction command ${lowercaseCommand}:`, err);
+          if (err instanceof Error) {
+            writeToClient(client, colorize(`Error moving: ${err.message}\r\n`, 'red'));
+          } else {
+            writeToClient(client, colorize(`Error moving\r\n`, 'red'));
+          }
+        }
+        return;
+      }
+    }
+
+    // Handle regular commands
+    const command = this.getCommand(lowercaseCommand);
+
+    if (command) {
+      try {
+        command.execute(client, args.join(' '));
+      } catch (err: unknown) {
+        console.error(`Error executing command ${commandName}:`, err);
+        if (err instanceof Error) {
+          writeToClient(client, colorize(`Error executing command: ${err.message}\r\n`, 'red'));
+        } else {
+          writeToClient(client, colorize(`Error executing command\r\n`, 'red'));
+        }
+      }
+      return;
+    }
+
+    const alias = this.aliases.get(lowercaseCommand);
+    if (alias) {
+      const aliasCommand = this.commands.get(alias.commandName);
+      if (aliasCommand) {
+        try {
+          const aliasArgs = alias.args ? alias.args : args.join(' ');
+          aliasCommand.execute(client, aliasArgs.trim());
+        } catch (err: unknown) {
+          console.error(`Error executing alias ${commandName}:`, err);
+          if (err instanceof Error) {
+            writeToClient(client, colorize(`Error executing command: ${err.message}\r\n`, 'red'));
+          } else {
+            writeToClient(client, colorize(`Error executing command\r\n`, 'red'));
+          }
+        }
+        return;
+      }
+    }
+    
+    // If we got here, the command wasn't found
+    writeToClient(client, colorize(`Unknown command: ${commandName}\r\n`, 'yellow'));
   }
 }

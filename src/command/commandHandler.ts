@@ -141,6 +141,13 @@ export class CommandHandler {
     const commandName = parts[0].toLowerCase();
     const args = parts.slice(1).join(' ').trim(); // Also trim arguments
 
+    // Special case for directional movement shortcuts (n, s, e, w, etc.)
+    if (this.commands.isDirectionCommand(commandName)) {
+      this.commands.executeCommand(client, commandText);
+      drawCommandPrompt(client);
+      return;
+    }
+
     // Find and execute command
     const command = this.commands.getCommand(commandName);
     
