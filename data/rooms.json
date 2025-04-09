@@ -12,10 +12,7 @@
     "items": [
       "shield"
     ],
-    "npcs": [
-      "cat",
-      "dog"
-    ],
+    "npcs": [],
     "currency": {
       "gold": 0,
       "silver": 3,

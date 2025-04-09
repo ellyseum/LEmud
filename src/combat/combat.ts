@@ -134,7 +134,7 @@ export class Combat {
       const damage = Math.floor(Math.random() * 6) + 5;
       const actualDamage = target.takeDamage(damage);
       
-      // Add aggression - track that this player hit the entity and the damage dealt
+      // Add aggression only when damage is dealt
       target.addAggression(player.user.username, actualDamage);
       
       // Send message to the player
@@ -152,7 +152,7 @@ export class Combat {
         player.user.username
       );
     } else {
-      // Still add aggression for a miss, but with 0 damage
+      // Add aggression for a miss (attack attempt)
       target.addAggression(player.user.username, 0);
       
       // Send message to the player

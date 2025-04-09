@@ -196,18 +196,32 @@ export class CombatSystem {
     const sharedTarget = this.getSharedEntity(roomId, target.name);
     if (!sharedTarget) return false;
     
+    // Check if player is already in combat with a different NPC
+    let combat = this.combats.get(player.user.username);
+    if (combat && combat.activeCombatants.length > 0) {
+      // Allow switching to a new target - clear old targets first
+      combat.activeCombatants = [];
+      
+      // Log the target switch
+      console.log(`[CombatSystem] Player ${player.user.username} switched target to ${target.name}`);
+      
+      // Notify player
+      writeFormattedMessageToClient(
+        player,
+        colorize(`You turn your attention to ${target.name}.\r\n`, 'yellow')
+      );
+    }
+    
     // Track that the player is targeting this entity
     this.trackEntityTargeter(entityId, player.user.username);
     
     // Add the entity to active combat entities for this room
     this.addEntityToCombatForRoom(roomId, target.name);
     
-    // Add the player as an aggressor to the target
-    sharedTarget.addAggression(player.user.username);
+    // Note: We don't add aggression here anymore - aggression is only added when damage is dealt
+    // or an attack is attempted and misses in the processAttack method
 
-    let combat = this.combats.get(player.user.username);
-    
-    // If a combat instance exists but the player's inCombat flag is off, re-engage combat.
+    // If a combat instance exists but the player's inCombat flag is off, re-engage combat
     if (combat && !player.user.inCombat) {
       console.log(`[CombatSystem] Re-engaging combat for ${player.user.username}`);
       player.user.inCombat = true;
