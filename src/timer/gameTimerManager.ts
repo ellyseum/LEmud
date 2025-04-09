@@ -71,7 +71,8 @@ export class GameTimerManager extends EventEmitter {
     this.config = loadGameTimerConfig();
     this.userManager = userManager;
     this.roomManager = roomManager;
-    this.combatSystem = new CombatSystem(userManager, roomManager);
+    // Get the singleton instance instead of creating a new one
+    this.combatSystem = CombatSystem.getInstance(userManager, roomManager);
   }
   
   /**

@@ -49,6 +49,9 @@ export class AuthenticatedState implements ClientState {
       const room = this.roomManager.getRoom(client.user.currentRoomId);
       if (room) {
         room.addPlayer(client.user.username);
+        
+        // Check for hostile NPCs in the room and add them to combat entities
+        this.checkForHostileNPCs(client, room);
       }
     }
     
@@ -124,6 +127,34 @@ export class AuthenticatedState implements ClientState {
       // Only send to authenticated users who are not the joining client
       if (client.authenticated && client !== joiningClient) {
         writeFormattedMessageToClient(client, colorize(message, 'bright'));
+      }
+    }
+  }
+
+  /**
+   * Check for hostile NPCs in the room and add them to combat entities list
+   * so they can attack players automatically
+   */
+  private checkForHostileNPCs(client: ConnectedClient, room: any): void {
+    if (!client.user || !room || !room.npcs || room.npcs.length === 0) return;
+    
+    console.log(`[AuthenticatedState] Checking for hostile NPCs in room ${room.id} for player ${client.user.username}`);
+    
+    for (const npcName of room.npcs) {
+      // Create a temporary entity to check if it's hostile
+      const npc = this.combatSystem['getSharedEntity'](room.id, npcName);
+      
+      if (npc && npc.isHostile) {
+        console.log(`[AuthenticatedState] Found hostile NPC ${npcName} in room ${room.id}`);
+        
+        // Add the entity to active combat entities for this room
+        this.combatSystem['addEntityToCombatForRoom'](room.id, npcName);
+        
+        // Generate an entity ID for tracking
+        const entityId = this.combatSystem.getEntityId(room.id, npcName);
+        
+        // Reset attack status to ensure it can attack in the next round
+        this.combatSystem['resetEntityAttackStatus'](entityId);
       }
     }
   }

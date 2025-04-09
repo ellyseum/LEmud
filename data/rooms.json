@@ -13,8 +13,9 @@
       "shield"
     ],
     "npcs": [
+      "cat",
       "dog",
-      "cat"
+      "wolf"
     ],
     "currency": {
       "gold": 0,
@@ -33,7 +34,9 @@
       }
     ],
     "items": [],
-    "npcs": [],
+    "npcs": [
+      "wolf"
+    ],
     "currency": {
       "gold": 0,
       "silver": 0,

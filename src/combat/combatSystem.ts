@@ -479,6 +479,17 @@ export class CombatSystem {
    * Create a test NPC for development
    */
   createTestNPC(name: string = 'cat'): NPC {
+    // Load NPC data from JSON file to set proper hostility values
+    const npcData = NPC.loadNPCData();
+    
+    // Check if we have data for this NPC
+    if (npcData.has(name)) {
+      console.log(`[CombatSystem] Creating NPC ${name} from data`);
+      return NPC.fromNPCData(npcData.get(name)!);
+    }
+    
+    // Fallback to default NPC if no data found
+    console.log(`[CombatSystem] No data found for NPC ${name}, creating default`);
     return new NPC(
       name,
       20,  // health
@@ -747,18 +758,32 @@ export class CombatSystem {
             playersInRoom.includes(player)
           );
           
-          // If no specific aggressors but entity is hostile, target any player in the room
-          if (aggressors.length === 0 && playersInRoom.length > 0) {
-            // Skip for now - hostile NPCs only attack if provoked first
-            continue;
-          }
-          
           // If there are aggressors in the room, pick one randomly to attack
           if (aggressors.length > 0) {
             const targetPlayerName = aggressors[Math.floor(Math.random() * aggressors.length)];
             const targetPlayer = this.findClientByUsername(targetPlayerName);
             
             if (targetPlayer && targetPlayer.user) {
+              this.processNpcAttack(entity, targetPlayer, roomId);
+              
+              // Mark that this entity has attacked in this round
+              this.markEntityAttacked(entityId);
+            }
+          }
+          // New code: If no specific aggressors but entity is hostile, target any player in the room
+          else if (playersInRoom.length > 0) {
+            // Select a random player from the room to attack
+            const randomIndex = Math.floor(Math.random() * playersInRoom.length);
+            const targetPlayerName = playersInRoom[randomIndex];
+            const targetPlayer = this.findClientByUsername(targetPlayerName);
+            
+            if (targetPlayer && targetPlayer.user) {
+              console.log(`[CombatSystem] Hostile NPC ${entityName} attacking player ${targetPlayerName} without prior aggression`);
+              
+              // Add aggression so future attacks prioritize this player
+              entity.addAggression(targetPlayerName, 0);
+              
+              // Process the attack
               this.processNpcAttack(entity, targetPlayer, roomId);
               
               // Mark that this entity has attacked in this round
