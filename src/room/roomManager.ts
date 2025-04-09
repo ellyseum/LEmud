@@ -408,10 +408,40 @@ export class RoomManager {
     );
     
     if (npcMatch) {
-      // Display NPC description
+      // Get detailed NPC data from JSON
+      const npcInstance = this.getNPCFromRoom(roomId, npcMatch);
+      
+      // Display NPC description with proper formatting
       writeToClient(client, colorize(`You look at the ${npcMatch}.\r\n`, 'cyan'));
-      // Here we can add more detailed description based on the NPC type
-      writeToClient(client, colorize(`It's a ${npcMatch} in the room with you.\r\n`, 'cyan'));
+      
+      if (npcInstance && npcInstance.description) {
+        writeToClient(client, colorize(`${npcInstance.description}\r\n`, 'cyan'));
+        
+        // If it's a combat entity, show its health status
+        if (npcInstance.health > 0) {
+          const healthPercentage = Math.floor((npcInstance.health / npcInstance.maxHealth) * 100);
+          let healthStatus = '';
+          
+          if (healthPercentage > 90) {
+            healthStatus = 'in perfect health';
+          } else if (healthPercentage > 75) {
+            healthStatus = 'slightly injured';
+          } else if (healthPercentage > 50) {
+            healthStatus = 'injured';
+          } else if (healthPercentage > 25) {
+            healthStatus = 'badly wounded';
+          } else {
+            healthStatus = 'near death';
+          }
+          
+          writeToClient(client, colorize(`It appears to be ${healthStatus}.\r\n`, 'cyan'));
+        } else {
+          writeToClient(client, colorize(`It appears to be dead.\r\n`, 'red'));
+        }
+      } else {
+        // Fallback description if not found in data
+        writeToClient(client, colorize(`It's a ${npcMatch} in the room with you.\r\n`, 'cyan'));
+      }
       
       // Notify other players in the room
       this.notifyPlayersInRoom(
@@ -678,16 +708,42 @@ export class RoomManager {
    * Initialize NPCs in rooms
    */
   private initializeNPCs(): void {
-    // Add some cats to the starting room for testing
+    // Load NPC data from JSON
+    const npcData = NPC.loadNPCData();
+    
+    // Add some initial NPCs to the starting room for testing
     const startingRoom = this.getRoom('start');
     if (startingRoom) {
-      // Add 3 cats to the starting room
-      for (let i = 0; i < 3; i++) {
-        const catNPC = new NPC('cat', 20, 20, [1, 3], false, false, 100);
+      // Clear existing NPCs first
+      startingRoom.npcs = [];
+      
+      // Add 2 cats to the starting room
+      for (let i = 0; i < 2; i++) {
         const npcId = `cat-${Date.now()}-${i}`;
-        this.npcs.set(npcId, catNPC);
-        startingRoom.addNPC('cat');
+        
+        // Check if cat is defined in our NPC data
+        if (npcData.has('cat')) {
+          const npcTemplate = npcData.get('cat')!;
+          const npc = NPC.fromNPCData(npcTemplate);
+          this.npcs.set(npcId, npc);
+          startingRoom.addNPC('cat');
+        } else {
+          console.warn('Cat NPC not found in data, using default values');
+          const catNPC = new NPC('cat', 10, 10, [1, 3], false, false, 75);
+          this.npcs.set(npcId, catNPC);
+          startingRoom.addNPC('cat');
+        }
       }
+      
+      // Add a dog to the room
+      if (npcData.has('dog')) {
+        const npcId = `dog-${Date.now()}`;
+        const npcTemplate = npcData.get('dog')!;
+        const npc = NPC.fromNPCData(npcTemplate);
+        this.npcs.set(npcId, npc);
+        startingRoom.addNPC('dog');
+      }
+      
       this.updateRoom(startingRoom);
     }
   }
@@ -703,7 +759,24 @@ export class RoomManager {
     const foundNPCName = room.npcs.find(name => name.toLowerCase() === npcName.toLowerCase());
     if (!foundNPCName) return null;
 
-    // Create a new NPC instance (we'll improve this with proper NPC storage later)
+    // Check if we already have this NPC instance in our map
+    for (const [id, npc] of this.npcs.entries()) {
+      if (npc.name === foundNPCName && id.startsWith(`${foundNPCName}-`)) {
+        return npc;
+      }
+    }
+
+    // Load NPCs data from JSON
+    const npcData = NPC.loadNPCData();
+    const npcTemplate = npcData.get(foundNPCName);
+    
+    if (npcTemplate) {
+      // Create a proper NPC instance from the template
+      return NPC.fromNPCData(npcTemplate);
+    }
+    
+    // Fallback to default NPC creation if not found in data
+    console.warn(`NPC data for '${foundNPCName}' not found in npcs.json, using defaults`);
     return new NPC(
       foundNPCName,
       20,  // health

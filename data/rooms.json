@@ -13,7 +13,10 @@
       "sword",
       "shield"
     ],
-    "npcs": [],
+    "npcs": [
+      "dog",
+      "goblin"
+    ],
     "currency": {
       "gold": 0,
       "silver": 3,

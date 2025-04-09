@@ -2,11 +2,65 @@
   {
     "id": "dog",
     "name": "dog",
-    "description": "A friendly dog with a wagging tail"
+    "description": "A friendly dog with a wagging tail",
+    "health": 15,
+    "maxHealth": 15,
+    "damage": [1, 2],
+    "isHostile": false,
+    "isPassive": true,
+    "experienceValue": 50,
+    "attackTexts": [
+      "barks and nips at $TARGET$",
+      "playfully bites $TARGET$",
+      "growls and lunges at $TARGET$"
+    ]
   },
   {
     "id": "cat",
     "name": "cat",
-    "description": "A sleepy cat with soft fur"
+    "description": "A sleepy cat with soft fur",
+    "health": 10,
+    "maxHealth": 10,
+    "damage": [1, 3],
+    "isHostile": false,
+    "isPassive": false,
+    "experienceValue": 75,
+    "attackTexts": [
+      "swipes $TARGET$ with its claws",
+      "hisses and scratches $TARGET$",
+      "pounces on $TARGET$"
+    ]
+  },
+  {
+    "id": "goblin",
+    "name": "goblin",
+    "description": "A small, green-skinned creature with a wicked grin. It looks ready to attack anyone who comes near.",
+    "health": 25,
+    "maxHealth": 25,
+    "damage": [2, 5],
+    "isHostile": true,
+    "isPassive": false,
+    "experienceValue": 150,
+    "attackTexts": [
+      "stabs at $TARGET$ with a rusty dagger",
+      "swings wildly at $TARGET$",
+      "leaps at $TARGET$ with a snarl"
+    ]
+  },
+  {
+    "id": "wolf",
+    "name": "wolf",
+    "description": "A large gray wolf with gleaming yellow eyes and sharp teeth. It watches you warily.",
+    "health": 30,
+    "maxHealth": 30,
+    "damage": [3, 6],
+    "isHostile": true,
+    "isPassive": false,
+    "experienceValue": 200,
+    "attackTexts": [
+      "bites $TARGET$ with powerful jaws",
+      "lunges at $TARGET$'s throat",
+      "circles $TARGET$ and attacks from behind"
+    ]
   }
 ]
