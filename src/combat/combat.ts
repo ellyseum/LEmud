@@ -134,6 +134,9 @@ export class Combat {
       const damage = Math.floor(Math.random() * 6) + 5;
       const actualDamage = target.takeDamage(damage);
       
+      // Add aggression - track that this player hit the entity and the damage dealt
+      target.addAggression(player.user.username, actualDamage);
+      
       // Send message to the player
       writeFormattedMessageToClient(
         player,
@@ -149,6 +152,9 @@ export class Combat {
         player.user.username
       );
     } else {
+      // Still add aggression for a miss, but with 0 damage
+      target.addAggression(player.user.username, 0);
+      
       // Send message to the player
       writeFormattedMessageToClient(
         player,
@@ -318,6 +324,12 @@ export class Combat {
         this.player.user.username
       );
     }
+    
+    // NEW: Remove the entity from active combat in the room
+    this.combatSystem['removeEntityFromCombatForRoom'](roomId, npc.name);
+    
+    // Clear aggression from the dead entity
+    npc.clearAllAggression();
     
     // End combat for all players who were targeting this entity
     // This ensures all players receive the Combat Off message

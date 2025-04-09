@@ -19,6 +19,8 @@ export interface NPCData {
 export class NPC implements CombatEntity {
   public description: string;
   public attackTexts: string[];
+  // Map to track which players this NPC has aggression towards and the damage they've dealt
+  private aggressors: Map<string, number> = new Map();
 
   constructor(
     public name: string,
@@ -96,5 +98,29 @@ export class NPC implements CombatEntity {
     // Replace placeholder with target name if applicable
     const attackText = this.attackTexts[Math.floor(Math.random() * this.attackTexts.length)];
     return attackText.replace('$TARGET$', target);
+  }
+
+  // Aggression tracking implementation
+  hasAggression(playerName: string): boolean {
+    return this.aggressors.has(playerName);
+  }
+
+  addAggression(playerName: string, damageDealt: number = 0): void {
+    const currentDamage = this.aggressors.get(playerName) || 0;
+    this.aggressors.set(playerName, currentDamage + damageDealt);
+    // If this is a hostile NPC, it should immediately become hostile to anyone who attacks
+    this.isHostile = true;
+  }
+
+  removeAggression(playerName: string): void {
+    this.aggressors.delete(playerName);
+  }
+
+  getAllAggressors(): string[] {
+    return Array.from(this.aggressors.keys());
+  }
+
+  clearAllAggression(): void {
+    this.aggressors.clear();
   }
 }

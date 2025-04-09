@@ -10,12 +10,11 @@
       }
     ],
     "items": [
-      "sword",
       "shield"
     ],
     "npcs": [
-      "dog",
-      "goblin"
+      "cat",
+      "dog"
     ],
     "currency": {
       "gold": 0,

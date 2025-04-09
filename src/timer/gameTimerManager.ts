@@ -172,8 +172,11 @@ export class GameTimerManager extends EventEmitter {
     this.tickCount++;
     console.log(`Game tick ${this.tickCount}`);
     
-    // Process all combat rounds
+    // Process all combat rounds for players actively engaged in combat
     this.combatSystem.processCombatRound();
+    
+    // Process room-based combat for entities with aggression
+    this.combatSystem.processRoomCombat();
     
     // Check if it's time to save
     if (this.tickCount % this.config.saveInterval === 0) {
