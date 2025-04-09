@@ -776,11 +776,6 @@ export class CombatSystem {
   private processNpcAttack(npc: CombatEntity, player: ConnectedClient, roomId: string): void {
     if (!player.user) return;
     
-    // If the player isn't in combat yet, automatically engage them
-    if (!player.user.inCombat || !this.isInCombat(player)) {
-      console.log(`[CombatSystem] NPC ${npc.name} initiating combat with player ${player.user.username}`);
-      this.engageCombat(player, npc);
-    }
     
     // 50% chance to hit
     const hit = Math.random() >= 0.5;
