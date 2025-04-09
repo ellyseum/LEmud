@@ -813,4 +813,12 @@ export class RoomManager {
   public storeNPC(npcId: string, npc: NPC): void {
     this.npcs.set(npcId, npc);
   }
+
+  /**
+   * Get all rooms in the game
+   * Used by the combat system to scan for hostile NPCs
+   */
+  public getAllRooms(): Room[] {
+    return Array.from(this.rooms.values());
+  }
 }

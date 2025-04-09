@@ -720,6 +720,9 @@ export class CombatSystem {
    * This will handle NPCs attacking players based on aggression
    */
   processRoomCombat(): void {
+    // ENHANCEMENT: First scan all rooms for hostile NPCs and players
+    this.scanRoomsForHostileNPCs();
+    
     // Process combat for each room with active combat entities
     for (const [roomId, entities] of this.roomCombatEntities.entries()) {
       console.log(`[CombatSystem] Processing room combat for room ${roomId} with ${entities.size} entities`);
@@ -788,6 +791,11 @@ export class CombatSystem {
               
               // Mark that this entity has attacked in this round
               this.markEntityAttacked(entityId);
+              
+              // If the player isn't already in combat, engage them in combat
+              if (!targetPlayer.user.inCombat) {
+                this.engageCombat(targetPlayer, entity);
+              }
             }
           }
         }
@@ -882,5 +890,51 @@ export class CombatSystem {
     // Set player's inCombat to false
     player.user.inCombat = false;
     this.userManager.updateUserStats(player.user.username, { inCombat: false });
+  }
+
+  /**
+   * Scan all rooms for hostile NPCs and players in the same room
+   * This ensures hostile NPCs will attack players even if the players
+   * were already in the room before the NPC spawned
+   */
+  private scanRoomsForHostileNPCs(): void {
+    console.log(`[CombatSystem] Scanning all rooms for hostile NPCs and players`);
+    
+    // Get all rooms from the room manager
+    const rooms = this.roomManager.getAllRooms();
+    
+    for (const room of rooms) {
+      if (!room.npcs || room.npcs.length === 0 || !room.players || room.players.length === 0) {
+        continue; // Skip rooms with no NPCs or no players
+      }
+      
+      // Check for hostile NPCs in this room
+      for (const npcName of room.npcs) {
+        // Get entity to check its hostility
+        const entity = this.getSharedEntity(room.id, npcName);
+        
+        if (entity && entity.isHostile) {
+          console.log(`[CombatSystem] Found hostile NPC ${npcName} in room ${room.id} with ${room.players.length} players`);
+          
+          // Add the entity to active combat entities for this room if not already
+          if (!this.isEntityInCombat(room.id, npcName)) {
+            this.addEntityToCombatForRoom(room.id, npcName);
+          }
+          
+          // Generate an entity ID for tracking
+          const entityId = this.getEntityId(room.id, npcName);
+          
+          // For each player in the room, ensure they're on the NPC's aggression list
+          for (const playerName of room.players) {
+            if (!entity.hasAggression(playerName)) {
+              console.log(`[CombatSystem] Adding player ${playerName} to aggression list of ${npcName} in room ${room.id}`);
+              
+              // Add aggression with 0 damage to indicate awareness rather than damage dealt
+              entity.addAggression(playerName, 0);
+            }
+          }
+        }
+      }
+    }
   }
 }

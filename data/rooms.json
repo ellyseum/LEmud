@@ -15,7 +15,8 @@
     "npcs": [
       "cat",
       "dog",
-      "wolf"
+      "wolf",
+      "goblin"
     ],
     "currency": {
       "gold": 0,
@@ -35,7 +36,8 @@
     ],
     "items": [],
     "npcs": [
-      "wolf"
+      "wolf",
+      "goblin"
     ],
     "currency": {
       "gold": 0,
