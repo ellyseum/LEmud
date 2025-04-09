@@ -158,12 +158,9 @@ export class CommandHandler {
       // (many commands will draw the prompt themselves, but this ensures it always happens)
       drawCommandPrompt(client);
     } else {
-      // Unknown command - show error and help
-      client.connection.write('\r\x1B[K'); // Clear line first
-      client.connection.write(colorize(`Unknown command: ${commandName}\r\n`, 'red'));
-      
-      // Show available commands
-      this.commands.showAvailableCommands(client);
+      // Use the CommandRegistry to handle unknown commands
+      // This will show the "Unknown command" message and display the help command
+      this.commands.executeCommand(client, commandText);
       
       // Display the command prompt after
       drawCommandPrompt(client);

@@ -246,5 +246,11 @@ export class CommandRegistry {
     
     // If we got here, the command wasn't found
     writeToClient(client, colorize(`Unknown command: ${commandName}\r\n`, 'yellow'));
+    
+    // Get the help command and execute it to show available commands
+    const helpCommand = this.getCommand('help');
+    if (helpCommand) {
+      helpCommand.execute(client, '');
+    }
   }
 }
