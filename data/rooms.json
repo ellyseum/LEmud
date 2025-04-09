@@ -13,6 +13,7 @@
       "shield"
     ],
     "npcs": [
+      "dog",
       "cat"
     ],
     "currency": {

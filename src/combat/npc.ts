@@ -35,9 +35,9 @@ export class NPC implements CombatEntity {
   ) {
     this.description = description || `A ${name} standing here.`;
     this.attackTexts = attackTexts || [
-      `swipes ${name} with its claws`,
-      `lunges at ${name}`,
-      `hisses and attacks ${name}`
+      `swipes $TARGET$ with its claws`,
+      `lunges at $TARGET$`,
+      `hisses and attacks $TARGET$`
     ];
   }
 
