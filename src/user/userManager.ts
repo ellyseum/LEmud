@@ -387,10 +387,15 @@ export class UserManager {
       strength: 10,
       dexterity: 10,
       agility: 10,
-      constitution: 10, // New stat for physical endurance
+      constitution: 10, 
       wisdom: 10,
       intelligence: 10,
       charisma: 10,
+      // Initialize combat stats (will be recalculated based on equipment)
+      attack: 5, // Base attack (strength/2)
+      defense: 5, // Base defense (constitution/2)
+      // Initialize empty equipment
+      equipment: {},
       joinDate: now,
       lastLogin: now,
       currentRoomId: 'start', // Set default starting room

@@ -7,6 +7,8 @@ import { RoomManager } from '../room/roomManager';
 import { UserManager } from '../user/userManager';
 import { CombatSystem } from '../combat/combatSystem';
 import { CommandHandler } from '../utils/commandHandler';
+import { ItemManager } from '../utils/itemManager';
+import { CommandRegistry } from '../command/commandRegistry';
 
 export class AuthenticatedState implements ClientState {
   name = ClientStateType.AUTHENTICATED;
@@ -14,6 +16,7 @@ export class AuthenticatedState implements ClientState {
   private userManager: UserManager;
   private combatSystem: CombatSystem;
   private commandHandler: CommandHandler;
+  private commandRegistry: CommandRegistry;
 
   constructor(private clients: Map<string, ConnectedClient>) {
     // Get singleton instances
@@ -21,6 +24,17 @@ export class AuthenticatedState implements ClientState {
     this.userManager = UserManager.getInstance();
     this.combatSystem = CombatSystem.getInstance(this.userManager, this.roomManager);
     this.commandHandler = new CommandHandler(this.roomManager, this.userManager);
+    
+    // Initialize the command registry with required dependencies
+    this.commandRegistry = new CommandRegistry(
+      clients,
+      this.roomManager,
+      this.combatSystem,
+      this.userManager
+    );
+    
+    // Connect the command registry to the command handler
+    this.commandHandler.setCommandRegistry(this.commandRegistry);
   }
 
   public enter(client: ConnectedClient): void {
@@ -31,6 +45,9 @@ export class AuthenticatedState implements ClientState {
 
     // Reset state data for fresh state
     client.stateData = client.stateData || {};
+
+    // Initialize ItemManager for equipment calculations
+    const itemManager = ItemManager.getInstance();
 
     // Check for undefined character statistics and initialize them if needed
     if (client.user && (
@@ -62,6 +79,51 @@ export class AuthenticatedState implements ClientState {
       this.userManager.updateUserStats(client.user.username, defaultStats);
       
       writeToClient(client, colorize(`Your character statistics have been initialized!\r\n`, 'green'));
+    }
+
+    // Check for undefined combat stats and equipment
+    if (client.user && (
+      client.user.attack === undefined ||
+      client.user.defense === undefined ||
+      client.user.equipment === undefined
+    )) {
+      console.log(`[AuthenticatedState] Initializing missing combat stats and equipment for ${client.user.username}`);
+      
+      // Create default values for missing properties
+      const defaultCombatStats: Partial<User> = {};
+      
+      // Initialize combat stats based on character attributes
+      if (client.user.attack === undefined) {
+        defaultCombatStats.attack = Math.floor(client.user.strength / 2);
+      }
+      
+      if (client.user.defense === undefined) {
+        defaultCombatStats.defense = Math.floor(client.user.constitution / 2);
+      }
+      
+      if (client.user.equipment === undefined) {
+        defaultCombatStats.equipment = {};
+      }
+      
+      // Update user with defaults
+      Object.assign(client.user, defaultCombatStats);
+      
+      // Save the updated stats to persistence
+      this.userManager.updateUserStats(client.user.username, defaultCombatStats);
+      
+      writeToClient(client, colorize(`Your combat statistics have been initialized!\r\n`, 'green'));
+    }
+
+    // Recalculate and update attack and defense values based on equipment
+    if (client.user.equipment) {
+      client.user.attack = itemManager.calculateAttack(client.user);
+      client.user.defense = itemManager.calculateDefense(client.user);
+      
+      // We don't need to notify the user about this - it happens every login
+      this.userManager.updateUserStats(client.user.username, {
+        attack: client.user.attack,
+        defense: client.user.defense
+      });
     }
 
     // Check and fix inconsistent unconscious state
@@ -130,8 +192,15 @@ export class AuthenticatedState implements ClientState {
     this.broadcastLogin(client);
   }
 
-  handle(): void {
-    // Command handling is done separately in CommandHandler
+  handle(client: ConnectedClient, input: string): void {
+    // Make sure we have a valid authenticated user
+    if (!client.user) {
+      client.stateData.transitionTo = ClientStateType.LOGIN;
+      return;
+    }
+    
+    // Use the CommandHandler to process the command
+    this.commandHandler.handleCommand(client, input);
   }
 
   /**

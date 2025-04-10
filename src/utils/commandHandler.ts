@@ -4,15 +4,73 @@ import { UserManager } from '../user/userManager';
 import { CombatSystem } from '../combat/combatSystem';
 import { writeToClient, writeFormattedMessageToClient } from './socketWriter';
 import { colorize } from './colors';
+import { CommandRegistry } from '../command/commandRegistry';
+import { SudoCommand } from '../command/commands/sudo.command';
 
 export class CommandHandler {
   private combatSystem: CombatSystem;
+  private commandRegistry: CommandRegistry | null = null;
+  private sudoCommand: SudoCommand | null = null;
   
   constructor(
     private roomManager: RoomManager,
     private userManager: UserManager
   ) {
     this.combatSystem = CombatSystem.getInstance(userManager, roomManager);
+  }
+  
+  /**
+   * Set the command registry for this handler
+   * This is needed to resolve circular dependency issues
+   */
+  public setCommandRegistry(registry: CommandRegistry): void {
+    this.commandRegistry = registry;
+    
+    // Get the sudo command for admin privilege checking
+    const sudoCmd = registry.getCommand('sudo');
+    if (sudoCmd && sudoCmd instanceof SudoCommand) {
+      this.sudoCommand = sudoCmd;
+    }
+  }
+  
+  /**
+   * Handle a command from a client
+   */
+  public handleCommand(client: ConnectedClient, input: string): void {
+    if (!this.commandRegistry) {
+      writeToClient(client, colorize('Error: Command registry not initialized.\r\n', 'red'));
+      return;
+    }
+    
+    // Store this handler instance in client state data for access by commands
+    if (!client.stateData) {
+      client.stateData = {};
+    }
+    
+    client.stateData.commandHandler = this;
+    
+    // Also store sudo command for admin privilege checking
+    if (this.sudoCommand) {
+      if (!client.stateData.commands) {
+        client.stateData.commands = new Map();
+      }
+      client.stateData.commands.set('sudo', this.sudoCommand);
+    }
+    
+    // Execute the command
+    this.commandRegistry.executeCommand(client, input);
+  }
+  
+  /**
+   * Check if a user has admin privileges
+   */
+  public hasAdminPrivileges(username: string): boolean {
+    if (!this.sudoCommand) {
+      // If sudo command is not available, only admin user has privileges
+      return username === 'admin';
+    }
+    
+    return this.sudoCommand.isAuthorized(username);
   }
 
   public handleAttackCommand(client: ConnectedClient, args: string[]): void {

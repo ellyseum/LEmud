@@ -47,6 +47,13 @@ export interface UserData {
   wisdom: number;
   intelligence: number;
   charisma: number;
+  // Combat stats
+  attack?: number; // Calculated from equipment
+  defense?: number; // Calculated from equipment
+  // Equipment slots
+  equipment?: {
+    [slot: string]: string; // Maps slot name to item ID
+  };
   inCombat: boolean;
   currentRoomId: string;
   inventory: {

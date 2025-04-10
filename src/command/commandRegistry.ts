@@ -25,6 +25,11 @@ import { HistoryCommand } from './commands/history.command';
 import { AttackCommand } from './commands/attack.command';
 import { BreakCommand } from './commands/break.command';
 import { SpawnCommand } from './commands/spawn.command';
+import { EquipCommand } from './commands/equip.command';
+import { UnequipCommand } from './commands/unequip.command';
+import { EquipmentCommand } from './commands/equipment.command';
+import { GiveItemCommand } from './commands/giveitem.command';
+import { SudoCommand } from './commands/sudo.command';
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -60,7 +65,12 @@ export class CommandRegistry {
       new HistoryCommand(),
       new AttackCommand(this.combatSystem, this.roomManager),
       new BreakCommand(this.combatSystem),
-      new SpawnCommand(this.roomManager)
+      new SpawnCommand(this.roomManager),
+      new EquipCommand(),
+      new UnequipCommand(),
+      new EquipmentCommand(),
+      new GiveItemCommand(this.userManager),
+      new SudoCommand(this.userManager)
     ];
     
     // Register all commands
@@ -90,6 +100,13 @@ export class CommandRegistry {
     this.aliases.set('sp', {commandName: 'spawn'});
     this.aliases.set('st', {commandName: 'stats'});
     this.aliases.set('stat', {commandName: 'stats'});
+    this.aliases.set('eq', {commandName: 'equip'});
+    this.aliases.set('uneq', {commandName: 'unequip'});
+    this.aliases.set('remove', {commandName: 'unequip'});
+    this.aliases.set('gear', {commandName: 'equipment'});
+    this.aliases.set('worn', {commandName: 'equipment'});
+    this.aliases.set('equips', {commandName: 'equipment'});
+    this.aliases.set('gi', {commandName: 'giveitem'});
   }
 
   private registerDirectionCommands(): void {
@@ -254,5 +271,21 @@ export class CommandRegistry {
     if (helpCommand) {
       helpCommand.execute(client, '');
     }
+  }
+  
+  /**
+   * Get all registered commands
+   * This is used for admin commands like sudo to check authorization
+   */
+  public getAllCommands(): Map<string, Command> {
+    return this.commands;
+  }
+  
+  /**
+   * Get the sudo command instance, or undefined if not available
+   */
+  public getSudoCommand(): SudoCommand | undefined {
+    const sudoCommand = this.getCommand('sudo');
+    return sudoCommand instanceof SudoCommand ? sudoCommand : undefined;
   }
 }

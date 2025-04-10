@@ -1,0 +1,160 @@
+[
+  {
+    "id": "sword-001",
+    "name": "Iron Sword",
+    "description": "A sturdy iron sword with a sharp edge.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 50,
+    "weight": 5,
+    "stats": {
+      "attack": 5,
+      "strength": 2
+    },
+    "requirements": {
+      "level": 1,
+      "strength": 5
+    }
+  },
+  {
+    "id": "shield-001",
+    "name": "Wooden Shield",
+    "description": "A basic wooden shield that provides some protection.",
+    "type": "armor",
+    "slot": "offHand",
+    "value": 30,
+    "weight": 4,
+    "stats": {
+      "defense": 3,
+      "constitution": 1
+    }
+  },
+  {
+    "id": "helmet-001",
+    "name": "Leather Cap",
+    "description": "A simple leather cap that offers minimal protection.",
+    "type": "armor",
+    "slot": "head",
+    "value": 25,
+    "weight": 2,
+    "stats": {
+      "defense": 2
+    }
+  },
+  {
+    "id": "amulet-001",
+    "name": "Copper Amulet",
+    "description": "A simple amulet made of copper.",
+    "type": "armor",
+    "slot": "neck",
+    "value": 35,
+    "weight": 1,
+    "stats": {
+      "wisdom": 1,
+      "intelligence": 1
+    }
+  },
+  {
+    "id": "chest-001",
+    "name": "Padded Tunic",
+    "description": "A padded tunic that offers some protection.",
+    "type": "armor",
+    "slot": "chest",
+    "value": 45,
+    "weight": 6,
+    "stats": {
+      "defense": 4,
+      "constitution": 1
+    }
+  },
+  {
+    "id": "cloak-001",
+    "name": "Traveler's Cloak",
+    "description": "A warm cloak that keeps you dry in the rain.",
+    "type": "armor",
+    "slot": "back",
+    "value": 20,
+    "weight": 3,
+    "stats": {
+      "defense": 1,
+      "constitution": 1
+    }
+  },
+  {
+    "id": "arms-001",
+    "name": "Leather Bracers",
+    "description": "Protective bracers made of hardened leather.",
+    "type": "armor",
+    "slot": "arms",
+    "value": 30,
+    "weight": 2,
+    "stats": {
+      "defense": 2,
+      "dexterity": 1
+    }
+  },
+  {
+    "id": "gloves-001",
+    "name": "Leather Gloves",
+    "description": "Simple gloves that protect your hands.",
+    "type": "armor",
+    "slot": "hands",
+    "value": 15,
+    "weight": 1,
+    "stats": {
+      "defense": 1,
+      "dexterity": 1
+    }
+  },
+  {
+    "id": "ring-001",
+    "name": "Silver Ring",
+    "description": "A simple silver ring.",
+    "type": "armor",
+    "slot": "finger",
+    "value": 50,
+    "weight": 0.1,
+    "stats": {
+      "intelligence": 2
+    }
+  },
+  {
+    "id": "belt-001",
+    "name": "Leather Belt",
+    "description": "A sturdy leather belt with a brass buckle.",
+    "type": "armor",
+    "slot": "waist",
+    "value": 25,
+    "weight": 1,
+    "stats": {
+      "defense": 1,
+      "strength": 1
+    }
+  },
+  {
+    "id": "legs-001",
+    "name": "Leather Leggings",
+    "description": "Protective leggings made of leather.",
+    "type": "armor",
+    "slot": "legs",
+    "value": 35,
+    "weight": 3,
+    "stats": {
+      "defense": 3,
+      "agility": 1
+    }
+  },
+  {
+    "id": "boots-001",
+    "name": "Leather Boots",
+    "description": "Sturdy boots for long travels.",
+    "type": "armor",
+    "slot": "feet",
+    "value": 30,
+    "weight": 2,
+    "stats": {
+      "defense": 2,
+      "agility": 1
+    }
+  }
+]

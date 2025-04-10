@@ -10,6 +10,22 @@ export enum ClientStateType {
   TRANSFER_REQUEST = 'transfer_request'  // New state for handling session transfers
 }
 
+// Define equipment slots
+export enum EquipmentSlot {
+  HEAD = 'head',
+  NECK = 'neck',
+  CHEST = 'chest',
+  BACK = 'back',
+  ARMS = 'arms',
+  HANDS = 'hands',
+  FINGER = 'finger',
+  WAIST = 'waist',
+  LEGS = 'legs',
+  FEET = 'feet',
+  MAIN_HAND = 'mainHand',
+  OFF_HAND = 'offHand'
+}
+
 // Define Item interface
 export interface Item {
   name: string;
@@ -29,6 +45,33 @@ export interface Currency {
   copper: number;
 }
 
+// Define GameItem interface for equipment
+export interface GameItem {
+  id: string;
+  name: string;
+  description: string;
+  type: 'weapon' | 'armor' | 'consumable' | 'quest' | 'misc';
+  slot?: EquipmentSlot; // Where the item is equipped, using the EquipmentSlot enum
+  value: number; // Currency value
+  weight?: number;
+  stats?: {
+    attack?: number;
+    defense?: number;
+    strength?: number;
+    dexterity?: number;
+    agility?: number;
+    constitution?: number;
+    wisdom?: number;
+    intelligence?: number;
+    charisma?: number;
+  };
+  requirements?: {
+    level?: number;
+    strength?: number;
+    dexterity?: number;
+  };
+}
+
 export interface User {
   username: string;
   password?: string; // Making optional for backward compatibility
@@ -46,6 +89,13 @@ export interface User {
   wisdom: number;
   intelligence: number;
   charisma: number;
+  // Combat stats
+  attack?: number; // Calculated from equipment
+  defense?: number; // Calculated from equipment
+  // Equipment slots
+  equipment?: {
+    [slot: string]: string; // Maps slot name to item ID
+  };
   joinDate: Date;
   lastLogin: Date;
   currentRoomId: string; // Add this field to track user's current room
