@@ -1,101 +1,85 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
+import { UserManager } from '../user/userManager';
 
-const ADMIN_DATA_DIR = path.join(__dirname, '..', '..', 'data', 'admin');
-const ADMINS_FILE = path.join(ADMIN_DATA_DIR, 'admins.json');
+// Path to the main admin.json file that contains user admin privileges
+const ADMIN_FILE = path.join(__dirname, '..', '..', 'data', 'admin.json');
 
-interface Admin {
+// Interface for the admin.json file structure
+interface AdminData {
+  admins: AdminUser[];
+}
+
+// Interface for admin users in admin.json
+interface AdminUser {
   username: string;
-  passwordHash: string;
-  salt: string;
-  lastLogin?: Date;
+  level: string;
+  addedBy: string;
+  addedOn: string;
 }
 
 export class AdminAuth {
-  private admins: Admin[] = [];
+  private admins: AdminUser[] = [];
+  private userManager: UserManager;
 
   constructor() {
+    this.userManager = UserManager.getInstance();
     this.loadAdmins();
   }
 
   private loadAdmins(): void {
     try {
-      // Create data directory if it doesn't exist
-      if (!fs.existsSync(ADMIN_DATA_DIR)) {
-        fs.mkdirSync(ADMIN_DATA_DIR, { recursive: true });
-      }
-      
-      // Create admins file if it doesn't exist
-      if (!fs.existsSync(ADMINS_FILE)) {
-        // Create a default admin account (admin/admin)
-        const salt = crypto.randomBytes(16).toString('hex');
-        const hash = this.hashPassword('admin', salt);
-        
-        const defaultAdmin: Admin = {
-          username: 'admin',
-          passwordHash: hash,
-          salt: salt,
-          lastLogin: new Date()
-        };
-        
-        fs.writeFileSync(ADMINS_FILE, JSON.stringify([defaultAdmin], null, 2));
-        this.admins = [defaultAdmin];
+      // Check if the admin.json file exists
+      if (!fs.existsSync(ADMIN_FILE)) {
+        console.error('Admin file not found:', ADMIN_FILE);
+        this.admins = [];
         return;
       }
 
-      const data = fs.readFileSync(ADMINS_FILE, 'utf8');
-      this.admins = JSON.parse(data);
-      
-      // Ensure dates are properly parsed
-      this.admins.forEach(admin => {
-        if (typeof admin.lastLogin === 'string') {
-          admin.lastLogin = new Date(admin.lastLogin);
-        }
-      });
+      const data = fs.readFileSync(ADMIN_FILE, 'utf8');
+      const adminData: AdminData = JSON.parse(data);
+      this.admins = adminData.admins || [];
     } catch (error) {
       console.error('Error loading admins:', error);
       this.admins = [];
     }
   }
 
-  private saveAdmins(): void {
-    try {
-      fs.writeFileSync(ADMINS_FILE, JSON.stringify(this.admins, null, 2));
-    } catch (error) {
-      console.error('Error saving admins:', error);
-    }
+  // Check if a user is an admin (super or admin level, not mod)
+  private isAdminOrSuperAdmin(username: string): boolean {
+    const admin = this.admins.find(a => a.username.toLowerCase() === username.toLowerCase());
+    if (!admin) return false;
+    
+    // Only allow super and admin levels, not mod
+    return admin.level === 'super' || admin.level === 'admin';
   }
 
-  private hashPassword(password: string, salt: string): string {
-    return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-  }
-
+  /**
+   * Authenticate an admin for web UI access
+   * 
+   * This checks:
+   * 1. If the user exists in users.json
+   * 2. If the user has admin or superadmin privileges in admin.json
+   * 3. If the password matches the one in users.json
+   */
   public authenticate(username: string, password: string): boolean {
-    const admin = this.admins.find(a => a.username === username);
-    if (!admin) return false;
-    
-    const hash = this.hashPassword(password, admin.salt);
-    const match = hash === admin.passwordHash;
-    
-    if (match) {
-      admin.lastLogin = new Date();
-      this.saveAdmins();
+    // First check if the user is an admin or super admin in the main system
+    if (!this.isAdminOrSuperAdmin(username)) {
+      return false;
     }
     
-    return match;
+    // Then check if the user exists and the password is correct
+    // using the main UserManager authentication
+    return this.userManager.authenticateUser(username, password);
   }
 
+  /**
+   * Not needed anymore as passwords are managed by UserManager
+   * Keeping the method for backward compatibility
+   */
   public changePassword(username: string, newPassword: string): boolean {
-    const admin = this.admins.find(a => a.username === username);
-    if (!admin) return false;
-    
-    const salt = crypto.randomBytes(16).toString('hex');
-    admin.passwordHash = this.hashPassword(newPassword, salt);
-    admin.salt = salt;
-    
-    this.saveAdmins();
-    return true;
+    // Pass through to the main UserManager
+    return this.userManager.changeUserPassword(username, newPassword);
   }
 }
 
