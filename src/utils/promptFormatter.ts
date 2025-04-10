@@ -1,6 +1,7 @@
 import { ConnectedClient } from '../types';
 import { colorize, ColorType } from './colors';
 import { writeToClient } from './socketWriter';
+import { SudoCommand } from '../command/commands/sudo.command';
 
 /**
  * Writes a command prompt to the client based on their stats
@@ -32,6 +33,12 @@ export function getPromptText(client: ConnectedClient): string {
   // Add combat indicator if in combat
   if (client.user.inCombat) {
     prompt += colorize(' [COMBAT]', 'boldYellow');
+  }
+  
+  // Check if user has admin privileges using the static method
+  // This guarantees we're checking the same admin status across the entire application
+  if (SudoCommand.isAuthorizedUser(client.user.username)) {
+    prompt += colorize(' [Admin]', 'red');
   }
   
   prompt += colorize(': ', 'white');

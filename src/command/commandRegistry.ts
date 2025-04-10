@@ -71,7 +71,8 @@ export class CommandRegistry {
       new UnequipCommand(),
       new EquipmentCommand(),
       new GiveItemCommand(this.userManager),
-      new SudoCommand(this.userManager),
+      // Use SudoCommand singleton instead of creating a new instance
+      SudoCommand.getInstance(this.userManager),
       new AdminManageCommand(this.userManager)
     ];
     
