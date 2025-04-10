@@ -1,0 +1,16 @@
+{
+  "admins": [
+    {
+      "username": "admin",
+      "level": "super",
+      "addedBy": "system",
+      "addedOn": "2023-01-01T00:00:00.000Z"
+    },
+    {
+      "username": "asdf",
+      "level": "admin",
+      "addedBy": "admin",
+      "addedOn": "2025-04-10T10:05:02.127Z"
+    }
+  ]
+}

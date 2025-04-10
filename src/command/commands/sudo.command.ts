@@ -1,17 +1,12 @@
 // filepath: /Users/jelden/projects/game/src/command/commands/sudo.command.ts
+import fs from 'fs';
+import path from 'path';
 import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { UserManager } from '../../user/userManager';
-
-// Define interface for admin users
-interface AdminUser {
-  username: string;
-  password?: string;
-  passwordHash?: string;
-  salt?: string;
-}
+import { AdminLevel, AdminUser } from './adminmanage.command';
 
 export class SudoCommand implements Command {
   name = 'sudo';
@@ -19,28 +14,69 @@ export class SudoCommand implements Command {
   private userManager: UserManager;
   private adminUsers: AdminUser[] = [];
   private activeAdmins: Set<string> = new Set(); // Track users with active admin privileges
+  private adminFilePath: string;
   
   constructor(userManager: UserManager) {
     this.userManager = userManager;
+    this.adminFilePath = path.join(__dirname, '../../../data/admin.json');
     this.loadAdminUsers();
   }
   
+  /**
+   * Load admin users from JSON file
+   */
   private loadAdminUsers(): void {
     try {
-      // For security, hardcode initial admin access until proper admin system exists
-      this.adminUsers = [
-        { username: 'admin' } // Admin always has access
-      ];
-      
-      // In a real implementation, you would load from a secure file
-      // this.adminUsers = JSON.parse(fs.readFileSync('/path/to/admins.json', 'utf8'));
-      
-      console.log('[SudoCommand] Loaded admin users');
+      if (fs.existsSync(this.adminFilePath)) {
+        const data = fs.readFileSync(this.adminFilePath, 'utf8');
+        const adminData = JSON.parse(data);
+        this.adminUsers = adminData.admins || [];
+      } else {
+        // Create default admin file if it doesn't exist
+        this.adminUsers = [
+          {
+            username: 'admin',
+            level: AdminLevel.SUPER,
+            addedBy: 'system',
+            addedOn: new Date().toISOString()
+          }
+        ];
+        this.saveAdmins();
+      }
+      console.log(`[SudoCommand] Loaded ${this.adminUsers.length} admin users`);
     } catch (error) {
       console.error('[SudoCommand] Error loading admin users:', error);
       // Default to just the main admin if file can't be loaded
-      this.adminUsers = [{ username: 'admin' }];
+      this.adminUsers = [
+        {
+          username: 'admin',
+          level: AdminLevel.SUPER,
+          addedBy: 'system',
+          addedOn: new Date().toISOString()
+        }
+      ];
     }
+  }
+  
+  /**
+   * Save admin users to JSON file
+   */
+  private saveAdmins(): void {
+    try {
+      const adminData = { admins: this.adminUsers };
+      fs.writeFileSync(this.adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
+      console.log('[SudoCommand] Saved admin users');
+    } catch (error) {
+      console.error('[SudoCommand] Error saving admin users:', error);
+    }
+  }
+  
+  /**
+   * Update admin list from adminmanage command
+   */
+  public updateAdminList(admins: AdminUser[]): void {
+    this.adminUsers = admins;
+    console.log(`[SudoCommand] Updated admin list with ${this.adminUsers.length} users`);
   }
   
   /**
@@ -48,7 +84,7 @@ export class SudoCommand implements Command {
    */
   public isAuthorized(username: string): boolean {
     // Special case: admin user always has admin privileges
-    if (username === 'admin') return true;
+    if (username.toLowerCase() === 'admin') return true;
     
     // Check if user has active sudo
     return this.activeAdmins.has(username.toLowerCase());
@@ -63,6 +99,16 @@ export class SudoCommand implements Command {
     );
   }
   
+  /**
+   * Get the admin level for a user
+   */
+  public getAdminLevel(username: string): AdminLevel | null {
+    const admin = this.adminUsers.find(admin => 
+      admin.username.toLowerCase() === username.toLowerCase()
+    );
+    return admin ? admin.level : null;
+  }
+  
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
     
@@ -71,7 +117,7 @@ export class SudoCommand implements Command {
     // If user already has admin access
     if (this.isAuthorized(username)) {
       // Special case: admin can't disable their admin status
-      if (username === 'admin') {
+      if (username.toLowerCase() === 'admin') {
         writeToClient(client, colorize('You are the admin user and always have admin privileges.\r\n', 'cyan'));
         return;
       }
@@ -85,16 +131,24 @@ export class SudoCommand implements Command {
     // Check if user is authorized to become admin
     if (!this.canBecomeAdmin(username)) {
       writeToClient(client, colorize('You are not authorized to use this command.\r\n', 'red'));
+      writeToClient(client, colorize('You need to be granted admin privileges first.\r\n', 'red'));
       return;
     }
     
-    // If no password is provided but a command is, execute that command with admin privileges
+    // Get the admin level
+    const adminLevel = this.getAdminLevel(username);
+    if (!adminLevel) {
+      writeToClient(client, colorize('Error: Admin level not found.\r\n', 'red'));
+      return;
+    }
+    
+    // If a command is provided, execute it with admin privileges
     if (args && !args.startsWith('-p ')) {
       // Enable admin temporarily for this one command
       this.activeAdmins.add(username.toLowerCase());
       
       // Execute the command
-      writeToClient(client, colorize(`Executing with admin privileges: ${args}\r\n`, 'yellow'));
+      writeToClient(client, colorize(`Executing with ${adminLevel} privileges: ${args}\r\n`, 'yellow'));
       
       // Get command registry and execute the command
       if (client.stateData && client.stateData.commandHandler) {
@@ -110,7 +164,21 @@ export class SudoCommand implements Command {
     
     // Enable admin privileges (full sudo mode)
     this.activeAdmins.add(username.toLowerCase());
-    writeToClient(client, colorize('Admin privileges enabled. Use "sudo" again to disable.\r\n', 'green'));
+    writeToClient(client, colorize(`${adminLevel.toUpperCase()} privileges enabled. Use "sudo" again to disable.\r\n`, 'green'));
+    
+    // Show different message based on admin level
+    switch (adminLevel) {
+      case AdminLevel.SUPER:
+        writeToClient(client, colorize('You now have SUPER ADMIN access. You can do anything, including managing other admins.\r\n', 'red'));
+        break;
+      case AdminLevel.ADMIN:
+        writeToClient(client, colorize('You now have ADMIN access. You can use all admin commands except managing other admins.\r\n', 'yellow'));
+        break;
+      case AdminLevel.MOD:
+        writeToClient(client, colorize('You now have MODERATOR access. You can use moderation commands.\r\n', 'green'));
+        break;
+    }
+    
     writeToClient(client, colorize('With great power comes great responsibility!\r\n', 'magenta'));
   }
 }

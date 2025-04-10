@@ -30,6 +30,7 @@ import { UnequipCommand } from './commands/unequip.command';
 import { EquipmentCommand } from './commands/equipment.command';
 import { GiveItemCommand } from './commands/giveitem.command';
 import { SudoCommand } from './commands/sudo.command';
+import { AdminManageCommand } from './commands/adminmanage.command';
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -70,13 +71,22 @@ export class CommandRegistry {
       new UnequipCommand(),
       new EquipmentCommand(),
       new GiveItemCommand(this.userManager),
-      new SudoCommand(this.userManager)
+      new SudoCommand(this.userManager),
+      new AdminManageCommand(this.userManager)
     ];
     
     // Register all commands
     commands.forEach(cmd => {
       this.commands.set(cmd.name, cmd);
     });
+    
+    // Connect SudoCommand and AdminManageCommand
+    const sudoCommand = commands.find(cmd => cmd.name === 'sudo') as SudoCommand;
+    const adminManageCommand = commands.find(cmd => cmd.name === 'adminmanage') as AdminManageCommand;
+    
+    if (sudoCommand && adminManageCommand) {
+      adminManageCommand.setSudoCommand(sudoCommand);
+    }
     
     // Register aliases
     this.registerAliases();
@@ -107,6 +117,8 @@ export class CommandRegistry {
     this.aliases.set('worn', {commandName: 'equipment'});
     this.aliases.set('equips', {commandName: 'equipment'});
     this.aliases.set('gi', {commandName: 'giveitem'});
+    this.aliases.set('admin', {commandName: 'adminmanage'});
+    this.aliases.set('admins', {commandName: 'adminmanage', args: 'list'});
   }
 
   private registerDirectionCommands(): void {
