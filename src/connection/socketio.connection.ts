@@ -27,6 +27,10 @@ export class SocketIOConnection extends EventEmitter implements IConnection {
         this.emit('data', '\u001b[A');
       } else if (data.key === 'down') {
         this.emit('data', '\u001b[B');
+      } else if (data.key === 'left') {
+        this.emit('data', '\u001b[D');
+      } else if (data.key === 'right') {
+        this.emit('data', '\u001b[C');
       }
     });
 

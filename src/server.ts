@@ -322,6 +322,11 @@ function handleClientData(client: ConnectedClient, data: string): void {
   // Debugging - uncomment if needed
   // console.log('Input data:', data.split('').map(c => c.charCodeAt(0).toString(16)).join(' '));
   
+  // Initialize cursor position if not set
+  if (client.cursorPos === undefined) {
+    client.cursorPos = client.buffer.length;
+  }
+  
   // Handle Ctrl+U (ASCII code 21) - clear entire input line
   if (data === '\u0015') {
     if (client.buffer.length > 0) {
@@ -332,8 +337,8 @@ function handleClientData(client: ConnectedClient, data: string): void {
       client.connection.write(backspaces);
       
       // Clear the buffer
-      
       client.buffer = '';
+      client.cursorPos = 0;
       
       // If buffer becomes empty, flush any buffered output
       stopBuffering(client);
@@ -343,12 +348,20 @@ function handleClientData(client: ConnectedClient, data: string): void {
   
   // Handle backspace - check for both BS char and DEL char since clients may send either
   if (data === '\b' || data === '\x7F') {
-    if (client.buffer.length > 0) {
-      // Remove the last character from the buffer
-      client.buffer = client.buffer.slice(0, -1);
-      
-      // Update the terminal display (backspace, space, backspace)
-      client.connection.write('\b \b');
+    if (client.buffer.length > 0 && client.cursorPos > 0) {
+      if (client.cursorPos === client.buffer.length) {
+        // Cursor at the end - simple backspace
+        // Remove the last character from the buffer
+        client.buffer = client.buffer.slice(0, -1);
+        client.cursorPos--;
+        
+        // Update the terminal display (backspace, space, backspace)
+        client.connection.write('\b \b');
+      } else {
+        // Cursor in the middle - need to redraw the whole line
+        const newBuffer = client.buffer.slice(0, client.cursorPos - 1) + client.buffer.slice(client.cursorPos);
+        redrawInputLine(client, newBuffer, client.cursorPos - 1);
+      }
       
       // If buffer becomes empty, flush any buffered output
       if (client.buffer.length === 0) {
@@ -366,6 +379,7 @@ function handleClientData(client: ConnectedClient, data: string): void {
     // Process the completed line
     const line = client.buffer;
     client.buffer = ''; // Reset the buffer
+    client.cursorPos = 0; // Reset cursor position
     
     // Stop buffering and flush any buffered output before processing command
     stopBuffering(client);
@@ -387,28 +401,53 @@ function handleClientData(client: ConnectedClient, data: string): void {
     return;
   }
   
-  // Handle normal input (excluding special sequences)
-  client.buffer += data;
-  
-  // Echo the character if not in mask mode - this is where all echoing should occur
-  if (!client.stateData.maskInput) {
-    client.connection.write(data);
-  } else {
-    // For masked input (passwords), echo an asterisk
-    client.connection.write('*');
-  }
-  
-  // Update mask input state
-  client.connection.setMaskInput(!!client.stateData.maskInput);
-
-  // After processing input, check for forced transitions
-  if (client.stateData.forcedTransition) {
-    stopBuffering(client);
-    const forcedState = client.stateData.forcedTransition;
-    delete client.stateData.forcedTransition;
-    stateMachine.transitionTo(client, forcedState);
+  // Handle left arrow (various possible formats)
+  if (data === '\u001b[D' || data === '[D' || data === '\u001bOD' || data === 'OD') {
+    handleLeftArrow(client);
     return;
   }
+  
+  // Handle right arrow (various possible formats)
+  if (data === '\u001b[C' || data === '[C' || data === '\u001bOC' || data === 'OC') {
+    handleRightArrow(client);
+    return;
+  }
+  
+  // Handle normal input (excluding special sequences)
+  if (client.cursorPos === client.buffer.length) {
+    // Cursor at the end - simply append
+    client.buffer += data;
+    client.cursorPos++;
+    client.connection.write(data);
+  } else {
+    // Cursor in the middle - insert and redraw
+    const newBuffer = client.buffer.slice(0, client.cursorPos) + data + client.buffer.slice(client.cursorPos);
+    redrawInputLine(client, newBuffer, client.cursorPos + 1);
+  }
+}
+
+// Redraw the entire input line when making edits in the middle of the line
+function redrawInputLine(client: ConnectedClient, newBuffer: string, newCursorPos: number): void {
+  const promptText = getPromptText(client);
+  
+  // Clear the current line using escape sequence
+  client.connection.write('\r\x1B[K');
+  
+  // Write the prompt
+  client.connection.write(promptText);
+  
+  // Write the new buffer content
+  client.connection.write(newBuffer);
+  
+  // If the cursor is not at the end, we need to move it back
+  if (newCursorPos < newBuffer.length) {
+    // Move cursor back to the right position
+    client.connection.write('\u001b[' + (newBuffer.length - newCursorPos) + 'D');
+  }
+  
+  // Update client state
+  client.buffer = newBuffer;
+  client.cursorPos = newCursorPos;
 }
 
 // Handle up arrow key press
@@ -456,8 +495,9 @@ function handleUpArrow(client: ConnectedClient): void {
       client.connection.write(historyCommand);
     }
     
-    // Update the buffer
+    // Update the buffer and cursor position
     client.buffer = historyCommand;
+    client.cursorPos = historyCommand.length;
   }
 }
 
@@ -504,8 +544,41 @@ function handleDownArrow(client: ConnectedClient): void {
     client.connection.write(newCommand);
   }
   
-  // Update the buffer
+  // Update the buffer and cursor position
   client.buffer = newCommand;
+  client.cursorPos = newCommand.length;
+}
+
+// Handle left arrow key press
+function handleLeftArrow(client: ConnectedClient): void {
+  // Make sure we have a cursor position
+  if (client.cursorPos === undefined) {
+    client.cursorPos = client.buffer.length;
+  }
+  
+  // Only move cursor if it's not already at the beginning
+  if (client.cursorPos > 0) {
+    client.cursorPos--;
+    
+    // Move cursor backward
+    client.connection.write('\u001b[D'); // ESC[D is the escape sequence for cursor left
+  }
+}
+
+// Handle right arrow key press
+function handleRightArrow(client: ConnectedClient): void {
+  // Make sure we have a cursor position
+  if (client.cursorPos === undefined) {
+    client.cursorPos = client.buffer.length;
+  }
+  
+  // Only move cursor if it's not already at the end
+  if (client.cursorPos < client.buffer.length) {
+    client.cursorPos++;
+    
+    // Move cursor forward
+    client.connection.write('\u001b[C'); // ESC[C is the escape sequence for cursor right
+  }
 }
 
 function processInput(client: ConnectedClient, input: string): void {

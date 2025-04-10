@@ -122,7 +122,8 @@
         const key = e.key;
         
         // Prevent default behavior for these keys to avoid browser actions
-        if (key === 'Enter' || key === 'Backspace' || key === 'ArrowUp' || key === 'ArrowDown') {
+        if (key === 'Enter' || key === 'Backspace' || key === 'ArrowUp' || key === 'ArrowDown' || 
+            key === 'ArrowLeft' || key === 'ArrowRight') {
             e.preventDefault();
         }
         
@@ -134,6 +135,10 @@
             sendKeypress('up', 'special');
         } else if (key === 'ArrowDown') {
             sendKeypress('down', 'special');
+        } else if (key === 'ArrowLeft') {
+            sendKeypress('left', 'special');
+        } else if (key === 'ArrowRight') {
+            sendKeypress('right', 'special');
         } else if (key.length === 1) {
             sendKeypress(key);
         }

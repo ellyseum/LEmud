@@ -131,6 +131,8 @@ export interface ConnectedClient {
   
   // Add tempUsername property
   tempUsername?: string;
+
+  cursorPos?: number; // Track cursor position within the buffer
 }
 
 export type StateHandler = (client: ConnectedClient, input: string) => void;
