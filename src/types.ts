@@ -38,6 +38,14 @@ export interface User {
   maxHealth: number;
   experience: number;
   level: number;
+  // Add character statistics
+  strength: number;
+  dexterity: number;
+  agility: number;
+  constitution: number; // New stat for physical endurance
+  wisdom: number;
+  intelligence: number;
+  charisma: number;
   joinDate: Date;
   lastLogin: Date;
   currentRoomId: string; // Add this field to track user's current room

@@ -17,6 +17,18 @@ export class StatsCommand implements Command {
     writeToClient(client, colorize(`Health: ${user.health}/${user.maxHealth}\r\n`, 'green'));
     writeToClient(client, colorize(`Level: ${user.level}\r\n`, 'yellow'));
     writeToClient(client, colorize(`Experience: ${user.experience}\r\n`, 'blue'));
+    
+    // Display the character attributes/statistics
+    writeToClient(client, colorize('\r\n=== Attributes ===\r\n', 'magenta'));
+    writeToClient(client, colorize(`Strength: ${user.strength}\r\n`, 'white'));
+    writeToClient(client, colorize(`Dexterity: ${user.dexterity}\r\n`, 'white'));
+    writeToClient(client, colorize(`Agility: ${user.agility}\r\n`, 'white'));
+    writeToClient(client, colorize(`Constitution: ${user.constitution}\r\n`, 'white'));
+    writeToClient(client, colorize(`Wisdom: ${user.wisdom}\r\n`, 'white'));
+    writeToClient(client, colorize(`Intelligence: ${user.intelligence}\r\n`, 'white'));
+    writeToClient(client, colorize(`Charisma: ${user.charisma}\r\n`, 'white'));
+    
+    writeToClient(client, colorize('\r\n=== Account Info ===\r\n', 'magenta'));
     writeToClient(client, colorize(`Member since: ${user.joinDate.toLocaleDateString()}\r\n`, 'dim'));
     writeToClient(client, colorize(`Last login: ${user.lastLogin.toLocaleDateString()}\r\n`, 'dim'));
     writeToClient(client, colorize('===========================\r\n', 'magenta'));

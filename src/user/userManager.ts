@@ -383,6 +383,14 @@ export class UserManager {
       maxHealth: 100,
       experience: 0,
       level: 1,
+      // Initialize character statistics
+      strength: 10,
+      dexterity: 10,
+      agility: 10,
+      constitution: 10, // New stat for physical endurance
+      wisdom: 10,
+      intelligence: 10,
+      charisma: 10,
       joinDate: now,
       lastLogin: now,
       currentRoomId: 'start', // Set default starting room

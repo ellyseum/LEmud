@@ -88,6 +88,8 @@ export class CommandRegistry {
     this.aliases.set('a', {commandName: 'attack'});
     this.aliases.set('br', {commandName: 'break'});
     this.aliases.set('sp', {commandName: 'spawn'});
+    this.aliases.set('st', {commandName: 'stats'});
+    this.aliases.set('stat', {commandName: 'stats'});
   }
 
   private registerDirectionCommands(): void {
