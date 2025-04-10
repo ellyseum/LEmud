@@ -412,6 +412,28 @@ function handleClientData(client: ConnectedClient, data: string): void {
     handleRightArrow(client);
     return;
   }
+
+  // Handle Shift+Left Arrow (various possible formats)
+  if (data === '\u001b[1;2D' || data === '[1;2D') {
+    // Move cursor to the beginning of the input
+    if (client.cursorPos > 0) {
+      const moveLeft = client.cursorPos;
+      client.cursorPos = 0;
+      client.connection.write(`\u001b[${moveLeft}D`); // Move cursor to the start
+    }
+    return;
+  }
+
+  // Handle Shift+Right Arrow (various possible formats)
+  if (data === '\u001b[1;2C' || data === '[1;2C') {
+    // Move cursor to the end of the input
+    if (client.cursorPos < client.buffer.length) {
+      const moveRight = client.buffer.length - client.cursorPos;
+      client.cursorPos = client.buffer.length;
+      client.connection.write(`\u001b[${moveRight}C`); // Move cursor to the end
+    }
+    return;
+  }
   
   // Handle normal input (excluding special sequences)
   if (client.cursorPos === client.buffer.length) {
