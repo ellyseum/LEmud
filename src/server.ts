@@ -434,6 +434,28 @@ function handleClientData(client: ConnectedClient, data: string): void {
     }
     return;
   }
+
+  // Handle Shift+Up Arrow (various possible formats)
+  if (data === '\u001b[1;2A' || data === '[1;2A') {
+    // Move to the beginning of the command history
+    if (client.user && client.user.commandHistory && client.user.commandHistory.length > 0) {
+      client.user.currentHistoryIndex = client.user.commandHistory.length - 1;
+      const firstCommand = client.user.commandHistory[0];
+      redrawInputLine(client, firstCommand, firstCommand.length);
+    }
+    return;
+  }
+
+  // Handle Shift+Down Arrow (various possible formats)
+  if (data === '\u001b[1;2B' || data === '[1;2B') {
+    // Move to the end of the command history
+    if (client.user && client.user.commandHistory) {
+      client.user.currentHistoryIndex = -1;
+      const currentCommand = client.user.savedCurrentCommand || '';
+      redrawInputLine(client, currentCommand, currentCommand.length);
+    }
+    return;
+  }
   
   // Handle normal input (excluding special sequences)
   if (client.cursorPos === client.buffer.length) {
