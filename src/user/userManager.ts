@@ -409,6 +409,11 @@ export class UserManager {
     const user = this.getUser(username);
     if (!user) return false;
 
+    // Handle isUnconscious property specially
+    if (stats.hasOwnProperty('isUnconscious')) {
+      user.isUnconscious = stats.isUnconscious;
+    }
+
     Object.assign(user, stats);
     this.saveUsers();
     return true;

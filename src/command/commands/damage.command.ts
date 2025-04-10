@@ -23,9 +23,9 @@ export class DamageCommand implements Command {
       return;
     }
     
-    // Calculate new health, not going below 0
+    // Calculate new health, allowing it to go negative up to -10
     const oldHealth = client.user.health;
-    const newHealth = Math.max(oldHealth - amount, 0);
+    const newHealth = Math.max(oldHealth - amount, -10);
     const actualDamage = oldHealth - newHealth;
     
     // Update the user's health
@@ -37,8 +37,18 @@ export class DamageCommand implements Command {
     if (actualDamage > 0) {
       writeToClient(client, colorize(`You have taken ${actualDamage} damage!\r\n`, 'red'));
       
-      if (newHealth === 0) {
-        writeToClient(client, colorize(`You have been defeated! Use "heal" to recover.\r\n`, 'red'));
+      // Check if player is knocked unconscious (0 or below but above -10)
+      if (newHealth <= 0 && newHealth > -10 && !client.user.isUnconscious) {
+        client.user.isUnconscious = true;
+        this.userManager.updateUserStats(client.user.username, { isUnconscious: true });
+        writeToClient(client, colorize(`You collapse to the ground unconscious! You are bleeding out and will die at -10 HP.\r\n`, 'red'));
+      }
+      // Check if player is fully dead (-10 HP)
+      else if (newHealth <= -10) {
+        writeToClient(client, colorize(`You have died! Your body will be transported to the starting area.\r\n`, 'red'));
+        
+        // In a real implementation, this would trigger the respawn logic
+        // But for this testing command, we'll just report the death
       }
     } else {
       writeToClient(client, colorize(`You avoided the damage!\r\n`, 'green'));

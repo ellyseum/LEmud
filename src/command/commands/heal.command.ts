@@ -29,13 +29,27 @@ export class HealCommand implements Command {
     // Update the user's health
     client.user.health = newHealth;
     
-    // Save the changes
-    this.userManager.updateUserStats(client.user.username, { health: newHealth });
+    // Check if player was unconscious and is now conscious
+    const wasUnconscious = client.user.isUnconscious && oldHealth <= 0;
     
-    if (actualHealing > 0) {
-      writeToClient(client, colorize(`You have been healed for ${actualHealing} hitpoints.\r\n`, 'green'));
+    // If player was unconscious and is now above 0 HP, they regain consciousness
+    if (wasUnconscious && newHealth > 0) {
+      client.user.isUnconscious = false;
+      this.userManager.updateUserStats(client.user.username, { 
+        health: newHealth,
+        isUnconscious: false
+      });
+      
+      writeToClient(client, colorize(`You have been healed for ${actualHealing} hitpoints and regained consciousness!\r\n`, 'green'));
     } else {
-      writeToClient(client, colorize(`You are already at full health.\r\n`, 'yellow'));
+      // Just update health normally
+      this.userManager.updateUserStats(client.user.username, { health: newHealth });
+      
+      if (actualHealing > 0) {
+        writeToClient(client, colorize(`You have been healed for ${actualHealing} hitpoints.\r\n`, 'green'));
+      } else {
+        writeToClient(client, colorize(`You are already at full health.\r\n`, 'yellow'));
+      }
     }
     
     // Command prompt will be displayed by CommandHandler after this function returns

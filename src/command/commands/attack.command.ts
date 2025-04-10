@@ -21,6 +21,12 @@ export class AttackCommand implements Command {
       return;
     }
     
+    // Check if player is unconscious
+    if (client.user.isUnconscious) {
+      writeFormattedMessageToClient(client, colorize(`You are unconscious and cannot attack.\r\n`, 'red'));
+      return;
+    }
+    
     // Check if combat system is unavailable
     if (!this.combatSystem) {
       writeFormattedMessageToClient(client, colorize(`Combat system is currently unavailable.\r\n`, 'red'));

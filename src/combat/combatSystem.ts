@@ -809,7 +809,6 @@ export class CombatSystem {
   private processNpcAttack(npc: CombatEntity, player: ConnectedClient, roomId: string): void {
     if (!player.user) return;
     
-    
     // 50% chance to hit
     const hit = Math.random() >= 0.5;
     
@@ -820,8 +819,9 @@ export class CombatSystem {
       const damage = npc.getAttackDamage();
       player.user.health -= damage;
       
-      // Ensure health doesn't go below 0
-      if (player.user.health < 0) player.user.health = 0;
+      // NO LONGER limit health to 0! Allow it to go negative up to -10
+      // Make sure it doesn't go below -10
+      if (player.user.health < -10) player.user.health = -10;
       
       // Update the player's health
       this.userManager.updateUserStats(player.user.username, { health: player.user.health });
@@ -840,7 +840,7 @@ export class CombatSystem {
         player.user.username
       );
       
-      // Check if player died
+      // Check if player died or became unconscious
       if (player.user.health <= 0) {
         this.handlePlayerDeath(player, roomId);
       }
@@ -867,18 +867,52 @@ export class CombatSystem {
   private handlePlayerDeath(player: ConnectedClient, roomId: string): void {
     if (!player.user) return;
     
-    // Send death message to player
-    writeFormattedMessageToClient(
-      player,
-      colorize(`You have been defeated! Use "heal" to recover.\r\n`, 'red')
-    );
+    // Check if player is unconscious or fully dead
+    const isFatallyDead = player.user.health <= -10;
     
-    // Broadcast to others using the default boldYellow for status messages
-    const username = formatUsername(player.user.username);
-    const message = `${username} has been defeated in combat!\r\n`;
-    
-    // Broadcast to all other players in the room
-    this.broadcastRoomCombatMessage(roomId, message, 'boldYellow', player.user.username);
+    if (isFatallyDead) {
+      // Player is fully dead (-10 HP or below)
+      // Send death message to player
+      writeFormattedMessageToClient(
+        player,
+        colorize(`You have died! Your body will be transported to the starting area.\r\n`, 'red')
+      );
+      
+      // Drop all inventory items where the player died
+      this.dropPlayerInventory(player, roomId);
+      
+      // Broadcast to others using the default boldYellow for status messages
+      const username = formatUsername(player.user.username);
+      const message = `${username} has died!\r\n`;
+      
+      // Broadcast to all other players in the room
+      this.broadcastRoomCombatMessage(roomId, message, 'boldYellow', player.user.username);
+      
+      // Teleport to starting room (respawn)
+      this.teleportToStartingRoom(player);
+      
+      // Restore health to 50% of max 
+      player.user.health = Math.floor(player.user.maxHealth * 0.5);
+      this.userManager.updateUserStats(player.user.username, { health: player.user.health });
+    } else {
+      // Player is unconscious (0 to -9 HP)
+      // Send unconscious message to player
+      writeFormattedMessageToClient(
+        player,
+        colorize(`You collapse to the ground unconscious! You are bleeding out and will die at -10 HP.\r\n`, 'red')
+      );
+      
+      // Mark player as unconscious
+      player.user.isUnconscious = true;
+      this.userManager.updateUserStats(player.user.username, { isUnconscious: true });
+      
+      // Broadcast to others using the default boldYellow for status messages
+      const username = formatUsername(player.user.username);
+      const message = `${username} has fallen unconscious!\r\n`;
+      
+      // Broadcast to all other players in the room
+      this.broadcastRoomCombatMessage(roomId, message, 'boldYellow', player.user.username);
+    }
     
     // End combat for this player
     const combat = this.combats.get(player.user.username);
@@ -890,6 +924,138 @@ export class CombatSystem {
     // Set player's inCombat to false
     player.user.inCombat = false;
     this.userManager.updateUserStats(player.user.username, { inCombat: false });
+  }
+
+  /**
+   * Drop player's inventory in the current room when they die
+   */
+  private dropPlayerInventory(player: ConnectedClient, roomId: string): void {
+    if (!player.user || !player.user.inventory) return;
+    
+    const room = this.roomManager.getRoom(roomId);
+    if (!room) return;
+    
+    // Drop all items
+    if (player.user.inventory.items && player.user.inventory.items.length > 0) {
+      const username = formatUsername(player.user.username);
+      
+      // Announce dropped items to the room
+      const itemsList = player.user.inventory.items.join(', ');
+      const dropMessage = `${username}'s corpse drops: ${itemsList}.\r\n`;
+      this.broadcastRoomCombatMessage(roomId, dropMessage, 'cyan');
+      
+      // Add items to the room
+      for (const item of player.user.inventory.items) {
+        room.addItem(item);
+      }
+      
+      // Clear player's inventory
+      player.user.inventory.items = [];
+    }
+    
+    // Transfer currency to the room
+    if (player.user.inventory.currency) {
+      const currency = player.user.inventory.currency;
+      
+      // Only announce/transfer if there's actual currency
+      if (currency.gold > 0 || currency.silver > 0 || currency.copper > 0) {
+        // Add currency to room
+        room.currency.gold += currency.gold || 0;
+        room.currency.silver += currency.silver || 0;
+        room.currency.copper += currency.copper || 0;
+        
+        // Clear player's currency
+        player.user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
+        
+        // Announce currency drop to the room if there was any
+        const username = formatUsername(player.user.username);
+        const currencyText = this.formatCurrencyText(currency);
+        if (currencyText) {
+          const dropMessage = `${username}'s corpse drops ${currencyText}.\r\n`;
+          this.broadcastRoomCombatMessage(roomId, dropMessage, 'cyan');
+        }
+      }
+    }
+    
+    // Update the room
+    this.roomManager.updateRoom(room);
+    
+    // Update the player's inventory in the database
+    this.userManager.updateUserStats(player.user.username, { inventory: player.user.inventory });
+  }
+  
+  /**
+   * Format currency for display
+   */
+  private formatCurrencyText(currency: {gold?: number, silver?: number, copper?: number}): string {
+    const parts = [];
+    if (currency.gold && currency.gold > 0) parts.push(`${currency.gold} gold`);
+    if (currency.silver && currency.silver > 0) parts.push(`${currency.silver} silver`);
+    if (currency.copper && currency.copper > 0) parts.push(`${currency.copper} copper`);
+    
+    if (parts.length === 0) return '';
+    return parts.join(', ');
+  }
+  
+  /**
+   * Teleport a player to the starting room
+   */
+  private teleportToStartingRoom(player: ConnectedClient): void {
+    if (!player.user) return;
+    
+    const startingRoomId = this.roomManager.getStartingRoomId();
+    const currentRoomId = player.user.currentRoomId;
+    
+    if (currentRoomId) {
+      // Remove from current room
+      const currentRoom = this.roomManager.getRoom(currentRoomId);
+      if (currentRoom) {
+        currentRoom.removePlayer(player.user.username);
+        this.roomManager.updateRoom(currentRoom);
+      }
+    }
+    
+    // Add to starting room
+    const startingRoom = this.roomManager.getRoom(startingRoomId);
+    if (startingRoom) {
+      startingRoom.addPlayer(player.user.username);
+      this.roomManager.updateRoom(startingRoom);
+      
+      // Update player's current room
+      player.user.currentRoomId = startingRoomId;
+      
+      // Restore player to full health instead of half
+      player.user.health = player.user.maxHealth;
+      
+      // Clear the unconscious state
+      player.user.isUnconscious = false;
+      
+      // Update the user stats all at once
+      this.userManager.updateUserStats(player.user.username, { 
+        currentRoomId: startingRoomId,
+        health: player.user.maxHealth,
+        isUnconscious: false
+      });
+      
+      // Show the starting room to the player
+      writeFormattedMessageToClient(
+        player,
+        colorize(`You have been teleported to the starting area.\r\n`, 'yellow')
+      );
+      
+      // Show the room description
+      const roomDescription = startingRoom.getDescriptionExcludingPlayer(player.user.username);
+      writeToClient(player, roomDescription);
+      
+      // Announce to others in the starting room
+      const username = formatUsername(player.user.username);
+      this.broadcastRoomCombatMessage(
+        startingRoomId,
+        `${username} materializes in the room, looking disoriented.\r\n`,
+        'yellow',
+        player.user.username
+      );
+    }
   }
 
   /**

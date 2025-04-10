@@ -32,6 +32,14 @@ export class AuthenticatedState implements ClientState {
     // Reset state data for fresh state
     client.stateData = client.stateData || {};
 
+    // Check and fix inconsistent unconscious state
+    if (client.user.isUnconscious && client.user.health > 0) {
+      console.log(`[AuthenticatedState] Fixing inconsistent unconscious state for ${client.user.username}. HP: ${client.user.health}, but marked as unconscious`);
+      client.user.isUnconscious = false;
+      this.userManager.updateUserStats(client.user.username, { isUnconscious: false });
+      writeToClient(client, colorize(`You regain consciousness as your health has been restored above 0.\r\n`, 'green'));
+    }
+
     // Auto-heal when session transfer happens to avoid issues if player was low health
     if (client.stateData && client.stateData.isSessionTransfer) {
       // Check if health is low in a session transfer and auto-heal partially if needed

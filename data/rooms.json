@@ -9,14 +9,10 @@
         "roomId": "room2"
       }
     ],
-    "items": [
-      "shield"
-    ],
+    "items": [],
     "npcs": [
       "cat",
-      "dog",
-      "wolf",
-      "goblin"
+      "dog"
     ],
     "currency": {
       "gold": 0,
@@ -34,7 +30,11 @@
         "roomId": "start"
       }
     ],
-    "items": [],
+    "items": [
+      {
+        "name": "shield"
+      }
+    ],
     "npcs": [
       "wolf",
       "goblin"

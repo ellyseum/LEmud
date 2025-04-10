@@ -10,6 +10,13 @@ import { GameTimerManager } from '../timer/gameTimerManager';
 export class CommandHandler {
   private commands: CommandRegistry;
   private historySize = 30;
+  // Commands that unconscious players cannot use
+  private restrictedCommandsWhileUnconscious = [
+    'move', 'attack', 'north', 'south', 'east', 'west', 
+    'northeast', 'northwest', 'southeast', 'southwest',
+    'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'up', 'down', 'u', 'd',
+    'spawn', 'get', 'pickup', 'drop'
+  ];
 
   constructor(
     private clients: Map<string, ConnectedClient>,
@@ -141,6 +148,13 @@ export class CommandHandler {
     const commandName = parts[0].toLowerCase();
     const args = parts.slice(1).join(' ').trim(); // Also trim arguments
 
+    // Check if player is unconscious and trying to use a restricted command
+    if (client.user && client.user.isUnconscious && this.isRestrictedWhileUnconscious(commandName)) {
+      writeToClient(client, colorize('You are unconscious and cannot perform that action.\r\n', 'red'));
+      drawCommandPrompt(client);
+      return;
+    }
+
     // Special case for directional movement shortcuts (n, s, e, w, etc.)
     if (this.commands.isDirectionCommand(commandName)) {
       this.commands.executeCommand(client, commandText);
@@ -165,5 +179,10 @@ export class CommandHandler {
       // Display the command prompt after
       drawCommandPrompt(client);
     }
+  }
+  
+  // Check if a command is restricted for unconscious players
+  private isRestrictedWhileUnconscious(commandName: string): boolean {
+    return this.restrictedCommandsWhileUnconscious.includes(commandName.toLowerCase());
   }
 }

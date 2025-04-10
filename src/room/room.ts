@@ -49,6 +49,19 @@ export class Room {
     this.npcs = this.npcs.filter(name => name !== npcName);
   }
 
+  /**
+   * Add an item to the room
+   */
+  addItem(item: string | {name: string}): void {
+    // Check if item is already an object with a name property
+    if (typeof item === 'object' && item !== null && 'name' in item) {
+      this.items.push(item);
+    } else if (typeof item === 'string') {
+      // Convert string to item object
+      this.items.push({name: item});
+    }
+  }
+
   // Update getDescription method to include NPCs
   getDescription(): string {
     let output = this.getFormattedDescription(true);
@@ -170,10 +183,10 @@ export class Room {
     // Add items description
     if (this.items.length > 0) {
       if (this.items.length === 1) {
-        description += colorize(`You see a ${this.items[0]}.`, 'green') + '\r\n';
+        description += colorize(`You see a ${this.items[0].name}.`, 'green') + '\r\n';
       } else {
-        const lastItem = this.items[this.items.length - 1];
-        const otherItems = this.items.slice(0, -1).map(item => `a ${item}`).join(', ');
+        const lastItem = this.items[this.items.length - 1].name;
+        const otherItems = this.items.slice(0, -1).map(item => `a ${item.name}`).join(', ');
         description += colorize(`You see ${otherItems}, and a ${lastItem}.`, 'green') + '\r\n';
       }
     }

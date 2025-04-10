@@ -49,6 +49,7 @@ export interface User {
   currentHistoryIndex?: number; // Current position in command history when browsing
   savedCurrentCommand?: string; // Save the current command when browsing history
   inCombat?: boolean; // Add combat status
+  isUnconscious?: boolean; // Add unconscious status
 }
 
 export interface ConnectedClient {
