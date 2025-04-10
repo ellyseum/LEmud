@@ -462,11 +462,44 @@ function handleClientData(client: ConnectedClient, data: string): void {
     // Cursor at the end - simply append
     client.buffer += data;
     client.cursorPos++;
-    client.connection.write(data);
+    
+    // Check if input should be masked (for password entry)
+    if (client.stateData.maskInput) {
+      // Show asterisk instead of the actual character
+      client.connection.write('*');
+    } else {
+      // Normal echo of the character
+      client.connection.write(data);
+    }
   } else {
     // Cursor in the middle - insert and redraw
     const newBuffer = client.buffer.slice(0, client.cursorPos) + data + client.buffer.slice(client.cursorPos);
-    redrawInputLine(client, newBuffer, client.cursorPos + 1);
+    
+    // If password masking is enabled, we need to redraw with asterisks
+    if (client.stateData.maskInput) {
+      // Get prompt and create a string of asterisks with the same length as the buffer
+      const promptText = getPromptText(client);
+      const maskedText = '*'.repeat(newBuffer.length);
+      
+      // Clear the current line
+      client.connection.write('\r\x1B[K');
+      
+      // Write the prompt and masked text
+      client.connection.write(promptText);
+      client.connection.write(maskedText);
+      
+      // Move cursor back to the correct position if needed
+      if (client.cursorPos + 1 < newBuffer.length) {
+        client.connection.write('\u001b[' + (newBuffer.length - (client.cursorPos + 1)) + 'D');
+      }
+      
+      // Update client state
+      client.buffer = newBuffer;
+      client.cursorPos = client.cursorPos + 1;
+    } else {
+      // Normal redraw for non-masked input
+      redrawInputLine(client, newBuffer, client.cursorPos + 1);
+    }
   }
 }
 
