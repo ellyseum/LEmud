@@ -87,6 +87,8 @@ export class CommandRegistry {
     
     if (sudoCommand && adminManageCommand) {
       adminManageCommand.setSudoCommand(sudoCommand);
+      // Provide the command registry to SudoCommand so it can execute other commands
+      sudoCommand.setCommandRegistry(this);
     }
     
     // Register aliases

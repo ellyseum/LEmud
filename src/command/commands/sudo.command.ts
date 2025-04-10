@@ -9,6 +9,7 @@ import { UserManager } from '../../user/userManager';
 import { AdminLevel, AdminUser } from './adminmanage.command';
 // Import drawCommandPrompt to force prompt redraw
 import { drawCommandPrompt } from '../../utils/promptFormatter';
+import { CommandRegistry } from '../commandRegistry';
 
 export class SudoCommand implements Command {
   name = 'sudo';
@@ -17,6 +18,7 @@ export class SudoCommand implements Command {
   private adminUsers: AdminUser[] = [];
   private static activeAdmins: Set<string> = new Set(); // Track users with active admin privileges
   private adminFilePath: string;
+  private static commandRegistry: CommandRegistry | null = null;
 
   // Singleton instance
   private static instance: SudoCommand | null = null;
@@ -29,6 +31,13 @@ export class SudoCommand implements Command {
       SudoCommand.instance = new SudoCommand(userManager);
     }
     return SudoCommand.instance;
+  }
+
+  /**
+   * Set the command registry for executing commands
+   */
+  public setCommandRegistry(registry: CommandRegistry): void {
+    SudoCommand.commandRegistry = registry;
   }
 
   constructor(userManager: UserManager) {
@@ -177,10 +186,16 @@ export class SudoCommand implements Command {
       // Execute the command
       writeToClient(client, colorize(`Executing with ${adminLevel} privileges: ${args}\r\n`, 'yellow'));
 
-      // Get command registry and execute the command
-      if (client.stateData && client.stateData.commandHandler) {
+      // Use the command registry directly if available
+      if (SudoCommand.commandRegistry) {
+        SudoCommand.commandRegistry.executeCommand(client, args);
+      }
+      // Fallback to client's commandHandler if available
+      else if (client.stateData && client.stateData.commandHandler) {
         client.stateData.commandHandler.handleCommand(client, args);
-      } else {
+      } 
+      // Neither is available, show error
+      else {
         writeToClient(client, colorize('Error: Command handler not available.\r\n', 'red'));
       }
 
