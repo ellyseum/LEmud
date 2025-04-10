@@ -6,6 +6,8 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
+import readline from 'readline';
+import fs from 'fs';
 import { ConnectedClient, ClientStateType, ServerStats } from './types';
 import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
@@ -21,6 +23,7 @@ import * as AdminApi from './admin/adminApi';
 import { getPromptText } from './utils/promptFormatter';
 import { GameTimerManager } from './timer/gameTimerManager';
 import { CombatSystem } from './combat/combatSystem';
+import { AdminLevel } from './command/commands/adminmanage.command';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -623,7 +626,201 @@ function checkForIdleClients() {
 // Set up periodic checking for idle clients
 const idleCheckTimer = setInterval(checkForIdleClients, IDLE_CHECK_INTERVAL);
 
-const startServer = () => {
+// Check for admin user on startup and create if needed
+async function checkAndCreateAdminUser(): Promise<boolean> {
+  console.log('\nChecking for admin user...');
+  
+  // Check if admin user exists
+  if (!userManager.userExists('admin')) {
+    console.log(colorize('No admin user found. Creating admin account...', 'yellow'));
+    console.log(colorize('Server startup will halt until admin setup is complete.', 'yellow'));
+    
+    let adminCreated = false;
+    
+    // Keep trying until the admin is successfully created
+    while (!adminCreated) {
+      try {
+        // Use custom password input that masks the password
+        const password = await readPasswordFromConsole('Enter password for new admin user: ');
+        
+        // Validate password
+        if (password.length < 6) {
+          console.log(colorize('Password must be at least 6 characters long. Please try again.', 'red'));
+          continue; // Skip the rest of this iteration and try again
+        }
+        
+        // Confirm password with masking
+        const confirmPassword = await readPasswordFromConsole('Confirm password: ');
+        
+        // Check if passwords match
+        if (password !== confirmPassword) {
+          console.log(colorize('Passwords do not match. Please try again.', 'red'));
+          continue; // Skip the rest of this iteration and try again
+        }
+        
+        // Create admin user
+        const success = userManager.createUser('admin', password);
+        
+        if (success) {
+          console.log(colorize('Admin user created successfully!', 'green'));
+          
+          // Create admin directory if it doesn't exist
+          const adminDir = path.join(DATA_DIR, 'admin');
+          if (!fs.existsSync(adminDir)) {
+            fs.mkdirSync(adminDir, { recursive: true });
+          }
+          
+          // Create admin.json file with admin user as super admin
+          const adminFilePath = path.join(DATA_DIR, 'admin.json');
+          const adminData = {
+            admins: [
+              {
+                username: 'admin',
+                level: AdminLevel.SUPER,
+                addedBy: 'system',
+                addedOn: new Date().toISOString()
+              }
+            ]
+          };
+          
+          try {
+            fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
+            console.log(colorize('Admin privileges configured.', 'green'));
+            adminCreated = true; // Mark as successfully created so we exit the loop
+          } catch (error) {
+            console.error('Error creating admin.json file:', error);
+            console.log(colorize('Failed to create admin configuration. Please try again.', 'red'));
+            // Continue the loop to try again
+          }
+        } else {
+          console.log(colorize('Error creating admin user. Please try again.', 'red'));
+          // Continue the loop to try again
+        }
+      } catch (error) {
+        console.error('Error during admin setup:', error);
+        console.log(colorize('An error occurred during setup. Please try again.', 'red'));
+        // Continue the loop to try again
+      }
+    }
+    
+    return true; // Return true since we don't exit the loop until admin is created
+  } else {
+    console.log(colorize('Admin user already exists.', 'green'));
+    
+    // Ensure admin.json exists with the admin user
+    const adminFilePath = path.join(DATA_DIR, 'admin.json');
+    if (!fs.existsSync(adminFilePath)) {
+      console.log(colorize('Creating admin.json file...', 'yellow'));
+      
+      // Create admin directory if it doesn't exist
+      const adminDir = path.join(DATA_DIR, 'admin');
+      if (!fs.existsSync(adminDir)) {
+        fs.mkdirSync(adminDir, { recursive: true });
+      }
+      
+      // Create admin.json with admin user as super admin
+      const adminData = {
+        admins: [
+          {
+            username: 'admin',
+            level: AdminLevel.SUPER,
+            addedBy: 'system',
+            addedOn: new Date().toISOString()
+          }
+        ]
+      };
+      
+      try {
+        fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
+        console.log(colorize('Admin privileges configured.', 'green'));
+      } catch (error) {
+        console.error('Error creating admin.json file:', error);
+        return false;
+      }
+    }
+    return true;
+  }
+}
+
+// Function to read password with masking characters
+function readPasswordFromConsole(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+    
+    // Save the current settings
+    const originalStdinIsTTY = stdin.isTTY;
+    
+    // Write the prompt first
+    stdout.write(colorize(prompt, 'green'));
+    
+    let password = '';
+    
+    // Create a raw mode handler function
+    const onData = (key: Buffer) => {
+      const keyStr = key.toString();
+      
+      // Handle Ctrl+C
+      if (keyStr === '\u0003') {
+        stdout.write('\n');
+        if (originalStdinIsTTY) {
+          stdin.setRawMode(false);
+        }
+        stdin.removeListener('data', onData);
+        process.exit(1);
+      }
+      
+      // Handle Enter key
+      if (keyStr === '\r' || keyStr === '\n') {
+        stdout.write('\n');
+        if (originalStdinIsTTY) {
+          stdin.setRawMode(false);
+        }
+        stdin.removeListener('data', onData);
+        resolve(password);
+        return;
+      }
+      
+      // Handle backspace
+      if (keyStr === '\b' || keyStr === '\x7F') {
+        if (password.length > 0) {
+          password = password.slice(0, -1);
+          stdout.write('\b \b'); // erase the last character
+        }
+        return;
+      }
+      
+      // Ignore non-printable characters
+      if (keyStr.length === 1 && keyStr.charCodeAt(0) >= 32 && keyStr.charCodeAt(0) <= 126) {
+        // Add to password and show asterisk
+        password += keyStr;
+        stdout.write('*');
+      }
+    };
+    
+    // Enable raw mode to prevent terminal echo
+    if (stdin.isTTY) {
+      stdin.setRawMode(true);
+    }
+    
+    // Listen for keypress events
+    stdin.on('data', onData);
+  });
+}
+
+// Define the path to the data directory
+const DATA_DIR = path.join(__dirname, '..', 'data');
+
+const startServer = async () => {
+  // First check and create admin user if needed
+  const adminSetupSuccess = await checkAndCreateAdminUser();
+  if (!adminSetupSuccess) {
+    console.log(colorize('Admin setup failed. Server startup aborted.', 'red'));
+    process.exit(1);
+  }
+  
+  console.log(colorize('Admin user verified. Continuing with server startup...', 'green'));
+  
   // Try to create the TELNET server with error handling
   const telnetServer = net.createServer((socket) => {
     // Create our custom connection wrapper
@@ -793,34 +990,41 @@ const startServer = () => {
   });
 };
 
-startServer();
+// Start server and game timer
+async function init() {
+  // First start the server (which will handle admin user creation)
+  await startServer();
+  
+  // Only start the game timer after server is up and admin is created
+  console.log(colorize('Starting game timer system...', 'green'));
+  gameTimerManager.start();
+  
+  // Setup graceful shutdown to save data and properly clean up
+  process.on('SIGINT', () => {
+    console.log('Shutting down server...');
+    
+    // Stop the game timer system
+    gameTimerManager.stop();
+    
+    // Clear the idle check interval
+    clearInterval(idleCheckTimer);
+    
+    // Force a final save
+    gameTimerManager.forceSave();
+    
+    // Reset the singleton instances if needed
+    GameTimerManager.resetInstance();
+    
+    // Exit the process
+    console.log('Server shutdown complete');
+    process.exit(0);
+  });
+  
+  console.log(`Make sure you have the following state files configured correctly:`);
+  console.log(` - connecting.state.ts`);
+  console.log(` - login.state.ts`);
+  console.log(` - signup.state.ts`);
+  console.log(` - authenticated.state.ts`);
+}
 
-// Start the game timer system
-gameTimerManager.start();
-
-// Setup graceful shutdown to save data and properly clean up
-process.on('SIGINT', () => {
-  console.log('Shutting down server...');
-  
-  // Stop the game timer system
-  gameTimerManager.stop();
-  
-  // Clear the idle check interval
-  clearInterval(idleCheckTimer);
-  
-  // Force a final save
-  gameTimerManager.forceSave();
-  
-  // Reset the singleton instances if needed
-  GameTimerManager.resetInstance();
-  
-  // Exit the process
-  console.log('Server shutdown complete');
-  process.exit(0);
-});
-
-console.log(`Make sure you have the following state files configured correctly:`);
-console.log(` - connecting.state.ts`);
-console.log(` - login.state.ts`);
-console.log(` - signup.state.ts`);
-console.log(` - authenticated.state.ts`);
+init();

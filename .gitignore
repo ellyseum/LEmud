@@ -1,6 +1,7 @@
 node_modules
-data/users.json
 data/admin/
+data/users.json
+data/admin.json
 
 # loco testing files
 u1
