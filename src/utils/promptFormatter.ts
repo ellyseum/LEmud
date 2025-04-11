@@ -55,6 +55,11 @@ export function getPromptText(client: ConnectedClient): string {
 export function drawCommandPrompt(client: ConnectedClient): void {
   if (!client.user) return;
   
+  // Skip drawing the prompt if it's currently suppressed (e.g., during movement)
+  if (client.stateData?.suppressPrompt) {
+    return;
+  }
+  
   // ANSI sequence to clear the current line
   const clearLineSequence = '\r\x1B[K';
   

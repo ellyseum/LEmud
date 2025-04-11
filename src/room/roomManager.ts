@@ -3,7 +3,7 @@ import path from 'path';
 import { Room } from './room';
 import { ConnectedClient, Currency, Exit, Item } from '../types';
 import { colorize } from '../utils/colors';
-import { writeToClient, writeFormattedMessageToClient } from '../utils/socketWriter';
+import { writeToClient, writeFormattedMessageToClient, drawCommandPrompt } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 import { NPC } from '../combat/npc';
 
@@ -141,8 +141,30 @@ export class RoomManager {
     return DEFAULT_ROOM_ID;
   }
 
-  // Move a player to a new room
-  public movePlayer(client: ConnectedClient, direction: string): boolean {
+  /**
+   * Calculate movement delay based on character agility
+   * @param agility The player's agility stat
+   * @returns Delay in milliseconds
+   */
+  private calculateMovementDelay(agility: number): number {
+    // Base delay is 3000ms (3 seconds)
+    const baseDelay = 3000;
+    
+    // Calculate reduction based on agility (higher agility = less delay)
+    // Each point of agility reduces delay by 100ms (10% of base per 10 agility)
+    const reduction = Math.min(agility * 100, baseDelay * 0.8); // Cap at 80% reduction
+    
+    // Return the adjusted delay (minimum 500ms)
+    return Math.max(baseDelay - reduction, 500);
+  }
+
+  /**
+   * Move a player to a new room with travel delay based on character speed
+   * @param client The connected client
+   * @param direction The direction to move
+   * @returns true if movement succeeded, false otherwise
+   */
+  public movePlayerWithDelay(client: ConnectedClient, direction: string): boolean {
     if (!client.user) return false;
 
     // Get current room
@@ -185,37 +207,82 @@ export class RoomManager {
     const oppositeDirection = this.getOppositeDirection(direction);
     const fullOppositeDirectionName = this.getFullDirectionName(oppositeDirection);
     
-    // Notify players in current room that this player is leaving
+    // Notify players in current room that this player is leaving (but not yet gone)
     this.notifyPlayersInRoom(
       currentRoomId,
-      `${formatUsername(client.user.username)} leaves ${fullDirectionName}.\r\n`,
+      `${formatUsername(client.user.username)} starts moving ${fullDirectionName}.\r\n`,
       client.user.username
     );
 
-    // Remove player from current room
-    currentRoom.removePlayer(client.user.username);
+    // Calculate movement delay based on agility
+    // Default to 10 if agility is undefined
+    const agility = client.user.agility || 10;
+    const delay = this.calculateMovementDelay(agility);
 
-    // Add player to new room
-    nextRoom.addPlayer(client.user.username);
+    // Inform player they're moving - use writeToClient instead of writeFormattedMessageToClient
+    // to avoid redrawing the prompt after this message
+    writeToClient(client, colorize(`Moving${delay > 1000 ? ' slowly' : ''}...\r\n`, 'green'));
     
-    // Notify players in the destination room that this player arrived
-    this.notifyPlayersInRoom(
-      nextRoomId, 
-      `${formatUsername(client.user.username)} enters from the ${fullOppositeDirectionName}.\r\n`,
-      client.user.username
-    );
-
-    // Update user's current room
-    client.user.currentRoomId = nextRoomId;
-
-    // Note: We removed the combat handling code here since it's now in the MoveCommand
-
-    writeToClient(client, colorize(`Moving...\r\n`, 'green'));
+    // Flag to prevent multiple moves while moving
+    if (!client.stateData) {
+      client.stateData = {};
+    }
+    client.stateData.isMoving = true;
     
-    // Show the new room description - use the Room's method for consistent formatting
-    writeToClient(client, nextRoom.getDescriptionExcludingPlayer(client.user.username));
+    // Suppress the prompt until movement is complete
+    client.stateData.suppressPrompt = true;
+    
+    // Set a timeout to perform the actual room transition after the delay
+    setTimeout(() => {
+      // Make sure client.user is still available when the timeout executes
+      if (client.user) {
+        // NOW remove the player from the old room
+        currentRoom.removePlayer(client.user.username);
+
+        // NOW add the player to the new room
+        nextRoom.addPlayer(client.user.username);
+        
+        // NOW notify players in the old room that this player has left
+        this.notifyPlayersInRoom(
+          currentRoomId,
+          `${formatUsername(client.user.username)} leaves ${fullDirectionName}.\r\n`,
+          client.user.username
+        );
+        
+        // NOW notify players in the destination room that this player has arrived
+        this.notifyPlayersInRoom(
+          nextRoomId, 
+          `${formatUsername(client.user.username)} enters from the ${fullOppositeDirectionName}.\r\n`,
+          client.user.username
+        );
+
+        // NOW update user's current room
+        client.user.currentRoomId = nextRoomId;
+        
+        // Show the new room description with formatted message to redraw prompt after
+        writeFormattedMessageToClient(
+          client, 
+          nextRoom.getDescriptionExcludingPlayer(client.user.username),
+          true // Explicitly set drawPrompt to true
+        );
+        
+        // Clear the moving flags
+        if (client.stateData) {
+          client.stateData.isMoving = false;
+          client.stateData.suppressPrompt = false;
+        }
+        
+        // Force redraw of the prompt to ensure it appears
+        drawCommandPrompt(client);
+      }
+    }, delay);
     
     return true;
+  }
+
+  // Original movePlayer method kept for backward compatibility
+  public movePlayer(client: ConnectedClient, direction: string): boolean {
+    return this.movePlayerWithDelay(client, direction);
   }
 
   /**
