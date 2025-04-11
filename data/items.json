@@ -17,6 +17,23 @@
     }
   },
   {
+    "id": "sword-002",
+    "name": "steel sword",
+    "description": "A sturdy steel sword with a sharp edge.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 50,
+    "weight": 5,
+    "stats": {
+      "attack": 5,
+      "strength": 2
+    },
+    "requirements": {
+      "level": 1,
+      "strength": 5
+    }
+  },
+  {
     "id": "shield-001",
     "name": "wooden shield",
     "description": "A basic wooden shield that provides some protection.",

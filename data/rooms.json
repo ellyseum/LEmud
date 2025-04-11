@@ -9,10 +9,7 @@
         "roomId": "room2"
       }
     ],
-    "items": [
-      "sword-001",
-      "shield-001"
-    ],
+    "items": [],
     "npcs": [
       "cat",
       "dog"

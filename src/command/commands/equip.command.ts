@@ -29,7 +29,7 @@ export class EquipCommand implements Command {
     const user = client.user;
     
     // First, we need to find the item in the user's inventory
-    const matchingItemId = this.findItemInInventory(user, itemNameToEquip);
+    const { itemId: matchingItemId, index: matchingItemIndex } = this.findItemInInventory(user, itemNameToEquip);
     
     if (!matchingItemId) {
       writeToClient(client, colorize(`You don't have an item called "${args}" in your inventory.\r\n`, 'red'));
@@ -75,17 +75,22 @@ export class EquipCommand implements Command {
     
     // Check if something is already equipped in that slot
     const currentItemId = user.equipment[item.slot];
+
+    // Remove the specific item from inventory by its index
+    if (matchingItemIndex !== -1) {
+      user.inventory.items.splice(matchingItemIndex, 1);
+    }
+    
     if (currentItemId) {
       const currentItem = this.itemManager.getItem(currentItemId);
       
       // Return the current item to inventory if it exists
       if (currentItem) {
+        // Add the current item back to inventory
+        user.inventory.items.push(currentItemId);
         writeToClient(client, colorize(`You unequip ${currentItem.name}.\r\n`, 'yellow'));
       }
     }
-    
-    // Remove item from inventory
-    user.inventory.items = user.inventory.items.filter(id => id !== matchingItemId);
     
     // Equip the new item
     user.equipment[item.slot] = matchingItemId;
@@ -131,21 +136,22 @@ export class EquipCommand implements Command {
   /**
    * Find an item in the user's inventory by name (case-insensitive partial match)
    */
-  private findItemInInventory(user: User, itemName: string): string | undefined {
+  private findItemInInventory(user: User, itemName: string): { itemId: string | undefined, index: number } {
     // Check if the user has any items
     if (!user.inventory || !user.inventory.items || user.inventory.items.length === 0) {
-      return undefined;
+      return { itemId: undefined, index: -1 };
     }
     
     // Look for a matching item
-    for (const itemId of user.inventory.items) {
+    for (let i = 0; i < user.inventory.items.length; i++) {
+      const itemId = user.inventory.items[i];
       const item = this.itemManager.getItem(itemId);
       if (item && item.name.toLowerCase().includes(itemName)) {
-        return itemId;
+        return { itemId, index: i };
       }
     }
     
-    return undefined;
+    return { itemId: undefined, index: -1 };
   }
   
   /**
