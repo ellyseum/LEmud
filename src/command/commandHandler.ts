@@ -27,13 +27,13 @@ export class CommandHandler {
     // Get the room manager instance
     const roomMgr = this.roomManager || RoomManager.getInstance(this.clients);
     
-    // Get or create the combat system - this is the fix
+    // Get or create the combat system
     const combatSys = this.combatSystem || 
       (GameTimerManager.getInstance(this.userManager, roomMgr)?.getCombatSystem() || 
       new CombatSystem(this.userManager, roomMgr));
     
-    // Initialize the command registry with proper instances
-    this.commands = new CommandRegistry(
+    // Get the singleton instance of CommandRegistry instead of creating a new one
+    this.commands = CommandRegistry.getInstance(
       this.clients,
       roomMgr,
       combatSys,

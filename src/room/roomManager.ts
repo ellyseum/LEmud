@@ -266,6 +266,41 @@ export class RoomManager {
           true // Explicitly set drawPrompt to true
         );
         
+        // Process any commands that were buffered during movement
+        if (client.stateData.movementCommandQueue && client.stateData.movementCommandQueue.length > 0) {
+          // Extract the queued commands
+          const commandQueue = [...client.stateData.movementCommandQueue];
+          
+          // Clear the queue
+          client.stateData.movementCommandQueue = [];
+          
+          // Process only the first command after movement is complete
+          // We'll handle multiple movement commands sequentially
+          setTimeout(() => {
+            // Import the CommandHandler directly to avoid circular dependency issues
+            const { CommandHandler } = require('../command/commandHandler');
+            const userManager = require('../user/userManager').UserManager.getInstance();
+            
+            // Create a new instance of CommandHandler
+            const commandHandler = new CommandHandler(this.clients, userManager, this);
+            
+            // Process only the first command in the queue
+            if (commandQueue.length > 0) {
+              const cmd = commandQueue.shift(); // Take the first command
+              commandHandler.handleCommand(client, cmd);
+              
+              // If there are more commands in the queue, save them back to the client
+              // They'll be processed after any resulting movement completes
+              if (commandQueue.length > 0) {
+                if (!client.stateData) {
+                  client.stateData = {};
+                }
+                client.stateData.movementCommandQueue = commandQueue;
+              }
+            }
+          }, 100);
+        }
+        
         // Clear the moving flags
         if (client.stateData) {
           client.stateData.isMoving = false;

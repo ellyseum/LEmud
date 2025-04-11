@@ -319,6 +319,60 @@ function handleClientData(client: ConnectedClient, data: string): void {
     client.isTyping = true;
   }
   
+  // If the client is moving, don't process input directly
+  // Instead, buffer it to be processed after movement completes
+  if (client.stateData?.isMoving) {
+    // Only buffer if it's not a control character (e.g., backspace)
+    if (data === '\r' || data === '\n' || data === '\r\n') {
+      // For enter key, if there's something in the buffer, add it to the movement command queue
+      if (client.buffer.length > 0) {
+        // Initialize the movement command queue if it doesn't exist
+        if (!client.stateData.movementCommandQueue) {
+          client.stateData.movementCommandQueue = [];
+        }
+        
+        // Add the command to the queue
+        client.stateData.movementCommandQueue.push(client.buffer);
+        
+        // Clear the buffer silently (we don't want to echo during movement)
+        client.buffer = '';
+        
+        // Initialize cursor position if not defined
+        if (client.cursorPos === undefined) {
+          client.cursorPos = 0;
+        } else {
+          client.cursorPos = 0;
+        }
+      }
+    } else if (data === '\b' || data === '\x7F') {
+      // Handle backspace silently during movement
+      if (client.buffer.length > 0) {
+        // Initialize cursor position if not defined
+        if (client.cursorPos === undefined) {
+          client.cursorPos = client.buffer.length;
+        }
+        
+        if (client.cursorPos > 0) {
+          client.buffer = client.buffer.slice(0, -1);
+          client.cursorPos--;
+        }
+      }
+    } else if (data.length === 1 && !data.startsWith('\u001b')) {
+      // Add printable characters to buffer silently (no echo) during movement
+      client.buffer += data;
+      
+      // Initialize cursor position if not defined
+      if (client.cursorPos === undefined) {
+        client.cursorPos = client.buffer.length;
+      } else {
+        client.cursorPos = client.buffer.length;
+      }
+    }
+    
+    // Don't process anything else during movement
+    return;
+  }
+  
   // Debugging - uncomment if needed
   // console.log('Input data:', data.split('').map(c => c.charCodeAt(0).toString(16)).join(' '));
   
@@ -1165,10 +1219,14 @@ async function init() {
     // Reset the singleton instances if needed
     GameTimerManager.resetInstance();
     
+    // Also reset CommandRegistry instance
+    const { CommandRegistry } = require('./command/commandRegistry');
+    CommandRegistry.resetInstance();
+    
     // Exit the process
     console.log('Server shutdown complete');
     process.exit(0);
   });
-  }
+}
 
 init();

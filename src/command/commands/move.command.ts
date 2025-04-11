@@ -25,12 +25,6 @@ export class MoveCommand implements Command {
       return;
     }
     
-    // Check if player is currently moving between rooms
-    if (client.stateData?.isMoving) {
-      writeFormattedMessageToClient(client, colorize(`You are already moving. Wait until you arrive at your destination.\r\n`, 'yellow'));
-      return;
-    }
-    
     // Check if the player is in a valid room first
     this.roomManager.teleportToStartingRoomIfNeeded(client);
     

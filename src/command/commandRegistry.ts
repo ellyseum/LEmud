@@ -35,8 +35,12 @@ import { AdminManageCommand } from './commands/adminmanage.command';
 export class CommandRegistry {
   private commands: Map<string, Command>;
   private aliases: Map<string, {commandName: string, args?: string}>;
+  
+  // Add static instance for singleton pattern
+  private static instance: CommandRegistry | null = null;
 
-  constructor(
+  // Make constructor private for singleton pattern
+  private constructor(
     private clients: Map<string, ConnectedClient>,
     private roomManager: RoomManager,
     private combatSystem: CombatSystem,
@@ -45,6 +49,31 @@ export class CommandRegistry {
     this.commands = new Map<string, Command>();
     this.aliases = new Map<string, {commandName: string, args?: string}>();
     this.registerCommands();
+  }
+  
+  // Static method to get the singleton instance
+  public static getInstance(
+    clients: Map<string, ConnectedClient>,
+    roomManager: RoomManager,
+    combatSystem: CombatSystem,
+    userManager: UserManager
+  ): CommandRegistry {
+    if (!CommandRegistry.instance) {
+      console.log('Creating CommandRegistry instance');
+      CommandRegistry.instance = new CommandRegistry(clients, roomManager, combatSystem, userManager);
+    } else {
+      // Update references if they've changed
+      CommandRegistry.instance.clients = clients;
+      CommandRegistry.instance.roomManager = roomManager;
+      CommandRegistry.instance.combatSystem = combatSystem;
+      CommandRegistry.instance.userManager = userManager;
+    }
+    return CommandRegistry.instance;
+  }
+  
+  // Method to reset the singleton instance (useful for testing or server restart)
+  public static resetInstance(): void {
+    CommandRegistry.instance = null;
   }
 
   private registerCommands(): void {
@@ -131,13 +160,19 @@ export class CommandRegistry {
     // Register direction commands as aliases/shortcuts to the move command
     for (const dir of directions) {
       this.registerAlias(dir, 'move', dir);
-      console.log(`Registered direction alias: ${dir} -> move ${dir}`);
+      // Only log this message when verbose logging is enabled or on first initialization
+      if (CommandRegistry.instance === this) {
+        console.log(`Registered direction alias: ${dir} -> move ${dir}`);
+      }
     }
 
     for (const shortDir of shortDirections) {
       const fullDir = this.convertShortToFullDirection(shortDir);
       this.registerAlias(shortDir, 'move', fullDir);
-      console.log(`Registered short direction alias: ${shortDir} -> move ${fullDir}`);
+      // Only log this message when verbose logging is enabled or on first initialization
+      if (CommandRegistry.instance === this) {
+        console.log(`Registered short direction alias: ${shortDir} -> move ${fullDir}`);
+      }
     }
   }
 

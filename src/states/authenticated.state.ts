@@ -25,8 +25,8 @@ export class AuthenticatedState implements ClientState {
     this.combatSystem = CombatSystem.getInstance(this.userManager, this.roomManager);
     this.commandHandler = new CommandHandler(this.roomManager, this.userManager);
     
-    // Initialize the command registry with required dependencies
-    this.commandRegistry = new CommandRegistry(
+    // Use the singleton instance of CommandRegistry
+    this.commandRegistry = CommandRegistry.getInstance(
       clients,
       this.roomManager,
       this.combatSystem,
