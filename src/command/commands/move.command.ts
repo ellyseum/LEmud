@@ -34,16 +34,8 @@ export class MoveCommand implements Command {
       return;
     }
 
-    // Check if player is in combat and handle it before moving
-    if (client.user.inCombat && this.combatSystem) {
-      // We're moving rooms, so notify the player they're fleeing combat
-      writeFormattedMessageToClient(client, colorize(`You flee from combat!\r\n`, 'boldYellow'));
-      
-      // Let the combat system know the player is fleeing
-      this.combatSystem.handlePlayerMovedRooms(client);
-    }
-
-    // Now proceed with the movement
+    // Simply proceed with movement regardless of combat state
+    // Combat system will handle checking rooms during next tick
     this.roomManager.movePlayer(client, direction);
   }
 }

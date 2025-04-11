@@ -425,28 +425,24 @@ export class Combat {
   endCombat(playerFled: boolean = false): void {
     if (!this.player.user) return;
     
+    // Check if the player is already out of combat
+    const wasInCombat = this.player.user.inCombat;
+    
     // Update the player's combat status
     this.player.user.inCombat = false;
     this.userManager.updateUserStats(this.player.user.username, { inCombat: false });
     
-    if (this.activeCombatants.length === 0 || playerFled) {
+    // Only show combat off message if the player was actually in combat
+    if (wasInCombat && (this.activeCombatants.length === 0 || playerFled)) {
       // Clear the line first
       const clearLineSequence = '\r\x1B[K';
       writeToClient(this.player, clearLineSequence);
       
       // Send message to player without drawing prompt yet
-      if (playerFled) {
-        writeToClient(
-          this.player,
-          colorize(`*Combat Off - You fled from combat*\r\n`, 'boldYellow')
-        );
-      } else {
-        // Simplified message that doesn't mention target no longer in room
-        writeToClient(
-          this.player,
-          colorize(`*Combat Off*\r\n`, 'boldYellow')
-        );
-      }
+      writeToClient(
+        this.player,
+        colorize(`*Combat Off*\r\n`, 'boldYellow')
+      );
       
       // Now draw the prompt explicitly once
       drawCommandPrompt(this.player);
@@ -454,22 +450,12 @@ export class Combat {
       // Broadcast to ALL players in the room
       if (this.player.user && this.player.user.currentRoomId) {
         const username = formatUsername(this.player.user.username);
-        
-        if (playerFled) {
-          this.combatSystem.broadcastRoomCombatMessage(
-            this.player.user.currentRoomId,
-            `${username} fled from combat!\r\n`,
-            'boldYellow' as ColorType,
-            this.player.user.username
-          );
-        } else {
-          this.combatSystem.broadcastRoomCombatMessage(
-            this.player.user.currentRoomId,
-            `${username} is no longer in combat.\r\n`,
-            'boldYellow' as ColorType,
-            this.player.user.username
-          );
-        }
+        this.combatSystem.broadcastRoomCombatMessage(
+          this.player.user.currentRoomId,
+          `${username} is no longer in combat.\r\n`,
+          'boldYellow' as ColorType,
+          this.player.user.username
+        );
       }
     } else if (this.brokenByPlayer) {
       // Clear the line first

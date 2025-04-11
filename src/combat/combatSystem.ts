@@ -692,27 +692,19 @@ export class CombatSystem {
   }
 
   /**
-   * Handle a player moving to a different room during combat
+   * Track player movement between rooms without immediately ending combat
+   * Combat will end during the next combat tick if the player and targets
+   * are not in the same room.
    */
   public handlePlayerMovedRooms(player: ConnectedClient): void {
     if (!player.user) return;
     
     const username = player.user.username;
-    const combat = this.combats.get(username);
+    console.log(`[CombatSystem] Player ${username} moved rooms while in combat. Combat will continue until next tick checks positions.`);
     
-    if (combat) {
-      console.log(`[CombatSystem] Player ${username} moved rooms during combat, ending combat`);
-      
-      // End combat and broadcast flee message to the old room
-      combat.endCombat(true); // Pass true to indicate player fled
-      
-      // Delete the combat instance
-      this.combats.delete(username);
-      
-      // Update player state
-      player.user.inCombat = false;
-      this.userManager.updateUserStats(username, { inCombat: false });
-    }
+    // We intentionally don't end combat here, allowing the player to move freely
+    // The combat system's processRound() will handle ending combat during the next tick
+    // if the player and target are not in the same room
   }
 
   /**
