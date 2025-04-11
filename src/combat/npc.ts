@@ -14,11 +14,13 @@ export interface NPCData {
   isPassive: boolean;
   experienceValue: number;
   attackTexts: string[];
+  deathMessages: string[];
 }
 
 export class NPC implements CombatEntity {
   public description: string;
   public attackTexts: string[];
+  public deathMessages: string[];
   // Map to track which players this NPC has aggression towards and the damage they've dealt
   private aggressors: Map<string, number> = new Map();
 
@@ -31,13 +33,17 @@ export class NPC implements CombatEntity {
     public isPassive: boolean = false,
     public experienceValue: number = 50,
     description?: string,
-    attackTexts?: string[]
+    attackTexts?: string[],
+    deathMessages?: string[]
   ) {
     this.description = description || `A ${name} standing here.`;
     this.attackTexts = attackTexts || [
       `swipes $TARGET$ with its claws`,
       `lunges at $TARGET$`,
       `hisses and attacks $TARGET$`
+    ];
+    this.deathMessages = deathMessages || [
+      `collapses to the ground and dies`
     ];
   }
 
@@ -75,7 +81,8 @@ export class NPC implements CombatEntity {
       npcData.isPassive,
       npcData.experienceValue,
       npcData.description,
-      npcData.attackTexts
+      npcData.attackTexts,
+      npcData.deathMessages
     );
   }
 
@@ -98,6 +105,11 @@ export class NPC implements CombatEntity {
     // Replace placeholder with target name if applicable
     const attackText = this.attackTexts[Math.floor(Math.random() * this.attackTexts.length)];
     return attackText.replace('$TARGET$', target);
+  }
+
+  getDeathMessage(): string {
+    // Get a random death message from the array
+    return this.deathMessages[Math.floor(Math.random() * this.deathMessages.length)];
   }
 
   // Aggression tracking implementation

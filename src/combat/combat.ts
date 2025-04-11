@@ -305,8 +305,8 @@ export class Combat {
       }
     }
     
-    // Send death message to all players in the room
-    const deathMessage = `The ${npc.name} lets out a final sad meow, and dies.\r\n`;
+    // Get a custom death message from the NPC
+    const deathMessage = `The ${npc.name} ${(npc as any).getDeathMessage?.() || 'collapses to the ground and dies'}.\r\n`;
     
     // For main killer (the one whose combat instance is processing this death)
     writeFormattedMessageToClient(
@@ -319,7 +319,7 @@ export class Combat {
       const killerUsername = formatUsername(this.player.user.username);
       this.combatSystem.broadcastRoomCombatMessage(
         roomId,
-        `The ${npc.name} fighting ${killerUsername} lets out a final sad meow, and dies.\r\n`,
+        `The ${npc.name} fighting ${killerUsername} ${(npc as any).getDeathMessage?.() || 'collapses to the ground and dies'}.\r\n`,
         'magenta',
         this.player.user.username
       );

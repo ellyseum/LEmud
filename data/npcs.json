@@ -13,6 +13,11 @@
       "barks and nips at $TARGET$",
       "playfully bites $TARGET$",
       "growls and lunges at $TARGET$"
+    ],
+    "deathMessages": [
+      "whimpers softly before falling silent",
+      "gives one last friendly wag of its tail and closes its eyes",
+      "lets out a sorrowful howl and collapses"
     ]
   },
   {
@@ -29,6 +34,11 @@
       "swipes $TARGET$ with its claws",
       "hisses and scratches $TARGET$",
       "pounces on $TARGET$"
+    ],
+    "deathMessages": [
+      "lets out a final sad meow, and dies",
+      "hisses one last time before going limp",
+      "purrs softly as it closes its eyes forever"
     ]
   },
   {
@@ -45,6 +55,11 @@
       "stabs at $TARGET$ with a rusty dagger",
       "swings wildly at $TARGET$",
       "leaps at $TARGET$ with a snarl"
+    ],
+    "deathMessages": [
+      "screams in agony and falls to the ground, twitching",
+      "clutches its wounds and curses you before dying",
+      "gurgles on its own blood and collapses in a heap"
     ]
   },
   {
@@ -61,6 +76,11 @@
       "bites $TARGET$ with powerful jaws",
       "lunges at $TARGET$'s throat",
       "circles $TARGET$ and attacks from behind"
+    ],
+    "deathMessages": [
+      "snarls defiantly one last time before collapsing",
+      "whines pitifully and falls to the ground with glazed eyes",
+      "howls mournfully as its strength fades away"
     ]
   }
 ]
