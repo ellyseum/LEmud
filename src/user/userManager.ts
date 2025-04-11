@@ -480,4 +480,31 @@ export class UserManager {
     this.saveUsers();
     return true;
   }
+
+  // Save a player's high score for the Snake game
+  public saveHighScore(scoreData: { username: string, score: number }): void {
+    if (!scoreData.username || scoreData.score <= 0) return;
+
+    // Get the user
+    const user = this.getUser(scoreData.username);
+    if (!user) return;
+
+    // Only update if the new score is higher than the existing one
+    if (!user.snakeHighScore || scoreData.score > user.snakeHighScore) {
+      user.snakeHighScore = scoreData.score;
+      this.saveUsers();
+    }
+  }
+
+  // Get all snake game high scores, sorted from highest to lowest
+  public getSnakeHighScores(limit: number = 10): { username: string, score: number }[] {
+    return this.users
+      .filter(user => user.snakeHighScore && user.snakeHighScore > 0)
+      .map(user => ({
+        username: user.username,
+        score: user.snakeHighScore as number
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
 }

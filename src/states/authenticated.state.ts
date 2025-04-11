@@ -9,6 +9,7 @@ import { CombatSystem } from '../combat/combatSystem';
 import { CommandHandler } from '../utils/commandHandler';
 import { ItemManager } from '../utils/itemManager';
 import { CommandRegistry } from '../command/commandRegistry';
+import { StateMachine } from '../state/stateMachine'; // Add StateMachine import
 
 export class AuthenticatedState implements ClientState {
   name = ClientStateType.AUTHENTICATED;
@@ -18,7 +19,7 @@ export class AuthenticatedState implements ClientState {
   private commandHandler: CommandHandler;
   private commandRegistry: CommandRegistry;
 
-  constructor(private clients: Map<string, ConnectedClient>) {
+  constructor(private clients: Map<string, ConnectedClient>, private stateMachine?: StateMachine) {
     // Get singleton instances
     this.roomManager = RoomManager.getInstance(clients);
     this.userManager = UserManager.getInstance();
@@ -30,7 +31,8 @@ export class AuthenticatedState implements ClientState {
       clients,
       this.roomManager,
       this.combatSystem,
-      this.userManager
+      this.userManager,
+      this.stateMachine || null // Pass stateMachine instance or null if not provided
     );
     
     // Connect the command registry to the command handler

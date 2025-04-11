@@ -6,6 +6,7 @@ import { RoomManager } from '../room/roomManager';
 import { CombatSystem } from '../combat/combatSystem';
 import { CommandRegistry } from './commandRegistry';
 import { GameTimerManager } from '../timer/gameTimerManager';
+import { StateMachine } from '../state/stateMachine'; // Add StateMachine import
 
 export class CommandHandler {
   private commands: CommandRegistry;
@@ -22,7 +23,8 @@ export class CommandHandler {
     private clients: Map<string, ConnectedClient>,
     private userManager: UserManager,
     private roomManager?: RoomManager,
-    private combatSystem?: CombatSystem
+    private combatSystem?: CombatSystem,
+    private stateMachine?: StateMachine // Add StateMachine parameter
   ) {
     // Get the room manager instance
     const roomMgr = this.roomManager || RoomManager.getInstance(this.clients);
@@ -37,7 +39,8 @@ export class CommandHandler {
       this.clients,
       roomMgr,
       combatSys,
-      this.userManager
+      this.userManager,
+      this.stateMachine // Pass the StateMachine instance
     );
   }
 

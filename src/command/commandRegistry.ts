@@ -31,6 +31,7 @@ import { EquipmentCommand } from './commands/equipment.command';
 import { GiveItemCommand } from './commands/giveitem.command';
 import { SudoCommand } from './commands/sudo.command';
 import { AdminManageCommand } from './commands/adminmanage.command';
+import { SnakeCommand } from './commands/snake.command';
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -44,7 +45,8 @@ export class CommandRegistry {
     private clients: Map<string, ConnectedClient>,
     private roomManager: RoomManager,
     private combatSystem: CombatSystem,
-    private userManager: UserManager
+    private userManager: UserManager,
+    private stateMachine: any // Add StateMachine instance
   ) {
     this.commands = new Map<string, Command>();
     this.aliases = new Map<string, {commandName: string, args?: string}>();
@@ -56,17 +58,19 @@ export class CommandRegistry {
     clients: Map<string, ConnectedClient>,
     roomManager: RoomManager,
     combatSystem: CombatSystem,
-    userManager: UserManager
+    userManager: UserManager,
+    stateMachine: any // Add StateMachine instance
   ): CommandRegistry {
     if (!CommandRegistry.instance) {
       console.log('Creating CommandRegistry instance');
-      CommandRegistry.instance = new CommandRegistry(clients, roomManager, combatSystem, userManager);
+      CommandRegistry.instance = new CommandRegistry(clients, roomManager, combatSystem, userManager, stateMachine);
     } else {
       // Update references if they've changed
       CommandRegistry.instance.clients = clients;
       CommandRegistry.instance.roomManager = roomManager;
       CommandRegistry.instance.combatSystem = combatSystem;
       CommandRegistry.instance.userManager = userManager;
+      CommandRegistry.instance.stateMachine = stateMachine;
     }
     return CommandRegistry.instance;
   }
@@ -78,6 +82,7 @@ export class CommandRegistry {
 
   private registerCommands(): void {
     // Create command instances
+    const snakeCommand = new SnakeCommand(this.stateMachine); // Pass StateMachine instance
     const commands: Command[] = [
       new SayCommand(this.clients),
       new ListCommand(this.clients),
@@ -102,7 +107,8 @@ export class CommandRegistry {
       new GiveItemCommand(this.userManager),
       // Use SudoCommand singleton instead of creating a new instance
       SudoCommand.getInstance(this.userManager),
-      new AdminManageCommand(this.userManager)
+      new AdminManageCommand(this.userManager),
+      snakeCommand // Add SnakeCommand instance
     ];
     
     // Register all commands

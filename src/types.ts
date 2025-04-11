@@ -7,7 +7,8 @@ export enum ClientStateType {
   SIGNUP = 'signup',
   CONFIRMATION = 'confirmation',
   AUTHENTICATED = 'authenticated',
-  TRANSFER_REQUEST = 'transfer_request'  // New state for handling session transfers
+  TRANSFER_REQUEST = 'transfer_request',  // New state for handling session transfers
+  SNAKE_GAME = 'snake_game'  // New state for playing Snake game
 }
 
 // Define equipment slots
@@ -108,6 +109,7 @@ export interface User {
   savedCurrentCommand?: string; // Save the current command when browsing history
   inCombat?: boolean; // Add combat status
   isUnconscious?: boolean; // Add unconscious status
+  snakeHighScore?: number; // Add high score for Snake game
 }
 
 export interface ConnectedClient {
@@ -171,4 +173,14 @@ export interface Room {
     copper: number;
   };
   npcs?: string[]; // Add NPCs array to track monsters in the room
+}
+
+export interface SnakeScoreEntry {
+  username: string;
+  score: number;
+  date: string; // ISO date string of when the score was achieved
+}
+
+export interface SnakeScores {
+  scores: SnakeScoreEntry[];
 }

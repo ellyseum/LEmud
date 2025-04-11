@@ -6,6 +6,7 @@ import { SignupState } from '../states/signup.state';
 import { ConfirmationState } from '../states/confirmation.state';
 import { AuthenticatedState } from '../states/authenticated.state';
 import { TransferRequestState } from '../states/transfer-request.state';
+import { SnakeGameState } from '../states/snake-game.state';
 
 export class StateMachine {
   private states: Map<ClientStateType, ClientState> = new Map();
@@ -18,6 +19,7 @@ export class StateMachine {
   private confirmationState: ConfirmationState;
   private authenticatedState: AuthenticatedState;
   private transferRequestState: TransferRequestState;
+  private snakeGameState: SnakeGameState;
 
   constructor(userManager: UserManager, private clients: Map<string, ConnectedClient>) {
     this.userManager = userManager;
@@ -27,8 +29,9 @@ export class StateMachine {
     this.loginState = new LoginState(userManager);
     this.signupState = new SignupState(userManager);
     this.confirmationState = new ConfirmationState(userManager);
-    this.authenticatedState = new AuthenticatedState(clients); // Pass clients
+    this.authenticatedState = new AuthenticatedState(clients, this); // Pass this (StateMachine) as second parameter
     this.transferRequestState = new TransferRequestState(userManager);
+    this.snakeGameState = new SnakeGameState(); // Initialize snake game state
     
     // Register states
     this.registerState(this.connectingState);
@@ -37,6 +40,7 @@ export class StateMachine {
     this.registerState(this.confirmationState);
     this.registerState(this.authenticatedState);
     this.registerState(this.transferRequestState);
+    this.registerState(this.snakeGameState); // Register snake game state
   }
 
   public registerState(state: ClientState): void {

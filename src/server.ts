@@ -32,8 +32,8 @@ const WS_PORT = 8080; // WebSocket port
 const userManager = new UserManager();
 const clients = new Map<string, ConnectedClient>();
 const roomManager = RoomManager.getInstance(clients);
-const commandHandler = new CommandHandler(clients, userManager);
 const stateMachine = new StateMachine(userManager, clients);
+const commandHandler = new CommandHandler(clients, userManager, roomManager, undefined, stateMachine);
 
 // Initialize the game timer manager with userManager and roomManager
 const gameTimerManager = GameTimerManager.getInstance(userManager, roomManager);
@@ -318,7 +318,13 @@ function handleClientData(client: ConnectedClient, data: string): void {
   if (client.buffer.length === 0 && !client.isTyping) {
     client.isTyping = true;
   }
-  
+
+  // If the client is in the Snake game state, route all input to the state machine
+  if (client.state === ClientStateType.SNAKE_GAME) {
+    stateMachine.handleInput(client, data);
+    return; // Prevent further processing
+  }
+
   // If the client is moving, don't process input directly
   // Instead, buffer it to be processed after movement completes
   if (client.stateData?.isMoving) {
@@ -729,14 +735,18 @@ function processInput(client: ConnectedClient, input: string): void {
     return;
   }
   
-  // Check if user is authenticated AND not in confirmation state
-  if (client.authenticated && client.state !== ClientStateType.CONFIRMATION && 
-      client.state !== ClientStateType.TRANSFER_REQUEST) {
-    // Process command from authenticated user
+  // Different handling based on the current state
+  if (client.state === ClientStateType.SNAKE_GAME) {
+    // When in Snake game, only pass input to the state machine, not to command handler
+    stateMachine.handleInput(client, trimmedInput);
+  } else if (client.authenticated && 
+             client.state !== ClientStateType.CONFIRMATION && 
+             client.state !== ClientStateType.TRANSFER_REQUEST) {
+    // Process command from authenticated user in normal game states
     commandHandler.handleCommand(client, trimmedInput);
     // Note: CommandHandler now handles displaying the prompt after commands
   } else {
-    // Handle authentication via state machine
+    // Handle authentication via state machine for non-authenticated users
     stateMachine.handleInput(client, trimmedInput);
     
     // Check if client should be disconnected (due to too many failed attempts)
