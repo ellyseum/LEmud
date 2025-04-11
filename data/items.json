@@ -1,7 +1,7 @@
 [
   {
     "id": "sword-001",
-    "name": "Iron Sword",
+    "name": "iron sword",
     "description": "A sturdy iron sword with a sharp edge.",
     "type": "weapon",
     "slot": "mainHand",
@@ -18,7 +18,7 @@
   },
   {
     "id": "shield-001",
-    "name": "Wooden Shield",
+    "name": "wooden shield",
     "description": "A basic wooden shield that provides some protection.",
     "type": "armor",
     "slot": "offHand",
@@ -31,7 +31,7 @@
   },
   {
     "id": "helmet-001",
-    "name": "Leather Cap",
+    "name": "leather cap",
     "description": "A simple leather cap that offers minimal protection.",
     "type": "armor",
     "slot": "head",
@@ -43,7 +43,7 @@
   },
   {
     "id": "amulet-001",
-    "name": "Copper Amulet",
+    "name": "copper amulet",
     "description": "A simple amulet made of copper.",
     "type": "armor",
     "slot": "neck",
@@ -56,7 +56,7 @@
   },
   {
     "id": "chest-001",
-    "name": "Padded Tunic",
+    "name": "padded tunic",
     "description": "A padded tunic that offers some protection.",
     "type": "armor",
     "slot": "chest",
@@ -69,7 +69,7 @@
   },
   {
     "id": "cloak-001",
-    "name": "Traveler's Cloak",
+    "name": "traveler's cloak",
     "description": "A warm cloak that keeps you dry in the rain.",
     "type": "armor",
     "slot": "back",
@@ -82,7 +82,7 @@
   },
   {
     "id": "arms-001",
-    "name": "Leather Bracers",
+    "name": "leather bracers",
     "description": "Protective bracers made of hardened leather.",
     "type": "armor",
     "slot": "arms",
@@ -95,7 +95,7 @@
   },
   {
     "id": "gloves-001",
-    "name": "Leather Gloves",
+    "name": "leather gloves",
     "description": "Simple gloves that protect your hands.",
     "type": "armor",
     "slot": "hands",
@@ -108,7 +108,7 @@
   },
   {
     "id": "ring-001",
-    "name": "Silver Ring",
+    "name": "silver ring",
     "description": "A simple silver ring.",
     "type": "armor",
     "slot": "finger",
@@ -120,7 +120,7 @@
   },
   {
     "id": "belt-001",
-    "name": "Leather Belt",
+    "name": "leather belt",
     "description": "A sturdy leather belt with a brass buckle.",
     "type": "armor",
     "slot": "waist",
@@ -133,7 +133,7 @@
   },
   {
     "id": "legs-001",
-    "name": "Leather Leggings",
+    "name": "leather leggings",
     "description": "Protective leggings made of leather.",
     "type": "armor",
     "slot": "legs",
@@ -146,7 +146,7 @@
   },
   {
     "id": "boots-001",
-    "name": "Leather Boots",
+    "name": "leather boots",
     "description": "Sturdy boots for long travels.",
     "type": "armor",
     "slot": "feet",

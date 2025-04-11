@@ -9,7 +9,10 @@
         "roomId": "room2"
       }
     ],
-    "items": [],
+    "items": [
+      "sword-001",
+      "shield-001"
+    ],
     "npcs": [
       "cat",
       "dog"
@@ -30,9 +33,7 @@
         "roomId": "start"
       }
     ],
-    "items": [
-      "arms-001"
-    ],
+    "items": [],
     "npcs": [
       "goblin"
     ],

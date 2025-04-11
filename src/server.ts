@@ -1169,12 +1169,6 @@ async function init() {
     console.log('Server shutdown complete');
     process.exit(0);
   });
-  
-  console.log(`Make sure you have the following state files configured correctly:`);
-  console.log(` - connecting.state.ts`);
-  console.log(` - login.state.ts`);
-  console.log(` - signup.state.ts`);
-  console.log(` - authenticated.state.ts`);
-}
+  }
 
 init();

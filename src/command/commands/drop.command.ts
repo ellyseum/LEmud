@@ -4,15 +4,19 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { RoomManager } from '../../room/roomManager';
 import { UserManager } from '../../user/userManager';
+import { ItemManager } from '../../utils/itemManager';
 
 export class DropCommand implements Command {
   name = 'drop';
   description = 'Drop an item from your inventory';
+  private itemManager: ItemManager;
   
   constructor(
     private clients: Map<string, ConnectedClient>,
     private userManager: UserManager
-  ) {}
+  ) {
+    this.itemManager = ItemManager.getInstance();
+  }
   
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
@@ -118,28 +122,50 @@ export class DropCommand implements Command {
     writeToClient(client, colorize(`You drop ${amount} ${type} piece${amount === 1 ? '' : 's'}.\r\n`, 'green'));
   }
   
-  private dropItem(client: ConnectedClient, room: any, itemName: string): void {
+  private dropItem(client: ConnectedClient, room: any, itemNameOrId: string): void {
     if (!client.user) return;
     
-    // Normalize the item name for easier matching
-    const normalizedItemName = itemName.toLowerCase();
+    // Normalize the item name/id for easier matching
+    const normalizedInput = itemNameOrId.toLowerCase();
     
-    // Find the item in the player's inventory
-    const itemIndex = client.user.inventory.items.findIndex(item => item.toLowerCase() === normalizedItemName);
+    // Try to find the item by ID first
+    let itemIndex = client.user.inventory.items.findIndex(id => id.toLowerCase() === normalizedInput);
+    
+    // If not found by ID, try to find by name
+    if (itemIndex === -1) {
+      itemIndex = client.user.inventory.items.findIndex(id => {
+        const item = this.itemManager.getItem(id);
+        return item && item.name.toLowerCase() === normalizedInput;
+      });
+    }
+    
+    // If still not found, try partial name matching
+    if (itemIndex === -1) {
+      itemIndex = client.user.inventory.items.findIndex(id => {
+        const item = this.itemManager.getItem(id);
+        return item && item.name.toLowerCase().includes(normalizedInput);
+      });
+    }
     
     if (itemIndex === -1) {
-      writeToClient(client, colorize(`You don't have a ${itemName}.\r\n`, 'yellow'));
+      writeToClient(client, colorize(`You don't have a ${itemNameOrId}.\r\n`, 'yellow'));
       return;
     }
     
-    // Get the item with its proper casing
-    const item = client.user.inventory.items[itemIndex];
+    // Get the item ID from the inventory
+    const itemId = client.user.inventory.items[itemIndex];
+    
+    // Get the actual item details from ItemManager
+    const itemDetails = this.itemManager.getItem(itemId);
+    
+    // The display name is either the item's proper name or fallback to the ID
+    const displayName = itemDetails ? itemDetails.name : itemId;
     
     // Remove the item from the player's inventory
     client.user.inventory.items.splice(itemIndex, 1);
     
     // Add the item to the room
-    room.items.push(item);
+    room.items.push(itemId);
     
     // Save changes
     const roomManager = RoomManager.getInstance(this.clients);
@@ -147,6 +173,6 @@ export class DropCommand implements Command {
     this.userManager.updateUserInventory(client.user.username, client.user.inventory);
     
     // Notify the player
-    writeToClient(client, colorize(`You drop the ${item}.\r\n`, 'green'));
+    writeToClient(client, colorize(`You drop the ${displayName}.\r\n`, 'green'));
   }
 }

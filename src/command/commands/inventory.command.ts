@@ -3,11 +3,17 @@ import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { formatUsername } from '../../utils/formatters';
+import { ItemManager } from '../../utils/itemManager';
 
 export class InventoryCommand implements Command {
   name = 'inventory';
   description = 'Show your inventory contents';
   aliases = ['inv', 'i'];
+  private itemManager: ItemManager;
+  
+  constructor() {
+    this.itemManager = ItemManager.getInstance();
+  }
 
   execute(client: ConnectedClient, _args: string): void {
     if (!client.user) return;
@@ -55,10 +61,14 @@ export class InventoryCommand implements Command {
       writeToClient(client, colorize(`Currency: None\r\n`, 'yellow'));
     }
     
-    // Show items
+    // Show items with names instead of IDs
     const items = client.user.inventory.items;
     if (items.length > 0) {
-      writeToClient(client, colorize(`Items: ${items.join(', ')}\r\n`, 'green'));
+      const itemNames = items.map(itemId => {
+        const item = this.itemManager.getItem(itemId);
+        return item ? item.name : itemId; // Fallback to ID if item not found
+      });
+      writeToClient(client, colorize(`Items: ${itemNames.join(', ')}\r\n`, 'green'));
     } else {
       writeToClient(client, colorize(`Items: None\r\n`, 'green'));
     }

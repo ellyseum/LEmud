@@ -1,6 +1,7 @@
 import { formatUsername } from '../utils/formatters';
 import { colorize } from '../utils/colors';
 import { Currency, Exit, Item } from '../types';
+import { ItemManager } from '../utils/itemManager';
 
 export class Room {
   id: string;
@@ -11,6 +12,7 @@ export class Room {
   items: Item[] = [];
   currency: Currency = { gold: 0, silver: 0, copper: 0 };
   npcs: string[] = []; // Add NPCs array to track monsters in the room
+  private itemManager: ItemManager;
 
   constructor(room: any) {
     this.id = room.id;
@@ -21,6 +23,7 @@ export class Room {
     this.items = room.items || room.objects || [];
     this.currency = room.currency || { gold: 0, silver: 0, copper: 0 };
     this.npcs = room.npcs || []; // Initialize NPCs
+    this.itemManager = ItemManager.getInstance();
   }
 
   addPlayer(username: string): void {
@@ -53,13 +56,32 @@ export class Room {
    * Add an item to the room
    */
   addItem(item: string | {name: string}): void {
-    // Check if item is already an object with a name property
+    // Convert string IDs to Item objects before adding to the array
     if (typeof item === 'object' && item !== null && 'name' in item) {
-      this.items.push(item);
+      this.items.push(item as Item);
     } else if (typeof item === 'string') {
-      // Convert string to item object
-      this.items.push({name: item});
+      // Convert string to item object with proper name property
+      this.items.push({name: item} as Item);
     }
+  }
+
+  /**
+   * Get a proper name for an item, handling both string IDs and objects
+   * @param item The item object or string ID
+   * @returns The name to display for the item
+   */
+  private getItemName(item: any): string {
+    if (typeof item === 'object' && item !== null && 'name' in item) {
+      return item.name;
+    } else if (typeof item === 'string') {
+      // Look up the item name from the ItemManager
+      const itemData = this.itemManager.getItem(item);
+      if (itemData) {
+        return itemData.name;
+      }
+      return item;
+    }
+    return "unknown item"; // Fallback for invalid items
   }
 
   // Update getDescription method to include NPCs
@@ -183,10 +205,10 @@ export class Room {
     // Add items description
     if (this.items.length > 0) {
       if (this.items.length === 1) {
-        description += colorize(`You see a ${this.items[0].name}.`, 'green') + '\r\n';
+        description += colorize(`You see a ${this.getItemName(this.items[0])}.`, 'green') + '\r\n';
       } else {
-        const lastItem = this.items[this.items.length - 1].name;
-        const otherItems = this.items.slice(0, -1).map(item => `a ${item.name}`).join(', ');
+        const lastItem = this.getItemName(this.items[this.items.length - 1]);
+        const otherItems = this.items.slice(0, -1).map(item => `a ${this.getItemName(item)}`).join(', ');
         description += colorize(`You see ${otherItems}, and a ${lastItem}.`, 'green') + '\r\n';
       }
     }
