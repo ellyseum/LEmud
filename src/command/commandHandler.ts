@@ -7,6 +7,8 @@ import { CombatSystem } from '../combat/combatSystem';
 import { CommandRegistry } from './commandRegistry';
 import { GameTimerManager } from '../timer/gameTimerManager';
 import { StateMachine } from '../state/stateMachine'; // Add StateMachine import
+// Import the commands index file to ensure all commands are registered
+import './commands';
 
 export class CommandHandler {
   private commands: CommandRegistry;

@@ -32,6 +32,7 @@ import { GiveItemCommand } from './commands/giveitem.command';
 import { SudoCommand } from './commands/sudo.command';
 import { AdminManageCommand } from './commands/adminmanage.command';
 import { SnakeCommand } from './commands/snake.command';
+import { ScoresCommand } from './commands/scores.command';
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -108,7 +109,8 @@ export class CommandRegistry {
       // Use SudoCommand singleton instead of creating a new instance
       SudoCommand.getInstance(this.userManager),
       new AdminManageCommand(this.userManager),
-      snakeCommand // Add SnakeCommand instance
+      snakeCommand, // Add SnakeCommand instance
+      new ScoresCommand() // Add ScoresCommand instance
     ];
     
     // Register all commands
@@ -157,6 +159,9 @@ export class CommandRegistry {
     this.aliases.set('gi', {commandName: 'giveitem'});
     this.aliases.set('admin', {commandName: 'adminmanage'});
     this.aliases.set('admins', {commandName: 'adminmanage', args: 'list'});
+    // Add aliases for scores command
+    this.aliases.set('highscores', {commandName: 'scores'});
+    this.aliases.set('leaderboard', {commandName: 'scores'});
   }
 
   private registerDirectionCommands(): void {

@@ -10,11 +10,20 @@ import { RoomManager } from '../room/roomManager';
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SNAKE_SCORES_FILE = path.join(DATA_DIR, 'snake-scores.json');
+
+// Interface for snake score entries
+interface SnakeScore {
+  username: string;
+  score: number;
+  date: Date;
+}
 
 export class UserManager {
   private users: User[] = [];
   private activeUserSessions: Map<string, ConnectedClient> = new Map();
   private pendingTransfers: Map<string, ConnectedClient> = new Map();
+  private snakeScores: SnakeScore[] = [];
 
   private static instance: UserManager | null = null;
 
@@ -27,6 +36,8 @@ export class UserManager {
 
   constructor() {
     this.loadUsers();
+    this.loadSnakeScores();
+    this.migrateSnakeScores();
   }
 
   // Generate a random salt
@@ -112,6 +123,13 @@ export class UserManager {
         }
       });
 
+      // Ensure snakeHighScore is initialized if missing
+      this.users.forEach(user => {
+        if (user.snakeHighScore === undefined) {
+          user.snakeHighScore = 0;
+        }
+      });
+
       // Migrate any users with plain text passwords
       this.migrateUsersToHashedPasswords();
 
@@ -137,6 +155,90 @@ export class UserManager {
    */
   public forceSave(): void {
     this.saveUsers();
+  }
+
+  // Load snake scores from the dedicated file
+  private loadSnakeScores(): void {
+    try {
+      // Create snake scores file if it doesn't exist
+      if (!fs.existsSync(SNAKE_SCORES_FILE)) {
+        fs.writeFileSync(SNAKE_SCORES_FILE, JSON.stringify({ scores: [] }, null, 2));
+        return;
+      }
+
+      const data = fs.readFileSync(SNAKE_SCORES_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      
+      // Ensure scores is an array
+      if (!Array.isArray(parsed.scores)) {
+        this.snakeScores = [];
+        return;
+      }
+      
+      // Convert date strings back to Date objects
+      this.snakeScores = parsed.scores.map((score: any) => ({
+        username: score.username,
+        score: score.score,
+        date: new Date(score.date)
+      }));
+      
+      console.log(`[UserManager] Loaded ${this.snakeScores.length} snake scores from file`);
+    } catch (error) {
+      console.error('Error loading snake scores:', error);
+      this.snakeScores = [];
+    }
+  }
+
+  // Save snake scores to the dedicated file
+  private saveSnakeScores(): void {
+    try {
+      const data = {
+        scores: this.snakeScores
+      };
+      fs.writeFileSync(SNAKE_SCORES_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+      console.error('Error saving snake scores:', error);
+    }
+  }
+
+  // Migrate any existing snake scores from users.json to snake-scores.json
+  private migrateSnakeScores(): void {
+    let migrationCount = 0;
+    
+    // Check each user for a snakeHighScore
+    this.users.forEach(user => {
+      if (user.snakeHighScore && user.snakeHighScore > 0) {
+        const username = user.username;
+        const score = user.snakeHighScore;
+        
+        // Check if we already have this score in the new system
+        const existingScoreIndex = this.snakeScores.findIndex(s => s.username === username);
+        
+        if (existingScoreIndex === -1) {
+          // Add as a new score
+          this.snakeScores.push({
+            username,
+            score,
+            date: new Date() // We don't know the original date, so use current
+          });
+          migrationCount++;
+        } else if (score > this.snakeScores[existingScoreIndex].score) {
+          // Update existing score if higher
+          this.snakeScores[existingScoreIndex].score = score;
+          migrationCount++;
+        }
+        
+        // Clear the score from the user object
+        delete user.snakeHighScore;
+      }
+    });
+    
+    if (migrationCount > 0) {
+      console.log(`[UserManager] Migrated ${migrationCount} snake scores from users.json to snake-scores.json`);
+      // Save both files
+      this.saveUsers();
+      this.saveSnakeScores();
+    }
   }
 
   public getUser(username: string): User | undefined {
@@ -485,26 +587,50 @@ export class UserManager {
   public saveHighScore(scoreData: { username: string, score: number }): void {
     if (!scoreData.username || scoreData.score <= 0) return;
 
-    // Get the user
-    const user = this.getUser(scoreData.username);
-    if (!user) return;
-
-    // Only update if the new score is higher than the existing one
-    if (!user.snakeHighScore || scoreData.score > user.snakeHighScore) {
-      user.snakeHighScore = scoreData.score;
-      this.saveUsers();
+    // Get the username in standardized form
+    const username = standardizeUsername(scoreData.username);
+    
+    // Check if the user exists
+    if (!this.userExists(username)) return;
+    
+    // Find existing score for this user
+    const existingScoreIndex = this.snakeScores.findIndex(s => s.username === username);
+    
+    if (existingScoreIndex >= 0) {
+      // Only update if new score is higher
+      if (scoreData.score > this.snakeScores[existingScoreIndex].score) {
+        this.snakeScores[existingScoreIndex] = {
+          username,
+          score: scoreData.score,
+          date: new Date()
+        };
+        
+        // Save to file
+        this.saveSnakeScores();
+        console.log(`[UserManager] Updated snake high score for ${username}: ${scoreData.score}`);
+      }
+    } else {
+      // New high score for this user
+      this.snakeScores.push({
+        username,
+        score: scoreData.score,
+        date: new Date()
+      });
+      
+      // Save to file
+      this.saveSnakeScores();
+      console.log(`[UserManager] Added new snake high score for ${username}: ${scoreData.score}`);
     }
   }
 
   // Get all snake game high scores, sorted from highest to lowest
   public getSnakeHighScores(limit: number = 10): { username: string, score: number }[] {
-    return this.users
-      .filter(user => user.snakeHighScore && user.snakeHighScore > 0)
-      .map(user => ({
-        username: user.username,
-        score: user.snakeHighScore as number
-      }))
+    return this.snakeScores
       .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(score => ({
+        username: score.username,
+        score: score.score
+      }));
   }
 }
