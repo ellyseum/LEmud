@@ -851,14 +851,23 @@ export class RoomManager {
   }
 
   /**
-   * Get an NPC from the room by name
+   * Get an NPC from the room by name, supporting partial name matching
    */
   public getNPCFromRoom(roomId: string, npcName: string): NPC | null {
     const room = this.getRoom(roomId);
     if (!room) return null;
 
-    // Look for the NPC name in the room
-    const foundNPCName = room.npcs.find(name => name.toLowerCase() === npcName.toLowerCase());
+    // Normalize the input name
+    const normalizedInput = npcName.toLowerCase().trim();
+
+    // First try exact match
+    let foundNPCName = room.npcs.find(name => name.toLowerCase() === normalizedInput);
+    
+    // If no exact match, try partial match
+    if (!foundNPCName) {
+      foundNPCName = room.npcs.find(name => name.toLowerCase().includes(normalizedInput));
+    }
+    
     if (!foundNPCName) return null;
 
     // Check if we already have this NPC instance in our map
