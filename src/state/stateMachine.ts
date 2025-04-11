@@ -96,4 +96,11 @@ export class StateMachine {
       console.error(`No handler for state "${client.state}"`);
     }
   }
+
+  /**
+   * Get the clients map
+   */
+  public getClients(): Map<string, ConnectedClient> {
+    return this.clients;
+  }
 }

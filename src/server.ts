@@ -24,6 +24,7 @@ import { getPromptText } from './utils/promptFormatter';
 import { GameTimerManager } from './timer/gameTimerManager';
 import { CombatSystem } from './combat/combatSystem';
 import { AdminLevel } from './command/commands/adminmanage.command';
+import { SnakeGameState } from './states/snake-game.state';
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -37,6 +38,9 @@ const commandHandler = new CommandHandler(clients, userManager, roomManager, und
 
 // Initialize the game timer manager with userManager and roomManager
 const gameTimerManager = GameTimerManager.getInstance(userManager, roomManager);
+
+// Share the global clients map with SnakeGameState
+SnakeGameState.setGlobalClients(clients);
 
 // Secret key for JWT tokens - same as in adminApi.ts
 const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
