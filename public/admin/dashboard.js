@@ -622,6 +622,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let monitorTerm = null; // xterm.js terminal instance
     let isUserInputBlocked = false; // Track if user input is blocked
 
+    // When starting the monitoring, also show the send message button
     function startMonitoring(clientId, playerName) {
         // If already monitoring someone, disconnect first
         if (monitorSocket) {
@@ -635,6 +636,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         document.getElementById('stop-monitoring').classList.remove('d-none');
         document.getElementById('block-user-input').classList.remove('d-none');
+        document.getElementById('send-admin-message').classList.remove('d-none');
         document.getElementById('admin-command-form').classList.remove('d-none');
         
         // Reset the input blocking state
@@ -733,8 +735,54 @@ document.addEventListener('DOMContentLoaded', () => {
         
         document.getElementById('monitor-info').classList.add('d-none');
         document.getElementById('stop-monitoring').classList.add('d-none');
+        document.getElementById('block-user-input').classList.add('d-none');
+        document.getElementById('send-admin-message').classList.add('d-none');
         document.getElementById('admin-command-form').classList.add('d-none');
         currentlyMonitoringId = null;
+    });
+
+    // Admin Message Modal
+    const adminMessageModal = new bootstrap.Modal(document.getElementById('adminMessageModal'));
+    
+    // Handle the Send Admin Message button
+    document.getElementById('send-admin-message').addEventListener('click', () => {
+        if (!currentlyMonitoringId) return;
+        
+        // Set the player name in the modal
+        const monitorInfo = document.getElementById('monitor-info');
+        const playerNameSpan = monitorInfo.querySelector('span');
+        const playerName = playerNameSpan ? playerNameSpan.textContent : 'player';
+        
+        document.getElementById('message-player-name').textContent = playerName;
+        document.getElementById('admin-message-text').value = '';
+        
+        // Show the modal
+        adminMessageModal.show();
+    });
+    
+    // Handle sending the admin message
+    document.getElementById('confirm-send-message').addEventListener('click', () => {
+        if (!monitorSocket || !currentlyMonitoringId) return;
+        
+        const messageText = document.getElementById('admin-message-text').value.trim();
+        if (!messageText) {
+            alert('Please enter a message to send');
+            return;
+        }
+        
+        // Send the message to the server
+        monitorSocket.emit('admin-message', {
+            clientId: currentlyMonitoringId,
+            message: messageText
+        });
+        
+        // Show confirmation in the admin terminal
+        if (monitorTerm) {
+            monitorTerm.write(`\r\n\x1b[36mAdmin message sent: "${messageText}"\x1b[0m\r\n`);
+        }
+        
+        // Hide the modal
+        adminMessageModal.hide();
     });
 
     // When page is unloaded, make sure to stop monitoring
