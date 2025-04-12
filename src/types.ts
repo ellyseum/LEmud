@@ -110,6 +110,8 @@ export interface User {
   inCombat?: boolean; // Add combat status
   isUnconscious?: boolean; // Add unconscious status
   snakeHighScore?: number; // Add high score for Snake game
+  movementRestricted?: boolean; // Flag to restrict player movement
+  movementRestrictedReason?: string; // Custom reason why movement is restricted
 }
 
 export interface ConnectedClient {

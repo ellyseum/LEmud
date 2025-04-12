@@ -178,6 +178,13 @@ export class RoomManager {
   public movePlayerWithDelay(client: ConnectedClient, direction: string): boolean {
     if (!client.user) return false;
 
+    // Check if player movement is restricted
+    if (client.user.movementRestricted) {
+      const reason = client.user.movementRestrictedReason || "You are unable to move.";
+      writeToClient(client, colorize(`${reason}\r\n`, 'red'));
+      return false;
+    }
+
     // Get current room
     const currentRoomId = client.user.currentRoomId || this.getStartingRoomId();
     const currentRoom = this.getRoom(currentRoomId);
