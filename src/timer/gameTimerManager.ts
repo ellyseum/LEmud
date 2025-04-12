@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import { RoomManager } from '../room/roomManager';
 import { UserManager } from '../user/userManager';
 import { CombatSystem } from '../combat/combatSystem';
+import { EffectManager } from '../effects/effectManager';
 
 // Configuration interface for the game timer system
 export interface GameTimerConfig {
@@ -64,6 +65,7 @@ export class GameTimerManager extends EventEmitter {
   private userManager: UserManager;
   private roomManager: RoomManager;
   private combatSystem: CombatSystem;
+  private effectManager: EffectManager;
   
   private constructor(userManager: UserManager, roomManager: RoomManager) {
     super();
@@ -73,6 +75,8 @@ export class GameTimerManager extends EventEmitter {
     this.roomManager = roomManager;
     // Get the singleton instance instead of creating a new one
     this.combatSystem = CombatSystem.getInstance(userManager, roomManager);
+    // Get the EffectManager instance
+    this.effectManager = EffectManager.getInstance(userManager, roomManager);
   }
   
   /**
@@ -172,6 +176,9 @@ export class GameTimerManager extends EventEmitter {
   private tick(): void {
     this.tickCount++;
     console.log(`Game tick ${this.tickCount}`);
+    
+    // Process effects first so stat modifiers apply to subsequent actions
+    this.effectManager.processGameTick(this.tickCount);
     
     // Process all combat rounds for players actively engaged in combat
     this.combatSystem.processCombatRound();

@@ -4,6 +4,7 @@ import './attack.command';
 import './break.command';
 import './damage.command';
 import './drop.command';
+import './effect.command'; // Add our new effect command
 import './equip.command';
 import './equipment.command';
 import './get.command';

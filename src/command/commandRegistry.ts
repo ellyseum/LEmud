@@ -12,6 +12,7 @@ import { ListCommand } from './commands/list.command';
 import { StatsCommand } from './commands/stats.command';
 import { HealCommand } from './commands/heal.command';
 import { DamageCommand } from './commands/damage.command';
+import { EffectCommand } from './commands/effect.command'; // Import our new Effect command
 import { HelpCommand } from './commands/help.command';
 import { QuitCommand } from './commands/quit.command';
 import { LookCommand } from './commands/look.command';
@@ -90,6 +91,7 @@ export class CommandRegistry {
       new StatsCommand(),
       new HealCommand(this.userManager),
       new DamageCommand(this.userManager),
+      new EffectCommand(this.userManager, this.roomManager), // Add our new Effect command
       new QuitCommand(this.userManager, this.clients),
       new LookCommand(this.clients),
       new MoveCommand(this.clients),
@@ -159,6 +161,9 @@ export class CommandRegistry {
     this.aliases.set('gi', {commandName: 'giveitem'});
     this.aliases.set('admin', {commandName: 'adminmanage'});
     this.aliases.set('admins', {commandName: 'adminmanage', args: 'list'});
+    // Add aliases for effects command
+    this.aliases.set('eff', {commandName: 'effect'});
+    this.aliases.set('effs', {commandName: 'effect', args: 'list'});
     // Add aliases for scores command
     this.aliases.set('highscores', {commandName: 'scores'});
     this.aliases.set('leaderboard', {commandName: 'scores'});
