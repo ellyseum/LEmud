@@ -36,6 +36,7 @@ import { SnakeCommand } from './commands/snake.command';
 import { ScoresCommand } from './commands/scores.command';
 import { DebugCommand } from './commands/debug.command'; // Import our new Debug command
 import { RestrictCommand } from './commands/restrict.command'; // Import our new Restrict command
+import { RootCommand } from './commands/root.command'; // Import our new Root command
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -116,7 +117,8 @@ export class CommandRegistry {
       snakeCommand, // Add SnakeCommand instance
       new ScoresCommand(), // Add ScoresCommand instance
       new DebugCommand(this.roomManager, this.userManager, this.combatSystem), // Add our new Debug command
-      new RestrictCommand(this.userManager) // Add our new Restrict command
+      new RestrictCommand(this.userManager), // Add our new Restrict command
+      new RootCommand(this.userManager, this.roomManager) // Add our new Root command
     ];
     
     // Register all commands

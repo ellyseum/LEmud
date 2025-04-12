@@ -42,6 +42,9 @@ export interface EffectPayload {
   };
   blockMovement?: boolean;        // Whether movement is blocked
   blockCombat?: boolean;          // Whether combat is blocked
+  metadata?: {                    // Custom metadata for specialized effects
+    [key: string]: any;           // Custom data associated with the effect
+  };
   // Add more payload options as needed
 }
 

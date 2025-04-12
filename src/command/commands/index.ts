@@ -19,7 +19,8 @@ import './look.command';
 import './move.command';
 import './pickup.command';
 import './quit.command';
-import './restrict.command'; // Import our new restrict command
+import './restrict.command'; // Import our restrict command
+import './root.command'; // Import our new root command
 import './say.command';
 import './scores.command';
 import './snake.command';

@@ -366,7 +366,7 @@ export class EffectManager extends EventEmitter {
                     this.applyEffectPayload(effect, targetId, isPlayer);
                 } else {
                     console.log(`[EffectManager] Skipping effect ${effect.type} (${effect.id}) - not ready to tick yet`);
-                    console.log(`[EffectManager] isTimeBased=${effect.isTimeBased}, tickInterval=${effect.tickInterval}, lastTick=${effect.lastTickApplied}, diff=${currentTick - effect.lastTickApplied}`);
+                    console.log(`[EffectManager] isTimeBased=${effect.isTimeBased}, tickInterval=${effect.tickInterval}, lastTick=${effect.lastTickApplied}, diff=${currentTick - effect.lastTickApplied}, realTimeIntervalMs=${effect.realTimeIntervalMs || 'undefined'}`);
                 }
             }
         };
