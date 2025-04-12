@@ -187,13 +187,54 @@ io.on('connection', (socket) => {
           
           // Pause briefly to ensure the line is cleared
           setTimeout(() => {
-            // Simulate the user typing this command by sending each character
-            for (const char of commandStr) {
-              handleClientData(client, char);
+            // When input is blocked, bypass the normal input handler and directly process the command
+            if (client.isInputBlocked === true) {
+              // Write the command to the client's console so they can see what the admin is doing
+              client.connection.write(`\r\n\x1b[33mAdmin executed: ${commandStr}\x1b[0m\r\n`);
+              
+              // Process the command directly without going through handleClientData
+              const line = commandStr.trim();
+              
+              // Echo a newline to ensure clean output
+              client.connection.write('\r\n');
+              
+              // Process the input directly
+              processInput(client, line);
+            } else {
+              // Normal flow - simulate the user typing this command by sending each character
+              for (const char of commandStr) {
+                handleClientData(client, char);
+              }
+              // Send enter key to execute the command
+              handleClientData(client, '\r');
             }
-            // Send enter key to execute the command
-            handleClientData(client, '\r');
           }, 50);
+        }
+      });
+      
+      // Handle block user input toggle button
+      socket.on('block-user-input', (blockData) => {
+        if (blockData.clientId === clientId && client.authenticated) {
+          // Set the input blocking state on the client
+          client.isInputBlocked = blockData.blocked;
+          
+          console.log(`Admin has ${blockData.blocked ? 'blocked' : 'unblocked'} input for client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+          
+          // Notify the user that their input has been blocked/unblocked
+          if (client.authenticated) {
+            if (blockData.blocked) {
+              client.connection.write('\r\n\x1b[33mAn admin has temporarily disabled your input ability.\x1b[0m\r\n');
+            } else {
+              client.connection.write('\r\n\x1b[33mAn admin has re-enabled your input ability.\x1b[0m\r\n');
+            }
+            
+            // Re-display the prompt
+            const promptText = getPromptText(client);
+            client.connection.write(promptText);
+            if (client.buffer.length > 0) {
+              client.connection.write(client.buffer);
+            }
+          }
         }
       });
       
@@ -202,6 +243,7 @@ io.on('connection', (socket) => {
         if (client && client.adminMonitorSocket === socket) {
           delete client.adminMonitorSocket;
           client.isBeingMonitored = false;
+          client.isInputBlocked = false; // Make sure to unblock input when admin disconnects
         }
       });
     });
@@ -216,6 +258,7 @@ io.on('connection', (socket) => {
     if (client && client.adminMonitorSocket === socket) {
       console.log(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
       client.isBeingMonitored = false;
+      client.isInputBlocked = false; // Also unblock input when monitoring stops
       client.adminMonitorSocket = undefined;
     }
   });
@@ -250,7 +293,8 @@ function setupClient(connection: IConnection): void {
     outputBuffer: [],
     connectedAt: Date.now(), // Add connectedAt property
     lastActivity: Date.now(),  // Add lastActivity property
-    isBeingMonitored: false // Add default for monitoring flag
+    isBeingMonitored: false, // Add default for monitoring flag
+    isInputBlocked: false // Add default for input blocking flag
   };
   
   const clientId = connection.getId();
@@ -321,6 +365,76 @@ function handleClientDisconnect(client: ConnectedClient, clientId: string, broad
 
 // Unified handler for client data (both TELNET and WebSocket)
 function handleClientData(client: ConnectedClient, data: string): void {
+  // Check if input is blocked by an admin - stricter implementation
+  if (client.isInputBlocked === true && client.authenticated) {
+    // Allow only special terminal control commands for UI responsiveness
+    // Ctrl+C, Ctrl+Z and other essential control sequences should still work
+    
+    // For all normal input, show message and prevent further processing
+    if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) <= 126) {
+      // Only show the message for printable characters, not for every control sequence
+      client.connection.write('\r\n\x1b[33mYour input has been disabled by an admin.\x1b[0m\r\n');
+      
+      // Re-display the prompt
+      const promptText = getPromptText(client);
+      client.connection.write(promptText);
+      if (client.buffer.length > 0) {
+        client.connection.write(client.buffer);
+      }
+      
+      return; // Block further processing
+    }
+    
+    // For Enter key, still notify but don't process commands
+    if (data === '\r' || data === '\n' || data === '\r\n') {
+      if (client.buffer.length > 0) {
+        client.connection.write('\r\n\x1b[33mYour input has been disabled by an admin.\x1b[0m\r\n');
+        
+        // Clear the buffer
+        client.buffer = '';
+        client.cursorPos = 0;
+        
+        // Re-display prompt
+        const promptText = getPromptText(client);
+        client.connection.write(promptText);
+        
+        return; // Block further processing
+      }
+    }
+    
+    // Allow backspace to clear input buffer, but don't run commands
+    if (data === '\b' || data === '\x7F') {
+      // Let backspace work normally to provide responsive terminal feel
+      if (client.buffer.length > 0) {
+        // Initialize cursor position if not defined
+        if (client.cursorPos === undefined) {
+          client.cursorPos = client.buffer.length;
+        }
+        
+        if (client.cursorPos > 0) {
+          if (client.cursorPos === client.buffer.length) {
+            client.buffer = client.buffer.slice(0, -1);
+            client.cursorPos--;
+            client.connection.write('\b \b');
+          } else {
+            const newBuffer = client.buffer.slice(0, client.cursorPos - 1) + client.buffer.slice(client.cursorPos);
+            redrawInputLine(client, newBuffer, client.cursorPos - 1);
+          }
+        }
+      }
+      return; // Block further processing
+    }
+    
+    // Allow arrow keys and other navigation controls for better UX
+    if (data.startsWith('\u001b[') || data.startsWith('\u001bO')) {
+      // Process navigation keys normally
+      // They won't execute commands, just improve UX
+    } else {
+      // Block all other input when input is disabled
+      return;
+    }
+  }
+  
   // Start buffering output when user begins typing
   if (client.buffer.length === 0 && !client.isTyping) {
     client.isTyping = true;
@@ -1165,13 +1279,54 @@ const startServer = async () => {
             
             // Pause briefly to ensure the line is cleared
             setTimeout(() => {
-              // Simulate the user typing this command by sending each character
-              for (const char of commandStr) {
-                handleClientData(client, char);
+              // When input is blocked, bypass the normal input handler and directly process the command
+              if (client.isInputBlocked === true) {
+                // Write the command to the client's console so they can see what the admin is doing
+                client.connection.write(`\r\n\x1b[33mAdmin executed: ${commandStr}\x1b[0m\r\n`);
+                
+                // Process the command directly without going through handleClientData
+                const line = commandStr.trim();
+                
+                // Echo a newline to ensure clean output
+                client.connection.write('\r\n');
+                
+                // Process the input directly
+                processInput(client, line);
+              } else {
+                // Normal flow - simulate the user typing this command by sending each character
+                for (const char of commandStr) {
+                  handleClientData(client, char);
+                }
+                // Send enter key to execute the command
+                handleClientData(client, '\r');
               }
-              // Send enter key to execute the command
-              handleClientData(client, '\r');
             }, 50);
+          }
+        });
+        
+        // Handle block user input toggle button
+        socket.on('block-user-input', (blockData) => {
+          if (blockData.clientId === clientId && client.authenticated) {
+            // Set the input blocking state on the client
+            client.isInputBlocked = blockData.blocked;
+            
+            console.log(`Admin has ${blockData.blocked ? 'blocked' : 'unblocked'} input for client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+            
+            // Notify the user that their input has been blocked/unblocked
+            if (client.authenticated) {
+              if (blockData.blocked) {
+                client.connection.write('\r\n\x1b[33mAn admin has temporarily disabled your input ability.\x1b[0m\r\n');
+              } else {
+                client.connection.write('\r\n\x1b[33mAn admin has re-enabled your input ability.\x1b[0m\r\n');
+              }
+              
+              // Re-display the prompt
+              const promptText = getPromptText(client);
+              client.connection.write(promptText);
+              if (client.buffer.length > 0) {
+                client.connection.write(client.buffer);
+              }
+            }
           }
         });
         
@@ -1180,6 +1335,7 @@ const startServer = async () => {
           if (client && client.adminMonitorSocket === socket) {
             delete client.adminMonitorSocket;
             client.isBeingMonitored = false;
+            client.isInputBlocked = false; // Make sure to unblock input when admin disconnects
           }
         });
       });
@@ -1194,6 +1350,7 @@ const startServer = async () => {
       if (client && client.adminMonitorSocket === socket) {
         console.log(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
         client.isBeingMonitored = false;
+        client.isInputBlocked = false; // Also unblock input when monitoring stops
         client.adminMonitorSocket = undefined;
       }
     });

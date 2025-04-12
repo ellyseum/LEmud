@@ -130,6 +130,7 @@ export interface ConnectedClient {
   lastActivity: number;
   isBeingMonitored: boolean;
   adminMonitorSocket?: any;
+  isInputBlocked?: boolean; // Add flag to track if admin blocked user input
   
   // Add tempUsername property
   tempUsername?: string;

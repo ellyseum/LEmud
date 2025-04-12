@@ -620,6 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let monitorSocket = null;
     let currentlyMonitoringId = null;
     let monitorTerm = null; // xterm.js terminal instance
+    let isUserInputBlocked = false; // Track if user input is blocked
 
     function startMonitoring(clientId, playerName) {
         // If already monitoring someone, disconnect first
@@ -633,7 +634,12 @@ document.addEventListener('DOMContentLoaded', () => {
         monitorInfo.classList.remove('d-none');
         
         document.getElementById('stop-monitoring').classList.remove('d-none');
+        document.getElementById('block-user-input').classList.remove('d-none');
         document.getElementById('admin-command-form').classList.remove('d-none');
+        
+        // Reset the input blocking state
+        isUserInputBlocked = false;
+        updateBlockInputButtonState();
         
         // Store currently monitoring client id
         currentlyMonitoringId = clientId;
@@ -765,6 +771,65 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Clear the input
             commandInput.value = '';
+        }
+    });
+
+    // Function to update the block input button state
+    function updateBlockInputButtonState() {
+        const blockButton = document.getElementById('block-user-input');
+        if (blockButton) {
+            // Change button appearance based on whether input is blocked
+            if (isUserInputBlocked) {
+                blockButton.classList.remove('btn-danger');
+                blockButton.classList.add('btn-success');
+                blockButton.innerHTML = '<i class="bi bi-keyboard"></i> Resume User Input';
+                blockButton.setAttribute('data-bs-original-title', 'Allow the user to enter commands again');
+            } else {
+                blockButton.classList.remove('btn-success');
+                blockButton.classList.add('btn-danger');
+                blockButton.innerHTML = '<i class="bi bi-keyboard"></i> Stop User Input';
+                blockButton.setAttribute('data-bs-original-title', 'Prevent the user from entering commands');
+            }
+            
+            // Re-initialize tooltip to update the title
+            const tooltip = bootstrap.Tooltip.getInstance(blockButton);
+            if (tooltip) {
+                tooltip.dispose();
+            }
+            new bootstrap.Tooltip(blockButton);
+        }
+    }
+    
+    // Add event handler for the block user input button
+    document.getElementById('block-user-input').addEventListener('click', async () => {
+        if (!monitorSocket || !currentlyMonitoringId) return;
+        
+        try {
+            // Toggle the input blocking state
+            isUserInputBlocked = !isUserInputBlocked;
+            
+            // Send the block input command to the server
+            monitorSocket.emit('block-user-input', {
+                clientId: currentlyMonitoringId,
+                blocked: isUserInputBlocked
+            });
+            
+            // Update button state
+            updateBlockInputButtonState();
+            
+            // Notify in the terminal
+            if (monitorTerm) {
+                if (isUserInputBlocked) {
+                    monitorTerm.write('\r\n\x1b[33mAdmin has disabled user input\x1b[0m\r\n');
+                } else {
+                    monitorTerm.write('\r\n\x1b[33mAdmin has re-enabled user input\x1b[0m\r\n');
+                }
+            }
+        } catch (error) {
+            console.error('Error toggling user input blocking:', error);
+            if (monitorTerm) {
+                monitorTerm.write(`\r\n\x1b[31mError: ${error.message}\x1b[0m\r\n`);
+            }
         }
     });
 

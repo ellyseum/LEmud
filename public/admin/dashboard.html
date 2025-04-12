@@ -236,9 +236,14 @@
                     <div id="monitor-info" class="d-none">
                         Monitoring: <span class="text-warning">Player</span>
                     </div>
-                    <button id="stop-monitoring" class="btn btn-sm btn-warning d-none" data-bs-toggle="tooltip" data-bs-placement="left" title="Stop monitoring this player">
-                        <i class="bi bi-stop-circle"></i> Stop Monitoring
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button id="block-user-input" class="btn btn-sm btn-danger d-none" data-bs-toggle="tooltip" data-bs-placement="left" title="Prevent the user from entering commands">
+                            <i class="bi bi-keyboard"></i> Stop User Input
+                        </button>
+                        <button id="stop-monitoring" class="btn btn-sm btn-warning d-none" data-bs-toggle="tooltip" data-bs-placement="left" title="Stop monitoring this player">
+                            <i class="bi bi-stop-circle"></i> Stop Monitoring
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div id="monitor-terminal" class="admin-terminal-container"></div>
