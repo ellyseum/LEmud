@@ -619,6 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Monitor player functionality
     let monitorSocket = null;
     let currentlyMonitoringId = null;
+    let monitorTerm = null; // xterm.js terminal instance
 
     function startMonitoring(clientId, playerName) {
         // If already monitoring someone, disconnect first
@@ -634,12 +635,49 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('stop-monitoring').classList.remove('d-none');
         document.getElementById('admin-command-form').classList.remove('d-none');
         
-        // Clear previous terminal content
-        const terminal = document.getElementById('monitor-terminal');
-        terminal.innerHTML = '';
-        
         // Store currently monitoring client id
         currentlyMonitoringId = clientId;
+        
+        // Initialize xterm.js terminal if not already initialized
+        const terminalContainer = document.getElementById('monitor-terminal');
+        
+        // Clear previous terminal content
+        terminalContainer.innerHTML = '';
+        
+        // Initialize xterm.js
+        if (!monitorTerm) {
+            monitorTerm = new Terminal({
+                cursorBlink: true,
+                convertEol: true,      // Convert \n to \r\n
+                fontFamily: 'monospace',
+                fontSize: 14,
+                lineHeight: 1.2,
+                theme: {
+                    background: '#000',
+                    foreground: '#f0f0f0',
+                    cursor: '#f0f0f0'
+                }
+            });
+            
+            // Load addons
+            const fitAddon = new FitAddon.FitAddon();
+            monitorTerm.loadAddon(fitAddon);
+            monitorTerm.loadAddon(new WebLinksAddon.WebLinksAddon());
+            
+            // Open the terminal in the container element
+            monitorTerm.open(terminalContainer);
+            
+            // Make the terminal fit its container
+            fitAddon.fit();
+            
+            // Handle terminal resize
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+        } else {
+            // Clear the terminal
+            monitorTerm.clear();
+        }
         
         // Connect to Socket.IO for monitoring
         monitorSocket = io();
@@ -653,71 +691,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         monitorSocket.on('monitor-connected', (data) => {
-            addToMonitorTerminal(`Connected to ${data.username}'s session.\n`, 'system');
+            monitorTerm.write(`\r\nConnected to ${data.username}'s session.\r\n\r\n`);
         });
         
         monitorSocket.on('monitor-output', (message) => {
-            addToMonitorTerminal(convertAnsiToHtml(message.data));
+            // With xterm.js, we can send raw ANSI codes directly to the terminal
+            if (message.data) {
+                monitorTerm.write(message.data);
+            }
         });
         
         monitorSocket.on('monitor-error', (error) => {
-            addToMonitorTerminal(`Error: ${error.message}\n`, 'error');
+            monitorTerm.write(`\r\n\x1b[31mError: ${error.message}\x1b[0m\r\n`);
         });
         
         monitorSocket.on('disconnect', () => {
-            addToMonitorTerminal('Disconnected from monitoring session.\n', 'system');
+            monitorTerm.write('\r\n\x1b[36mDisconnected from monitoring session.\x1b[0m\r\n');
         });
-    }
-
-    // Add output to the monitoring terminal
-    function addToMonitorTerminal(text, className = '') {
-        const terminal = document.getElementById('monitor-terminal');
-        const span = document.createElement('span');
-        span.className = className;
-        span.innerHTML = text;
-        terminal.appendChild(span);
-        terminal.scrollTop = terminal.scrollHeight;
-    }
-
-    // Convert ANSI escape sequences to HTML
-    function convertAnsiToHtml(text) {
-        // Replace common ANSI escape codes with HTML
-        // First handle line breaks and special characters
-        let html = text
-            .replace(/\n/g, '<br>')
-            .replace(/\r/g, '')
-            .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-        
-        // Handle basic ANSI color codes
-        // This is a simplified implementation - a full implementation would handle more codes
-        
-        // Reset color
-        html = html.replace(/\x1B\[0m/g, '</span>');
-        
-        // Text colors
-        html = html.replace(/\x1B\[30m/g, '<span style="color:#000000">'); // Black
-        html = html.replace(/\x1B\[31m/g, '<span style="color:#ff0000">'); // Red
-        html = html.replace(/\x1B\[32m/g, '<span style="color:#00ff00">'); // Green
-        html = html.replace(/\x1B\[33m/g, '<span style="color:#ffff00">'); // Yellow
-        html = html.replace(/\x1B\[34m/g, '<span style="color:#0000ff">'); // Blue
-        html = html.replace(/\x1B\[35m/g, '<span style="color:#ff00ff">'); // Magenta
-        html = html.replace(/\x1B\[36m/g, '<span style="color:#00ffff">'); // Cyan
-        html = html.replace(/\x1B\[37m/g, '<span style="color:#ffffff">'); // White
-        
-        // Bright colors
-        html = html.replace(/\x1B\[1;30m/g, '<span style="color:#808080">'); // Bright Black
-        html = html.replace(/\x1B\[1;31m/g, '<span style="color:#ff5555">'); // Bright Red
-        html = html.replace(/\x1B\[1;32m/g, '<span style="color:#55ff55">'); // Bright Green
-        html = html.replace(/\x1B\[1;33m/g, '<span style="color:#ffff55">'); // Bright Yellow
-        html = html.replace(/\x1B\[1;34m/g, '<span style="color:#5555ff">'); // Bright Blue
-        html = html.replace(/\x1B\[1;35m/g, '<span style="color:#ff55ff">'); // Bright Magenta
-        html = html.replace(/\x1B\[1;36m/g, '<span style="color:#55ffff">'); // Bright Cyan
-        html = html.replace(/\x1B\[1;37m/g, '<span style="color:#ffffff">'); // Bright White
-        
-        // Clean up any remaining ANSI sequences
-        html = html.replace(/\x1B\[\d+(;\d+)*m/g, '');
-        
-        return html;
     }
 
     // Handle stop monitoring button

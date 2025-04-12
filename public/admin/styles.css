@@ -223,6 +223,31 @@ body {
     color: #e74c3c;
 }
 
+/* Monitoring terminal styles - updated for xterm.js */
+.admin-terminal-container {
+    height: 500px;
+    background-color: #000;
+    padding: 0;
+    position: relative;
+}
+
+/* Make xterm element fill the container */
+.admin-terminal-container .xterm {
+    height: 100%;
+    width: 100%;
+}
+
+/* Ensure the canvas fills the terminal */
+.admin-terminal-container .xterm-viewport {
+    /* Enable scrolling in the terminal */
+    overflow-y: auto !important;
+}
+
+.admin-terminal-container .xterm-screen {
+    /* Fix positioning */
+    position: relative !important;
+}
+
 /* Command input styling */
 #admin-command-input {
     font-family: 'Courier New', monospace;

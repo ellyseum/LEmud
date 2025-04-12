@@ -1,9 +1,6 @@
 import { ConnectedClient } from '../types';
 import { drawCommandPrompt, getPromptText } from './promptFormatter';
 
-// Max message buffering delay - not currently used but kept for potential future use
-// const MAX_OUTPUT_DELAY = 100;
-
 // Write directly to the client without buffering
 export function writeToClient(client: ConnectedClient, data: string): void {
   // Write directly to the connection
@@ -45,24 +42,19 @@ export function writeMessageToClient(client: ConnectedClient, message: string): 
     message.includes('sad meow') ||
     message.includes('moves to attack');
   
-  if (client.connection.getType() === 'telnet') {
-    // Always clear the line for combat messages
-    if (isCombatMessage || client.user.inCombat) {
-      const clearLineSequence = '\r\x1B[K';
-      writeToClient(client, clearLineSequence);
-    }
-    
-    // Write the actual message
-    writeToClient(client, message);
-    
-    // For combat messages or if in combat, always redraw the prompt
-    if (isCombatMessage || client.user.inCombat) {
-      // Use our new utility function to draw the prompt
-      drawCommandPrompt(client);
-    }
-  } else {
-    // For websocket clients, just write the message
-    writeToClient(client, message);
+  // Always clear the line for combat messages
+  if (isCombatMessage || client.user.inCombat) {
+    const clearLineSequence = '\r\x1B[K';
+    writeToClient(client, clearLineSequence);
+  }
+  
+  // Write the actual message
+  writeToClient(client, message);
+  
+  // For combat messages or if in combat, always redraw the prompt
+  if (isCombatMessage || client.user.inCombat) {
+    // Use our new utility function to draw the prompt
+    drawCommandPrompt(client);
   }
 }
 
@@ -85,8 +77,8 @@ export function stopBuffering(client: ConnectedClient): void {
   // Reset isTyping flag
   client.isTyping = false;
   
-  // Use our new utility function to draw the prompt
-  if (client.connection.getType() === 'telnet' && client.user) {
+  // Always draw prompt if user is authenticated
+  if (client.user) {
     drawCommandPrompt(client);
   }
 }

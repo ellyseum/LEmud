@@ -100,6 +100,9 @@ app.post('/api/admin/mud-config', AdminApi.validateToken, AdminApi.updateMUDConf
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Serve xterm.js files from node_modules
+app.use('/node_modules', express.static(path.join(__dirname, '..', 'node_modules')));
+
 // Create the HTTP server with the Express app
 const httpServer = http.createServer(app);
 

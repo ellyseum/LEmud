@@ -100,6 +100,28 @@ body {
   50% { opacity: 0; }
 }
 
+/* xterm.js container needs full size */
+#terminal {
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Override xterm-specific styles */
+.xterm {
+    height: 100%;
+    padding: 2px;
+}
+
+.xterm-viewport {
+    /* Enable scrolling in the terminal */
+    overflow-y: auto !important;
+}
+
+.xterm-screen {
+    /* Fix positioning */
+    position: relative !important;
+}
+
 .admin-link {
     margin-left: 15px;
     color: #999;

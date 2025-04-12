@@ -45,34 +45,10 @@ export class SocketIOConnection extends EventEmitter implements IConnection {
     });
   }
 
-  private convertAnsiToHtml(text: string): string {
-    // More comprehensive conversion of ANSI color codes to HTML
-    let htmlData = text
-      .replace(/\r\n/g, '<br>')
-      .replace(/\n/g, '<br>')
-      .replace(/\r/g, '<br>') // Make sure standalone \r is also handled
-      .replace(/\x1b\[0m/g, '</span>')
-      .replace(/\x1b\[1m/g, '<span class="bright">')
-      .replace(/\x1b\[2m/g, '<span class="dim">')
-      .replace(/\x1b\[4m/g, '<span class="underline">')
-      .replace(/\x1b\[5m/g, '<span class="blink">')
-      .replace(/\x1b\[31m/g, '<span class="red">')
-      .replace(/\x1b\[32m/g, '<span class="green">')
-      .replace(/\x1b\[33m/g, '<span class="yellow">')
-      .replace(/\x1b\[34m/g, '<span class="blue">')
-      .replace(/\x1b\[35m/g, '<span class="magenta">')
-      .replace(/\x1b\[36m/g, '<span class="cyan">')
-      .replace(/\x1b\[37m/g, '<span class="white">')
-      // Handle the clear screen command
-      .replace(/\x1b\[2J\x1b\[0;0H/g, '<!-- clear -->');
-
-    return htmlData;
-  }
-
   public write(data: string): void {
-    // Convert ANSI to HTML before sending to the client
-    const htmlData = this.convertAnsiToHtml(data);
-    this.socket.emit('output', { data: htmlData });
+    // Now that we're using xterm.js, we can send raw ANSI codes directly
+    // without converting to HTML - xterm.js will handle them natively
+    this.socket.emit('output', { data });
   }
 
   public end(): void {

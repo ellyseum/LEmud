@@ -5,8 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Terminal Emulator</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Add xterm.js CSS -->
+    <link rel="stylesheet" href="/node_modules/xterm/css/xterm.css">
     <!-- Add Socket.IO client script -->
     <script src="/socket.io/socket.io.js"></script>
+    <!-- Add xterm.js scripts -->
+    <script src="/node_modules/xterm/lib/xterm.js"></script>
+    <script src="/node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script src="/node_modules/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
 </head>
 <body>
     <div class="terminal-container">
@@ -17,9 +23,8 @@
                 <a href="/admin" class="admin-link" title="Admin Dashboard">Admin</a>
             </div>
         </div>
-        <div id="terminal-output" class="terminal-output" tabindex="0">
-            <!-- Terminal output will be displayed here -->
-            <!-- The cursor will be displayed here too -->
+        <div id="terminal" class="terminal-container">
+            <!-- xterm.js will render here -->
         </div>
     </div>
     <script src="client.js"></script>
