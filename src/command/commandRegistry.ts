@@ -106,8 +106,8 @@ export class CommandRegistry {
       new UnequipCommand(),
       new EquipmentCommand(),
       new GiveItemCommand(this.userManager),
-      // Use SudoCommand singleton instead of creating a new instance
-      SudoCommand.getInstance(this.userManager),
+      // Use SudoCommand singleton instance without passing userManager
+      SudoCommand.getInstance(),
       new AdminManageCommand(this.userManager),
       snakeCommand, // Add SnakeCommand instance
       new ScoresCommand() // Add ScoresCommand instance

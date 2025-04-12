@@ -34,7 +34,7 @@ export class UserManager {
     return UserManager.instance;
   }
 
-  constructor() {
+  private constructor() {
     this.loadUsers();
     this.loadSnakeScores();
     this.migrateSnakeScores();

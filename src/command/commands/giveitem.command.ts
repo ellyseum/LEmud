@@ -29,9 +29,9 @@ export class GiveItemCommand implements Command {
       sudoCommand = client.stateData.commands.get('sudo') as SudoCommand;
     }
     
-    // If not found in state data, create a new instance
+    // If not found in state data, get the singleton instance
     if (!sudoCommand) {
-      sudoCommand = new SudoCommand(this.userManager);
+      sudoCommand = SudoCommand.getInstance();
     }
     
     // Check if the user has admin privileges

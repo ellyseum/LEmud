@@ -30,7 +30,7 @@ const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid req
 const WS_PORT = 8080; // WebSocket port
 
 // Initialize server components
-const userManager = new UserManager();
+const userManager = UserManager.getInstance();
 const clients = new Map<string, ConnectedClient>();
 const roomManager = RoomManager.getInstance(clients);
 const stateMachine = new StateMachine(userManager, clients);

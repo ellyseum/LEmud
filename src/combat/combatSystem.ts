@@ -24,7 +24,7 @@ export class CombatSystem {
   // Current combat round
   private currentRound: number = 0;
   
-  constructor(
+  private constructor(
     private userManager: UserManager,
     private roomManager: RoomManager
   ) {}

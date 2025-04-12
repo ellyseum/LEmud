@@ -34,7 +34,7 @@ export class CommandHandler {
     // Get or create the combat system
     const combatSys = this.combatSystem || 
       (GameTimerManager.getInstance(this.userManager, roomMgr)?.getCombatSystem() || 
-      new CombatSystem(this.userManager, roomMgr));
+      CombatSystem.getInstance(this.userManager, roomMgr));
     
     // Get the singleton instance of CommandRegistry instead of creating a new one
     this.commands = CommandRegistry.getInstance(

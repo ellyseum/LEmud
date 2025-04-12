@@ -5,7 +5,6 @@ import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
-import { UserManager } from '../../user/userManager';
 import { AdminLevel, AdminUser } from './adminmanage.command';
 // Import drawCommandPrompt to force prompt redraw
 import { drawCommandPrompt } from '../../utils/promptFormatter';
@@ -14,7 +13,6 @@ import { CommandRegistry } from '../commandRegistry';
 export class SudoCommand implements Command {
   name = 'sudo';
   description = 'Toggle admin access for authorized users';
-  private userManager: UserManager;
   private adminUsers: AdminUser[] = [];
   private static activeAdmins: Set<string> = new Set(); // Track users with active admin privileges
   private adminFilePath: string;
@@ -26,9 +24,9 @@ export class SudoCommand implements Command {
   /**
    * Get the singleton instance of SudoCommand
    */
-  public static getInstance(userManager: UserManager): SudoCommand {
+  public static getInstance(): SudoCommand {
     if (!SudoCommand.instance) {
-      SudoCommand.instance = new SudoCommand(userManager);
+      SudoCommand.instance = new SudoCommand();
     }
     return SudoCommand.instance;
   }
@@ -40,8 +38,7 @@ export class SudoCommand implements Command {
     SudoCommand.commandRegistry = registry;
   }
 
-  constructor(userManager: UserManager) {
-    this.userManager = userManager;
+  private constructor() {
     this.adminFilePath = path.join(__dirname, '../../../data/admin.json');
     this.loadAdminUsers();
   }

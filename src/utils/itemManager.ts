@@ -17,7 +17,7 @@ export class ItemManager {
     return ItemManager.instance;
   }
 
-  constructor() {
+  private constructor() {
     this.loadItems();
   }
 
