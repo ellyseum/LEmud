@@ -6,6 +6,7 @@ import { UserManager } from '../../user/userManager';
 import { RoomManager } from '../../room/roomManager';
 import { EffectManager } from '../../effects/effectManager';
 import { EffectType } from '../../types/effects';
+import { NPC } from '../../combat/npc';
 
 export class EffectCommand implements Command {
   name = 'effect';
@@ -94,22 +95,59 @@ export class EffectCommand implements Command {
     const targetClient = this.userManager.getActiveUserSession(targetName);
     let isPlayer = true;
     let targetId = targetName;
+    let targetDisplayName = targetName;
     
     if (!targetClient) {
-      // Check if target is an NPC in the current room
-      const roomId = client.user.currentRoomId;
-      const room = this.roomManager.getRoom(roomId);
+      // Not a player, check if it's an NPC in the current room
+      isPlayer = false;
       
-      if (!room || !room.npcs || !room.npcs.includes(targetName)) {
+      const roomId = client.user.currentRoomId;
+      if (!roomId) {
         writeFormattedMessageToClient(
           client,
-          `\r\n\x1b[31mTarget '${targetName}' not found. Must be a player or NPC in your room.\x1b[0m\r\n`
+          `\r\n\x1b[31mError: You're not in a valid room.\x1b[0m\r\n`
         );
         return;
       }
       
-      isPlayer = false;
-      targetId = targetName;
+      const room = this.roomManager.getRoom(roomId);
+      if (!room) {
+        writeFormattedMessageToClient(
+          client,
+          `\r\n\x1b[31mError: Could not find your current room.\x1b[0m\r\n`
+        );
+        return;
+      }
+      
+      // Try to find an NPC with the given instance ID first
+      let npc = room.getNPC(targetName);
+      
+      // If not found by instance ID, try to find by name (template ID)
+      if (!npc) {
+        const matchingNPCs = room.findNPCsByTemplateId(targetName);
+        if (matchingNPCs.length > 0) {
+          npc = matchingNPCs[0];
+        } else {
+          // Try to find by name
+          const npcsMatchingName = Array.from(room.npcs.values()).filter(n => 
+            n.name.toLowerCase() === targetName.toLowerCase());
+          
+          if (npcsMatchingName.length > 0) {
+            npc = npcsMatchingName[0];
+          }
+        }
+      }
+      
+      if (!npc) {
+        writeFormattedMessageToClient(
+          client,
+          `\r\n\x1b[31mTarget NPC '${targetName}' not found in your room.\x1b[0m\r\n`
+        );
+        return;
+      }
+      
+      targetId = npc.instanceId;
+      targetDisplayName = npc.name;
     }
 
     // Create effect payload based on effect type
@@ -172,7 +210,7 @@ export class EffectCommand implements Command {
 
     writeFormattedMessageToClient(
       client,
-      `\r\n\x1b[32mApplied ${effectType} effect to ${targetName} for ${durationTicks} ticks.\x1b[0m\r\n`
+      `\r\n\x1b[32mApplied ${effectType} effect to ${targetDisplayName} (${targetId}) for ${durationTicks} ticks.\x1b[0m\r\n`
     );
   }
 
@@ -192,34 +230,73 @@ export class EffectCommand implements Command {
     }
 
     const targetName = args[0];
+    let targetId = targetName;
+    let targetDisplayName = targetName;
+    let isPlayer = true;
     
     // Find the target (player or NPC)
-    let isPlayer = true;
     const targetClient = this.userManager.getActiveUserSession(targetName);
     
     if (!targetClient) {
-      // Check if target is an NPC
-      const roomId = client.user.currentRoomId;
-      const room = this.roomManager.getRoom(roomId);
+      // Not a player, check if it's an NPC
+      isPlayer = false;
       
-      if (!room || !room.npcs || !room.npcs.includes(targetName)) {
+      const roomId = client.user.currentRoomId;
+      if (!roomId) {
         writeFormattedMessageToClient(
           client,
-          `\r\n\x1b[31mTarget '${targetName}' not found.\x1b[0m\r\n`
+          `\r\n\x1b[31mError: You're not in a valid room.\x1b[0m\r\n`
         );
         return;
       }
       
-      isPlayer = false;
+      const room = this.roomManager.getRoom(roomId);
+      if (!room) {
+        writeFormattedMessageToClient(
+          client,
+          `\r\n\x1b[31mError: Could not find your current room.\x1b[0m\r\n`
+        );
+        return;
+      }
+      
+      // Try to find NPC by instance ID first
+      let npc = room.getNPC(targetName);
+      
+      // If not found by instance ID, try to find by name or template ID
+      if (!npc) {
+        const matchingNPCs = room.findNPCsByTemplateId(targetName);
+        if (matchingNPCs.length > 0) {
+          npc = matchingNPCs[0];
+        } else {
+          // Try to find by name
+          const npcsMatchingName = Array.from(room.npcs.values()).filter(n => 
+            n.name.toLowerCase() === targetName.toLowerCase());
+          
+          if (npcsMatchingName.length > 0) {
+            npc = npcsMatchingName[0];
+          }
+        }
+      }
+      
+      if (!npc) {
+        writeFormattedMessageToClient(
+          client,
+          `\r\n\x1b[31mTarget NPC '${targetName}' not found in your room.\x1b[0m\r\n`
+        );
+        return;
+      }
+      
+      targetId = npc.instanceId;
+      targetDisplayName = npc.name;
     }
 
     // Get effects for the target
-    const effects = this.effectManager.getEffectsForTarget(targetName, isPlayer);
+    const effects = this.effectManager.getEffectsForTarget(targetId, isPlayer);
     
     if (effects.length === 0) {
       writeFormattedMessageToClient(
         client,
-        `\r\n\x1b[33m${targetName} has no active effects.\x1b[0m\r\n`
+        `\r\n\x1b[33m${targetDisplayName} has no active effects.\x1b[0m\r\n`
       );
       return;
     }
@@ -232,7 +309,7 @@ export class EffectCommand implements Command {
       if (!effect) {
         writeFormattedMessageToClient(
           client,
-          `\r\n\x1b[31mNo effect with ID ${effectId} found on ${targetName}.\x1b[0m\r\n`
+          `\r\n\x1b[31mNo effect with ID ${effectId} found on ${targetDisplayName}.\x1b[0m\r\n`
         );
         return;
       }
@@ -240,7 +317,7 @@ export class EffectCommand implements Command {
       this.effectManager.removeEffect(effectId);
       writeFormattedMessageToClient(
         client,
-        `\r\n\x1b[32mRemoved effect ${effect.name} from ${targetName}.\x1b[0m\r\n`
+        `\r\n\x1b[32mRemoved effect ${effect.name} from ${targetDisplayName}.\x1b[0m\r\n`
       );
     } else {
       // Remove all effects
@@ -252,7 +329,7 @@ export class EffectCommand implements Command {
       
       writeFormattedMessageToClient(
         client,
-        `\r\n\x1b[32mRemoved ${count} effects from ${targetName}.\x1b[0m\r\n`
+        `\r\n\x1b[32mRemoved ${count} effects from ${targetDisplayName}.\x1b[0m\r\n`
       );
     }
   }
@@ -264,42 +341,87 @@ export class EffectCommand implements Command {
       return;
     }
     
-    const targetName = args.length > 0 ? args[0] : client.user.username;
-    
-    // Find the target (player or NPC)
+    let targetId = client.user.username;
+    let targetDisplayName = client.user.username; 
     let isPlayer = true;
-    const targetClient = this.userManager.getActiveUserSession(targetName);
     
-    if (!targetClient) {
-      // Check if target is an NPC
-      const roomId = client.user.currentRoomId;
-      const room = this.roomManager.getRoom(roomId);
+    if (args.length > 0) {
+      const targetName = args[0];
       
-      if (!room || !room.npcs || !room.npcs.includes(targetName)) {
-        writeFormattedMessageToClient(
-          client,
-          `\r\n\x1b[31mTarget '${targetName}' not found.\x1b[0m\r\n`
-        );
-        return;
+      // First check if it's a player
+      const targetClient = this.userManager.getActiveUserSession(targetName);
+      
+      if (targetClient) {
+        targetId = targetName;
+        targetDisplayName = targetName;
+      } else {
+        // Not a player, check if it's an NPC
+        isPlayer = false;
+        
+        const roomId = client.user.currentRoomId;
+        if (!roomId) {
+          writeFormattedMessageToClient(
+            client,
+            `\r\n\x1b[31mError: You're not in a valid room.\x1b[0m\r\n`
+          );
+          return;
+        }
+        
+        const room = this.roomManager.getRoom(roomId);
+        if (!room) {
+          writeFormattedMessageToClient(
+            client,
+            `\r\n\x1b[31mError: Could not find your current room.\x1b[0m\r\n`
+          );
+          return;
+        }
+        
+        // Try to find NPC by instance ID first
+        let npc = room.getNPC(targetName);
+        
+        // If not found by instance ID, try to find by name or template ID
+        if (!npc) {
+          const matchingNPCs = room.findNPCsByTemplateId(targetName);
+          if (matchingNPCs.length > 0) {
+            npc = matchingNPCs[0];
+          } else {
+            // Try to find by name
+            const npcsMatchingName = Array.from(room.npcs.values()).filter(n => 
+              n.name.toLowerCase() === targetName.toLowerCase());
+            
+            if (npcsMatchingName.length > 0) {
+              npc = npcsMatchingName[0];
+            }
+          }
+        }
+        
+        if (!npc) {
+          writeFormattedMessageToClient(
+            client,
+            `\r\n\x1b[31mTarget '${targetName}' not found in your room.\x1b[0m\r\n`
+          );
+          return;
+        }
+        
+        targetId = npc.instanceId;
+        targetDisplayName = npc.name;
       }
-      
-      isPlayer = false;
     }
 
     // Get effects for the target
-    const effects = this.effectManager.getEffectsForTarget(targetName, isPlayer);
+    const effects = this.effectManager.getEffectsForTarget(targetId, isPlayer);
     
     if (effects.length === 0) {
       writeFormattedMessageToClient(
         client,
-        `\r\n\x1b[33m${targetName} has no active effects.\x1b[0m\r\n`
+        `\r\n\x1b[33m${targetDisplayName} has no active effects.\x1b[0m\r\n`
       );
       return;
     }
 
     writeFormattedMessageToClient(
       client,
-      `\r\n\x1b[36mActive effects on ${targetName}:\x1b[0m\r\n`
+      `\r\n\x1b[36mActive effects on ${targetDisplayName} (${targetId}):\x1b[0m\r\n`
     );
     
     for (const effect of effects) {

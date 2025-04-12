@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import { CombatEntity } from './combatEntity.interface';
 
 // Interface for NPC data loaded from JSON
@@ -23,6 +24,10 @@ export class NPC implements CombatEntity {
   public deathMessages: string[];
   // Map to track which players this NPC has aggression towards and the damage they've dealt
   private aggressors: Map<string, number> = new Map();
+  // Unique instance ID for this NPC
+  public readonly instanceId: string;
+  // Template ID (original ID from npcs.json)
+  public readonly templateId: string;
 
   constructor(
     public name: string,
@@ -34,7 +39,9 @@ export class NPC implements CombatEntity {
     public experienceValue: number = 50,
     description?: string,
     attackTexts?: string[],
-    deathMessages?: string[]
+    deathMessages?: string[],
+    templateId?: string,
+    instanceId?: string
   ) {
     this.description = description || `A ${name} standing here.`;
     this.attackTexts = attackTexts || [
@@ -45,6 +52,8 @@ export class NPC implements CombatEntity {
     this.deathMessages = deathMessages || [
       `collapses to the ground and dies`
     ];
+    this.templateId = templateId || name.toLowerCase();
+    this.instanceId = instanceId || uuidv4();
   }
 
   // Static method to load NPC data from JSON
@@ -82,7 +91,8 @@ export class NPC implements CombatEntity {
       npcData.experienceValue,
       npcData.description,
       npcData.attackTexts,
-      npcData.deathMessages
+      npcData.deathMessages,
+      npcData.id
     );
   }
 

@@ -61,19 +61,28 @@ export class SpawnCommand implements Command {
     const npcTemplate = this.npcData.get(npcType)!;
     
     for (let i = 0; i < count; i++) {
-      // Create a new NPC in the room using the template
-      const npc = NPC.fromNPCData(npcTemplate);
+      // Generate a unique instance ID for this NPC
+      const instanceId = `${npcType}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       
-      // Add the NPC to the room
-      room.addNPC(npcType);
+      // Create a new NPC in the room using the template, passing the instanceId and templateId to the constructor
+      const npc = new NPC(
+        npcTemplate.name,
+        npcTemplate.health,
+        npcTemplate.maxHealth,
+        npcTemplate.damage,
+        npcTemplate.isHostile,
+        npcTemplate.isPassive,
+        npcTemplate.experienceValue,
+        npcTemplate.description,
+        npcTemplate.attackTexts,
+        npcTemplate.deathMessages,
+        npcType,  // templateId
+        instanceId  // instanceId
+      );
       
-      // Store NPC in room manager 
-      const npcId = `${npcType}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      this.roomManager.storeNPC(npcId, npc);
+      // Add the NPC to the room with the proper object
+      room.addNPC(npc);
     }
-
-    // Update the room
-    this.roomManager.updateRoom(room);
 
     // Notify the player
     const message = count === 1 

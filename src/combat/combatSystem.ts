@@ -84,6 +84,15 @@ export class CombatSystem {
   }
 
   /**
+   * Helper method to check if an NPC with a specific template ID exists in a room
+   */
+  private isNpcInRoomByTemplateId(room: any, templateId: string): boolean {
+    if (!room.npcs || !(room.npcs instanceof Map)) return false;
+    const npcs = Array.from(room.npcs.values());
+    return (npcs as NPC[]).some(npc => npc.templateId === templateId);
+  }
+
+  /**
    * Get or create a shared entity for a room
    */
   private getSharedEntity(roomId: string, entityName: string): CombatEntity | null {
@@ -108,13 +117,30 @@ export class CombatSystem {
     if (!room) return null;
     
     // Verify the NPC is actually in this room
-    if (!room.npcs.includes(entityName)) {
-      console.log(`[CombatSystem] NPC ${entityName} not found in room ${roomId}`);
-      return null;
+    if (!room.npcs || !(room.npcs instanceof Map) || !room.npcs.has(entityName)) {
+      // Try template ID lookup if direct lookup fails
+      const npcsArray = Array.from(room.npcs?.values() || []);
+      if (!this.isNpcInRoomByTemplateId(room, entityName)) {
+        console.log(`[CombatSystem] NPC ${entityName} not found in room ${roomId}`);
+        return null;
+      }
     }
     
-    // Create a new NPC instance
-    const npc = this.createTestNPC(entityName);
+    // Get the NPC if it exists in the room
+    let npc: NPC | null = room.npcs.get(entityName) || null;
+    
+    // If not found by instance ID, try to find by template ID
+    if (!npc && room.npcs) {
+      const matchingNPCs = Array.from(room.npcs.values()).filter((n: NPC) => n.templateId === entityName);
+      if (matchingNPCs.length > 0) {
+        npc = matchingNPCs[0];
+      }
+    }
+    
+    // If we still don't have an NPC, create a new one
+    if (!npc) {
+      npc = this.createTestNPC(entityName);
+    }
     
     roomEntities.set(entityName, npc);
     return npc;
@@ -638,18 +664,21 @@ export class CombatSystem {
         // If in a room, add a target
         if (newClient.user.currentRoomId) {
           const room = this.roomManager.getRoom(newClient.user.currentRoomId);
-          if (room && room.npcs.length > 0) {
+          if (room && room.npcs.size > 0) {
             // Force recreation of combat with the first NPC in the room
-            const npcName = room.npcs[0];
-            const npc = this.getSharedEntity(newClient.user.currentRoomId, npcName);
-            if (npc) {
-              combat.addTarget(npc);
-              const entityId = this.getEntityId(newClient.user.currentRoomId, npcName);
-              this.trackEntityTargeter(entityId, username);
-              console.log(`[CombatSystem] Added ${npcName} as target for ${username} during transfer recreation`);
-              
-              // Reset NPC attack state to prevent immediate attack
-              this.resetEntityAttackStatus(entityId);
+            const npcsInRoom = Array.from(room.npcs.values());
+            if (npcsInRoom.length > 0) {
+              const firstNpc = npcsInRoom[0];
+              const npc = this.getSharedEntity(newClient.user.currentRoomId, firstNpc.instanceId);
+              if (npc) {
+                combat.addTarget(npc);
+                const entityId = this.getEntityId(newClient.user.currentRoomId, firstNpc.instanceId);
+                this.trackEntityTargeter(entityId, username);
+                console.log(`[CombatSystem] Added ${firstNpc.name} as target for ${username} during transfer recreation`);
+                
+                // Reset NPC attack state to prevent immediate attack
+                this.resetEntityAttackStatus(entityId);
+              }
             }
           }
         }
@@ -1062,30 +1091,31 @@ export class CombatSystem {
     const rooms = this.roomManager.getAllRooms();
     
     for (const room of rooms) {
-      if (!room.npcs || room.npcs.length === 0 || !room.players || room.players.length === 0) {
-        continue; // Skip rooms with no NPCs or no players
+      // Skip rooms with no NPCs or no players
+      if (!room.npcs || room.npcs.size === 0 || !room.players || room.players.length === 0) {
+        continue;
       }
       
       // Check for hostile NPCs in this room
-      for (const npcName of room.npcs) {
-        // Get entity to check its hostility
-        const entity = this.getSharedEntity(room.id, npcName);
+      for (const [npcId, npc] of room.npcs.entries()) {
+        // Get entity to check its hostility - use the npc instance from the map
+        const entity = npc;
         
         if (entity && entity.isHostile) {
-          console.log(`[CombatSystem] Found hostile NPC ${npcName} in room ${room.id} with ${room.players.length} players`);
+          console.log(`[CombatSystem] Found hostile NPC ${npc.name} (${npcId}) in room ${room.id} with ${room.players.length} players`);
           
           // Add the entity to active combat entities for this room if not already
-          if (!this.isEntityInCombat(room.id, npcName)) {
-            this.addEntityToCombatForRoom(room.id, npcName);
+          if (!this.isEntityInCombat(room.id, npcId)) {
+            this.addEntityToCombatForRoom(room.id, npcId);
           }
           
           // Generate an entity ID for tracking
-          const entityId = this.getEntityId(room.id, npcName);
+          const entityId = this.getEntityId(room.id, npcId);
           
           // For each player in the room, ensure they're on the NPC's aggression list
           for (const playerName of room.players) {
             if (!entity.hasAggression(playerName)) {
-              console.log(`[CombatSystem] Adding player ${playerName} to aggression list of ${npcName} in room ${room.id}`);
+              console.log(`[CombatSystem] Adding player ${playerName} to aggression list of ${npc.name} in room ${room.id}`);
               
               // Add aggression with 0 damage to indicate awareness rather than damage dealt
               entity.addAggression(playerName, 0);

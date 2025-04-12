@@ -3,6 +3,7 @@ import './adminmanage.command';
 import './attack.command';
 import './break.command';
 import './damage.command';
+import './debug.command'; // Import our new debug command
 import './drop.command';
 import './effect.command'; // Add our new effect command
 import './equip.command';

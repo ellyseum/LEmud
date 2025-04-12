@@ -6,6 +6,7 @@ import { writeToClient, writeFormattedMessageToClient } from './socketWriter';
 import { colorize } from './colors';
 import { CommandRegistry } from '../command/commandRegistry';
 import { SudoCommand } from '../command/commands/sudo.command';
+import { NPC } from '../combat/npc';
 
 export class CommandHandler {
   private combatSystem: CombatSystem;
@@ -97,23 +98,47 @@ export class CommandHandler {
     }
 
     // Check if there's an NPC with this name in the room
-    if (room.npcs.includes(targetName)) {
-      // Create a dummy NPC to use for combat
-      const target = this.combatSystem.createTestNPC(targetName);
+    if (room.npcs.has(targetName) || this.findNpcByTemplateId(room, targetName)) {
+      // Get the actual NPC instance from the room or by template ID
+      const npcInstanceId = room.npcs.has(targetName) ? targetName : this.findNpcInstanceIdByTemplateId(room, targetName);
       
-      // Start combat with this target
-      if (this.combatSystem.engageCombat(client, target)) {
-        // Combat successfully started - handled by engageCombat
-        // Ensure session transfer combat state is cleared after successfully starting combat
-        if (client.stateData && client.stateData.isSessionTransfer) {
-          delete client.stateData.isSessionTransfer;
+      if (npcInstanceId) {
+        // Create a dummy NPC to use for combat
+        const target = this.combatSystem.createTestNPC(npcInstanceId);
+        
+        // Start combat with this target
+        if (this.combatSystem.engageCombat(client, target)) {
+          // Combat successfully started - handled by engageCombat
+          // Ensure session transfer combat state is cleared after successfully starting combat
+          if (client.stateData && client.stateData.isSessionTransfer) {
+            delete client.stateData.isSessionTransfer;
+          }
+        } else {
+          writeFormattedMessageToClient(client, `You can't attack ${targetName} right now.\r\n`);
         }
       } else {
-        writeFormattedMessageToClient(client, `You can't attack ${targetName} right now.\r\n`);
+        writeFormattedMessageToClient(client, `You don't see a '${targetName}' here to attack.\r\n`);
       }
     } else {
       writeFormattedMessageToClient(client, `You don't see a '${targetName}' here to attack.\r\n`);
     }
+  }
+
+  /**
+   * Helper method to check if an NPC with a specific template ID exists in a room
+   */
+  private findNpcByTemplateId(room: any, templateId: string): boolean {
+    const npcs = Array.from(room.npcs.values());
+    return npcs.some((npc: any) => npc.templateId === templateId);
+  }
+
+  /**
+   * Helper method to find an NPC's instance ID by its template ID
+   */
+  private findNpcInstanceIdByTemplateId(room: any, templateId: string): string | null {
+    const npcsEntries = Array.from(room.npcs.entries());
+    const match = (npcsEntries as [string, any][]).find(([_, npc]) => npc.templateId === templateId);
+    return match ? match[0] : null;
   }
 
   // Other command handlers would be implemented here

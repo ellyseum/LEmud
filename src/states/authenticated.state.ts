@@ -151,10 +151,12 @@ export class AuthenticatedState implements ClientState {
     if (client.user.currentRoomId) {
       // Try to use the most likely method - let's use the direct Room approach
       const room = this.roomManager.getRoom(client.user.currentRoomId);
-      if (room) {
-        room.addPlayer(client.user.username);
-        
-        // Check for hostile NPCs in the room and add them to combat entities
+      if (room && room.npcs.size > 0) {
+        const npcsArray = Array.from(room.npcs.values());
+        if (npcsArray.length > 0) {
+          const firstNpc = npcsArray[0];
+          console.log(`[AuthenticatedState] Room has NPCs. First NPC: ${firstNpc.name}`);
+        }
         this.checkForHostileNPCs(client, room);
       }
     }
@@ -177,11 +179,13 @@ export class AuthenticatedState implements ClientState {
         
         // Get the current room to find potential targets
         const room = this.roomManager.getRoom(client.user.currentRoomId);
-        if (room && room.npcs.length > 0) {
-          // There are NPCs in the room, try to engage with the first one
-          const npcName = room.npcs[0]; 
-          // This will create a new combat instance if needed
-          this.commandHandler.handleAttackCommand(client, [npcName]);
+        if (room && room.npcs.size > 0) {
+          const npcsArray = Array.from(room.npcs.values());
+          if (npcsArray.length > 0) {
+            const firstNpc = npcsArray[0];
+            console.log(`[AuthenticatedState] Room has NPCs. First NPC: ${firstNpc.name}`);
+          }
+          this.commandHandler.handleAttackCommand(client, [npcsArray[0].instanceId]);
         } else {
           // No valid targets, clear combat flag
           client.user.inCombat = false;
@@ -247,22 +251,22 @@ export class AuthenticatedState implements ClientState {
    * so they can attack players automatically
    */
   private checkForHostileNPCs(client: ConnectedClient, room: any): void {
-    if (!client.user || !room || !room.npcs || room.npcs.length === 0) return;
+    if (!client.user || !room || !room.npcs || !room.npcs.size) return;
     
     console.log(`[AuthenticatedState] Checking for hostile NPCs in room ${room.id} for player ${client.user.username}`);
     
-    for (const npcName of room.npcs) {
+    for (const npc of room.npcs.values()) {
       // Create a temporary entity to check if it's hostile
-      const npc = this.combatSystem['getSharedEntity'](room.id, npcName);
+      const npcEntity = this.combatSystem['getSharedEntity'](room.id, npc.instanceId);
       
-      if (npc && npc.isHostile) {
-        console.log(`[AuthenticatedState] Found hostile NPC ${npcName} in room ${room.id}`);
+      if (npcEntity && npcEntity.isHostile) {
+        console.log(`[AuthenticatedState] Found hostile NPC ${npc.instanceId} in room ${room.id}`);
         
         // Add the entity to active combat entities for this room
-        this.combatSystem['addEntityToCombatForRoom'](room.id, npcName);
+        this.combatSystem['addEntityToCombatForRoom'](room.id, npc.instanceId);
         
         // Generate an entity ID for tracking
-        const entityId = this.combatSystem.getEntityId(room.id, npcName);
+        const entityId = this.combatSystem.getEntityId(room.id, npc.instanceId);
         
         // Reset attack status to ensure it can attack in the next round
         this.combatSystem['resetEntityAttackStatus'](entityId);

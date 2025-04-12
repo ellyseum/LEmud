@@ -2,6 +2,7 @@ import { formatUsername } from '../utils/formatters';
 import { colorize } from '../utils/colors';
 import { Currency, Exit, Item } from '../types';
 import { ItemManager } from '../utils/itemManager';
+import { NPC } from '../combat/npc';
 
 export class Room {
   id: string;
@@ -11,7 +12,8 @@ export class Room {
   players: string[] = [];
   items: Item[] = [];
   currency: Currency = { gold: 0, silver: 0, copper: 0 };
-  npcs: string[] = []; // Add NPCs array to track monsters in the room
+  // Changed from string[] to Map<instanceId, NPC>
+  npcs: Map<string, NPC> = new Map();
   private itemManager: ItemManager;
 
   constructor(room: any) {
@@ -22,7 +24,19 @@ export class Room {
     this.players = room.players || [];
     this.items = room.items || room.objects || [];
     this.currency = room.currency || { gold: 0, silver: 0, copper: 0 };
-    this.npcs = room.npcs || []; // Initialize NPCs
+    
+    // Initialize NPCs - handle both old string[] format and new Map format
+    this.npcs = new Map();
+    if (room.npcs) {
+      if (Array.isArray(room.npcs)) {
+        // Old format: convert string[] to Map
+        // This will be handled by RoomManager when loading NPCs
+      } else if (room.npcs instanceof Map) {
+        // New format: already a Map
+        this.npcs = room.npcs;
+      }
+    }
+    
     this.itemManager = ItemManager.getInstance();
   }
 
@@ -39,17 +53,35 @@ export class Room {
   /**
    * Add an NPC to the room
    */
-  addNPC(npcName: string): void {
-    if (!this.npcs.includes(npcName)) {
-      this.npcs.push(npcName);
-    }
+  addNPC(npc: NPC): void {
+    this.npcs.set(npc.instanceId, npc);
   }
 
   /**
    * Remove an NPC from the room
    */
-  removeNPC(npcName: string): void {
-    this.npcs = this.npcs.filter(name => name !== npcName);
+  removeNPC(instanceId: string): void {
+    this.npcs.delete(instanceId);
+  }
+
+  /**
+   * Find NPCs in the room by template ID
+   */
+  findNPCsByTemplateId(templateId: string): NPC[] {
+    const matchingNPCs: NPC[] = [];
+    for (const npc of this.npcs.values()) {
+      if (npc.templateId === templateId) {
+        matchingNPCs.push(npc);
+      }
+    }
+    return matchingNPCs;
+  }
+
+  /**
+   * Get an NPC by its instance ID
+   */
+  getNPC(instanceId: string): NPC | undefined {
+    return this.npcs.get(instanceId);
   }
 
   /**
@@ -89,21 +121,21 @@ export class Room {
     let output = this.getFormattedDescription(true);
 
     // Add NPCs to description if any
-    if (this.npcs.length > 0) {
+    if (this.npcs.size > 0) {
       // Count occurrences of each NPC type
       const npcCounts = new Map<string, number>();
-      this.npcs.forEach(npc => {
-        npcCounts.set(npc, (npcCounts.get(npc) || 0) + 1);
-      });
+      for (const npc of this.npcs.values()) {
+        npcCounts.set(npc.name, (npcCounts.get(npc.name) || 0) + 1);
+      }
 
       output += '\r\nAlso here: ';
       
       const npcStrings: string[] = [];
-      npcCounts.forEach((count, npc) => {
+      npcCounts.forEach((count, npcName) => {
         if (count === 1) {
-          npcStrings.push(`a ${npc}`);
+          npcStrings.push(`a ${npcName}`);
         } else {
-          npcStrings.push(`${count} ${npc}s`);
+          npcStrings.push(`${count} ${npcName}s`);
         }
       });
       
@@ -138,7 +170,7 @@ export class Room {
     }
     
     // Show NPCs in the room
-    if (this.npcs.length > 0) {
+    if (this.npcs.size > 0) {
       description += colorize(`You can see some creatures moving around.\r\n`, 'yellow');
     }
     
@@ -221,7 +253,7 @@ export class Room {
 
     const entities = [
       ...players.map(player => colorize(formatUsername(player), 'brightMagenta')),
-      ...this.npcs.map(npc => colorize(`a ${npc}`, 'magenta'))
+      ...Array.from(this.npcs.values()).map(npc => colorize(`a ${npc.name}`, 'magenta'))
     ];
     
     if (entities.length > 0) {

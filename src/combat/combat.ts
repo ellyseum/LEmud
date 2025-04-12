@@ -62,7 +62,7 @@ export class Combat {
     
     for (const combatant of this.activeCombatants) {
       // Check if the NPC is still in the room by name
-      if (!room.npcs.includes(combatant.name)) {
+      if (!room.npcs.has(combatant.name) && !this.isNpcInRoomByTemplateId(room, combatant.name)) {
         console.log(`[Combat] NPC ${combatant.name} is no longer in room ${playerRoomId}`);
         invalidCombatants.push(combatant);
       }
@@ -364,7 +364,15 @@ export class Combat {
     }
     
     // Remove the NPC from the room
-    this.roomManager.removeNPCFromRoom(roomId, npc.name);
+    // FIXED: Use instanceId instead of name for removing NPC from room
+    if ((npc as any).instanceId) {
+      console.log(`[Combat] Removing NPC with instanceId ${(npc as any).instanceId} from room ${roomId}`);
+      this.roomManager.removeNPCFromRoom(roomId, (npc as any).instanceId);
+    } else {
+      console.warn(`[Combat] Cannot remove NPC ${npc.name} from room: no instanceId available`);
+      // Fallback to using name, though this likely won't work with the new Map implementation
+      this.roomManager.removeNPCFromRoom(roomId, npc.name);
+    }
     
     // Clean up the shared entity reference
     this.combatSystem.cleanupDeadEntity(roomId, npc.name);
@@ -576,5 +584,13 @@ export class Combat {
         console.log(`[Combat] Username mismatch: expected ${this.player.user.username}, got ${newClient.user.username}`);
       }
     }
+  }
+
+  /**
+   * Helper method to check if an NPC with a specific template ID exists in a room
+   */
+  private isNpcInRoomByTemplateId(room: any, templateId: string): boolean {
+    const npcs = Array.from(room.npcs.values()) as any[];
+    return npcs.some(npc => npc.templateId === templateId);
   }
 }

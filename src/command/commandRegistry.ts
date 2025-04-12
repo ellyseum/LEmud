@@ -34,6 +34,7 @@ import { SudoCommand } from './commands/sudo.command';
 import { AdminManageCommand } from './commands/adminmanage.command';
 import { SnakeCommand } from './commands/snake.command';
 import { ScoresCommand } from './commands/scores.command';
+import { DebugCommand } from './commands/debug.command'; // Import our new Debug command
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -112,7 +113,8 @@ export class CommandRegistry {
       SudoCommand.getInstance(),
       new AdminManageCommand(this.userManager),
       snakeCommand, // Add SnakeCommand instance
-      new ScoresCommand() // Add ScoresCommand instance
+      new ScoresCommand(), // Add ScoresCommand instance
+      new DebugCommand(this.roomManager, this.userManager, this.combatSystem) // Add our new Debug command
     ];
     
     // Register all commands
@@ -167,6 +169,13 @@ export class CommandRegistry {
     // Add aliases for scores command
     this.aliases.set('highscores', {commandName: 'scores'});
     this.aliases.set('leaderboard', {commandName: 'scores'});
+    // Add aliases for debug command
+    this.aliases.set('dbg', {commandName: 'debug'});
+    this.aliases.set('inspect', {commandName: 'debug'});
+    this.aliases.set('dnpc', {commandName: 'debug', args: 'npc'});
+    this.aliases.set('droom', {commandName: 'debug', args: 'room'});
+    this.aliases.set('dplayer', {commandName: 'debug', args: 'player'});
+    this.aliases.set('dsystem', {commandName: 'debug', args: 'system'});
   }
 
   private registerDirectionCommands(): void {

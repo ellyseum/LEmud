@@ -76,15 +76,26 @@ export class RoomManager {
   private saveRooms(): void {
     try {
       // Convert rooms to storable format (without players)
-      const roomsData = Array.from(this.rooms.values()).map(room => ({
-        id: room.id,
-        name: room.name,
-        description: room.description,
-        exits: room.exits,
-        items: room.items,
-        npcs: room.npcs,
-        currency: room.currency
-      }));
+      const roomsData = Array.from(this.rooms.values()).map(room => {
+        // Convert NPC Map to an array of template IDs for storage
+        const npcTemplateIds: string[] = [];
+        
+        // For each NPC in the room, store its template ID
+        // In future, we might want to store more data about each NPC instance
+        room.npcs.forEach(npc => {
+          npcTemplateIds.push(npc.templateId);
+        });
+        
+        return {
+          id: room.id,
+          name: room.name,
+          description: room.description,
+          exits: room.exits,
+          items: room.items,
+          npcs: npcTemplateIds,  // Use the array of template IDs
+          currency: room.currency
+        };
+      });
       
       fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsData, null, 2));
     } catch (error) {
@@ -502,26 +513,37 @@ export class RoomManager {
 
     // Normalize the entity name for easier matching
     const normalizedName = entityName.toLowerCase().trim();
-
-    // First check if it's an NPC
-    const npcMatch = room.npcs.find(npc => 
-      npc.toLowerCase() === normalizedName || 
-      npc.toLowerCase().includes(normalizedName)
-    );
     
-    if (npcMatch) {
-      // Get detailed NPC data from JSON
-      const npcInstance = this.getNPCFromRoom(roomId, npcMatch);
-      
+    // NPCs are now stored in a Map, so we need to search through values
+    let matchingNPC: NPC | null = null;
+    
+    // First try to find the NPC by instance ID
+    matchingNPC = room.getNPC(entityName) || null;
+    
+    // If not found by ID, check if any NPC name matches
+    if (!matchingNPC) {
+      // Check all NPCs in the room for a name match
+      const npcsInRoom = Array.from(room.npcs.values());
+      for (const npc of npcsInRoom) {
+        if (npc.name.toLowerCase() === normalizedName || 
+            npc.name.toLowerCase().includes(normalizedName) ||
+            npc.templateId.toLowerCase() === normalizedName) {
+          matchingNPC = npc;
+          break;
+        }
+      }
+    }
+    
+    if (matchingNPC) {
       // Display NPC description with proper formatting
-      writeToClient(client, colorize(`You look at the ${npcMatch}.\r\n`, 'cyan'));
+      writeToClient(client, colorize(`You look at the ${matchingNPC.name}.\r\n`, 'cyan'));
       
-      if (npcInstance && npcInstance.description) {
-        writeToClient(client, colorize(`${npcInstance.description}\r\n`, 'cyan'));
+      if (matchingNPC.description) {
+        writeToClient(client, colorize(`${matchingNPC.description}\r\n`, 'cyan'));
         
         // If it's a combat entity, show its health status
-        if (npcInstance.health > 0) {
-          const healthPercentage = Math.floor((npcInstance.health / npcInstance.maxHealth) * 100);
+        if (matchingNPC.health > 0) {
+          const healthPercentage = Math.floor((matchingNPC.health / matchingNPC.maxHealth) * 100);
           let healthStatus = '';
           
           if (healthPercentage > 90) {
@@ -542,13 +564,13 @@ export class RoomManager {
         }
       } else {
         // Fallback description if not found in data
-        writeToClient(client, colorize(`It's a ${npcMatch} in the room with you.\r\n`, 'cyan'));
+        writeToClient(client, colorize(`It's a ${matchingNPC.name} in the room with you.\r\n`, 'cyan'));
       }
       
       // Notify other players in the room
       this.notifyPlayersInRoom(
         roomId,
-        `${formatUsername(client.user.username)} examines the ${npcMatch} carefully.\r\n`,
+        `${formatUsername(client.user.username)} examines the ${matchingNPC.name} carefully.\r\n`,
         client.user.username
       );
       
@@ -816,34 +838,28 @@ export class RoomManager {
     // Add some initial NPCs to the starting room for testing
     const startingRoom = this.getRoom('start');
     if (startingRoom) {
-      // Clear existing NPCs first
-      startingRoom.npcs = [];
+      // Clear existing NPCs first - now using Map instead of array
+      startingRoom.npcs.clear();
       
       // Add 2 cats to the starting room
       for (let i = 0; i < 2; i++) {
-        const npcId = `cat-${Date.now()}-${i}`;
-        
         // Check if cat is defined in our NPC data
         if (npcData.has('cat')) {
           const npcTemplate = npcData.get('cat')!;
           const npc = NPC.fromNPCData(npcTemplate);
-          this.npcs.set(npcId, npc);
-          startingRoom.addNPC('cat');
+          startingRoom.addNPC(npc);
         } else {
           console.warn('Cat NPC not found in data, using default values');
           const catNPC = new NPC('cat', 10, 10, [1, 3], false, false, 75);
-          this.npcs.set(npcId, catNPC);
-          startingRoom.addNPC('cat');
+          startingRoom.addNPC(catNPC);
         }
       }
       
       // Add a dog to the room
       if (npcData.has('dog')) {
-        const npcId = `dog-${Date.now()}`;
         const npcTemplate = npcData.get('dog')!;
         const npc = NPC.fromNPCData(npcTemplate);
-        this.npcs.set(npcId, npc);
-        startingRoom.addNPC('dog');
+        startingRoom.addNPC(npc);
       }
       
       this.updateRoom(startingRoom);
@@ -851,70 +867,41 @@ export class RoomManager {
   }
 
   /**
-   * Get an NPC from the room by name, supporting partial name matching
+   * Get an NPC from the room by instance ID or template ID
    */
-  public getNPCFromRoom(roomId: string, npcName: string): NPC | null {
+  public getNPCFromRoom(roomId: string, npcId: string): NPC | null {
     const room = this.getRoom(roomId);
     if (!room) return null;
 
-    // Normalize the input name
-    const normalizedInput = npcName.toLowerCase().trim();
-
-    // First try exact match
-    let foundNPCName = room.npcs.find(name => name.toLowerCase() === normalizedInput);
-    
-    // If no exact match, try partial match
-    if (!foundNPCName) {
-      foundNPCName = room.npcs.find(name => name.toLowerCase().includes(normalizedInput));
+    // First, try to find the NPC by instanceId
+    const npcByInstanceId = room.getNPC(npcId);
+    if (npcByInstanceId) {
+        return npcByInstanceId;
     }
     
-    if (!foundNPCName) return null;
-
-    // Check if we already have this NPC instance in our map
-    for (const [id, npc] of this.npcs.entries()) {
-      if (npc.name === foundNPCName && id.startsWith(`${foundNPCName}-`)) {
-        return npc;
-      }
+    // If not found by instance ID, try to find by template ID (for backward compatibility)
+    const matchingNPCs = room.findNPCsByTemplateId(npcId);
+    if (matchingNPCs.length > 0) {
+        return matchingNPCs[0]; // Return the first matching NPC
     }
 
-    // Load NPCs data from JSON
-    const npcData = NPC.loadNPCData();
-    const npcTemplate = npcData.get(foundNPCName);
-    
-    if (npcTemplate) {
-      // Create a proper NPC instance from the template
-      return NPC.fromNPCData(npcTemplate);
-    }
-    
-    // Fallback to default NPC creation if not found in data
-    console.warn(`NPC data for '${foundNPCName}' not found in npcs.json, using defaults`);
-    return new NPC(
-      foundNPCName,
-      20,  // health
-      20,  // maxHealth
-      [1, 3],  // damage range
-      false,  // isHostile
-      false,  // isPassive
-      100  // experienceValue
-    );
+    return null;
   }
 
   /**
-   * Remove an NPC from a room
+   * Remove an NPC from a room by instance ID
    */
-  public removeNPCFromRoom(roomId: string, npcName: string): boolean {
+  public removeNPCFromRoom(roomId: string, npcInstanceId: string): boolean {
     const room = this.getRoom(roomId);
     if (!room) return false;
 
-    const index = room.npcs.indexOf(npcName);
-    if (index !== -1) {
-      room.npcs.splice(index, 1);
-      // Note: We would also want to inform the combat system here
-      // but that would create a circular dependency
-      // Instead, the combat system will handle this through the cleanupDeadEntity method
-      
-      return true;
+    // Check if the NPC exists in the room
+    if (room.getNPC(npcInstanceId)) {
+        room.removeNPC(npcInstanceId);
+        this.updateRoom(room);
+        return true;
     }
+    
     return false;
   }
 

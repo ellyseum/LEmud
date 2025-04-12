@@ -45,6 +45,26 @@ export class AttackCommand implements Command {
     // Find target in the room
     const target = this.roomManager.getNPCFromRoom(roomId, args.trim());
     if (!target) {
+      // If not found by instance ID or template ID, try to find by name
+      const room = this.roomManager.getRoom(roomId);
+      if (room) {
+        const targetName = args.trim().toLowerCase();
+        const npcsInRoom = Array.from(room.npcs.values());
+        const matchByName = npcsInRoom.find(npc => 
+          npc.name.toLowerCase() === targetName || 
+          npc.name.toLowerCase().includes(targetName)
+        );
+        
+        if (matchByName) {
+          // Found an NPC by name
+          const success = this.combatSystem.engageCombat(client, matchByName);
+          if (!success) {
+            writeFormattedMessageToClient(client, colorize(`Unable to engage combat with ${matchByName.name}.\r\n`, 'red'));
+          }
+          return;
+        }
+      }
+      
       writeFormattedMessageToClient(client, colorize(`You don't see a '${args.trim()}' here to attack.\r\n`, 'yellow'));
       return;
     }
