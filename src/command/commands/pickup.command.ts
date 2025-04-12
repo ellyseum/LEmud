@@ -1,4 +1,4 @@
-import { ConnectedClient } from '../../types';
+import { ConnectedClient, Currency } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
@@ -6,10 +6,15 @@ import { RoomManager } from '../../room/roomManager';
 import { UserManager } from '../../user/userManager';
 import { ItemManager } from '../../utils/itemManager';
 
+// Define a type for valid currency types
+type CurrencyType = keyof Currency;
+
 export class PickupCommand implements Command {
   name = 'pickup';
-  description = 'Pick up an item from the current room';
+  description = 'Pick up an item or currency from the current room. Supports partial currency names (e.g., "g", "go", "gol" for gold).';
   private itemManager: ItemManager;
+  // Define known currency types
+  private currencyTypes: CurrencyType[] = ['gold', 'silver', 'copper'];
   
   constructor(
     private clients: Map<string, ConnectedClient>,
@@ -35,39 +40,16 @@ export class PickupCommand implements Command {
       return;
     }
     
-    // Special cases for picking up currency
-    if (args.toLowerCase() === 'gold' || args.toLowerCase() === 'all gold') {
-      this.pickupCurrency(client, room, 'gold');
-      return;
-    }
-    
-    if (args.toLowerCase() === 'silver' || args.toLowerCase() === 'all silver') {
-      this.pickupCurrency(client, room, 'silver');
-      return;
-    }
-    
-    if (args.toLowerCase() === 'copper' || args.toLowerCase() === 'all copper') {
-      this.pickupCurrency(client, room, 'copper');
-      return;
-    }
-    
+    // Check if trying to pick up all coins or all currency
     if (args.toLowerCase() === 'all coins' || args.toLowerCase() === 'all currency') {
       // Handle picking up all types of currency
       let anyPickedUp = false;
       
-      if (room.currency.gold > 0) {
-        this.pickupCurrency(client, room, 'gold');
-        anyPickedUp = true;
-      }
-      
-      if (room.currency.silver > 0) {
-        this.pickupCurrency(client, room, 'silver');
-        anyPickedUp = true;
-      }
-      
-      if (room.currency.copper > 0) {
-        this.pickupCurrency(client, room, 'copper');
-        anyPickedUp = true;
+      for (const type of this.currencyTypes) {
+        if (room.currency[type] > 0) {
+          this.pickupCurrency(client, room, type);
+          anyPickedUp = true;
+        }
       }
       
       if (!anyPickedUp) {
@@ -77,25 +59,34 @@ export class PickupCommand implements Command {
       return;
     }
     
-    // Check for specific amounts of currency
-    const goldMatch = args.match(/^(\d+)\s+gold$/i);
-    if (goldMatch) {
-      const amount = parseInt(goldMatch[1]);
-      this.pickupSpecificCurrency(client, room, 'gold', amount);
-      return;
+    // Check for "all" prefix with partial currency name
+    if (args.toLowerCase().startsWith('all ')) {
+      const currencyName = args.toLowerCase().substring(4);
+      const matchedCurrency = this.matchCurrency(currencyName);
+      
+      if (matchedCurrency) {
+        this.pickupCurrency(client, room, matchedCurrency);
+        return;
+      }
     }
     
-    const silverMatch = args.match(/^(\d+)\s+silver$/i);
-    if (silverMatch) {
-      const amount = parseInt(silverMatch[1]);
-      this.pickupSpecificCurrency(client, room, 'silver', amount);
-      return;
+    // Check for amount with currency (e.g., "10 gold" or "5 g")
+    const amountMatch = args.match(/^(\d+)\s+(.+)$/i);
+    if (amountMatch) {
+      const amount = parseInt(amountMatch[1]);
+      const currencyName = amountMatch[2];
+      const matchedCurrency = this.matchCurrency(currencyName);
+      
+      if (matchedCurrency) {
+        this.pickupSpecificCurrency(client, room, matchedCurrency, amount);
+        return;
+      }
     }
     
-    const copperMatch = args.match(/^(\d+)\s+copper$/i);
-    if (copperMatch) {
-      const amount = parseInt(copperMatch[1]);
-      this.pickupSpecificCurrency(client, room, 'copper', amount);
+    // Check for single currency name (e.g., "gold" or "g")
+    const matchedCurrency = this.matchCurrency(args.toLowerCase());
+    if (matchedCurrency) {
+      this.pickupCurrency(client, room, matchedCurrency);
       return;
     }
     
@@ -104,19 +95,11 @@ export class PickupCommand implements Command {
       // First pick up all currency
       let anyPickedUp = false;
       
-      if (room.currency.gold > 0) {
-        this.pickupCurrency(client, room, 'gold');
-        anyPickedUp = true;
-      }
-      
-      if (room.currency.silver > 0) {
-        this.pickupCurrency(client, room, 'silver');
-        anyPickedUp = true;
-      }
-      
-      if (room.currency.copper > 0) {
-        this.pickupCurrency(client, room, 'copper');
-        anyPickedUp = true;
+      for (const type of this.currencyTypes) {
+        if (room.currency[type] > 0) {
+          this.pickupCurrency(client, room, type);
+          anyPickedUp = true;
+        }
       }
       
       // Then pick up all items
@@ -139,13 +122,44 @@ export class PickupCommand implements Command {
     this.pickupItem(client, room, args);
   }
   
-  private pickupCurrency(client: ConnectedClient, room: any, type: 'gold' | 'silver' | 'copper'): void {
+  /**
+   * Match a partial currency name to a full currency type
+   * Returns the full currency type if a match is found, otherwise null
+   */
+  private matchCurrency(partialName: string): CurrencyType | null {
+    // Empty string is not a match
+    if (!partialName) return null;
+    
+    // First try exact matches
+    for (const type of this.currencyTypes) {
+      if (type === partialName) {
+        return type;
+      }
+    }
+    
+    // Then try partial matches (starts with)
+    for (const type of this.currencyTypes) {
+      if (type.startsWith(partialName)) {
+        return type;
+      }
+    }
+    
+    return null;
+  }
+  
+  private pickupCurrency(client: ConnectedClient, room: any, type: CurrencyType): void {
     if (!client.user) return;
     
     const amount = room.currency[type];
     
     if (amount <= 0) {
-      writeToClient(client, colorize(`There are no ${type} pieces here.\r\n`, 'yellow'));
+      // Check if there are any items that contain the currency name
+      // This allows "get copper" to find "copper amulet" if no copper coins exist
+      if (this.hasItemMatchingName(room, type)) {
+        this.pickupItem(client, room, type);
+      } else {
+        writeToClient(client, colorize(`There are no ${type} pieces here.\r\n`, 'yellow'));
+      }
       return;
     }
     
@@ -164,7 +178,7 @@ export class PickupCommand implements Command {
     writeToClient(client, colorize(`You pick up ${amount} ${type} piece${amount === 1 ? '' : 's'}.\r\n`, 'green'));
   }
   
-  private pickupSpecificCurrency(client: ConnectedClient, room: any, type: 'gold' | 'silver' | 'copper', amount: number): void {
+  private pickupSpecificCurrency(client: ConnectedClient, room: any, type: CurrencyType, amount: number): void {
     if (!client.user) return;
     
     if (amount <= 0) {
@@ -175,7 +189,13 @@ export class PickupCommand implements Command {
     const availableAmount = room.currency[type];
     
     if (availableAmount <= 0) {
-      writeToClient(client, colorize(`There are no ${type} pieces here.\r\n`, 'yellow'));
+      // Check if there are any items that contain the currency name
+      // This allows "get 5 copper" to find "copper amulet" if no copper coins exist
+      if (this.hasItemMatchingName(room, type)) {
+        this.pickupItem(client, room, type);
+      } else {
+        writeToClient(client, colorize(`There are no ${type} pieces here.\r\n`, 'yellow'));
+      }
       return;
     }
     
@@ -183,16 +203,8 @@ export class PickupCommand implements Command {
     const actualAmount = Math.min(amount, availableAmount);
     
     // Add to player's inventory
-    if (type === 'gold') {
-      client.user.inventory.currency.gold += actualAmount;
-      room.currency.gold -= actualAmount;
-    } else if (type === 'silver') {
-      client.user.inventory.currency.silver += actualAmount;
-      room.currency.silver -= actualAmount;
-    } else if (type === 'copper') {
-      client.user.inventory.currency.copper += actualAmount;
-      room.currency.copper -= actualAmount;
-    }
+    client.user.inventory.currency[type] += actualAmount;
+    room.currency[type] -= actualAmount;
     
     // Save changes
     const roomManager = RoomManager.getInstance(this.clients);
@@ -286,5 +298,47 @@ export class PickupCommand implements Command {
     
     // Notify the player with the proper display name
     writeToClient(client, colorize(`You pick up the ${displayName}.\r\n`, 'green'));
+  }
+
+  /**
+   * Checks if there are any items in the room that match or contain the given name
+   * Checks both raw item names and display names from ItemManager
+   */
+  private hasItemMatchingName(room: any, name: string): boolean {
+    if (!room.items || room.items.length === 0) {
+      return false;
+    }
+    
+    return room.items.some((item: any) => {
+      const itemName = typeof item === 'string' ? item : item.name;
+      
+      // Try exact match on item ID
+      if (itemName.toLowerCase() === name.toLowerCase()) {
+        return true;
+      }
+      
+      // Try contains match on item ID
+      if (itemName.toLowerCase().includes(name.toLowerCase())) {
+        return true;
+      }
+      
+      // Try match on displayed name from ItemManager
+      if (typeof item === 'string') {
+        const itemData = this.itemManager.getItem(item);
+        if (itemData) {
+          // Exact match on display name
+          if (itemData.name.toLowerCase() === name.toLowerCase()) {
+            return true;
+          }
+          
+          // Contains match on display name
+          if (itemData.name.toLowerCase().includes(name.toLowerCase())) {
+            return true;
+          }
+        }
+      }
+      
+      return false;
+    });
   }
 }

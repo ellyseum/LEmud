@@ -8,7 +8,7 @@ import { UserManager } from '../../user/userManager';
  */
 export class GetCommand implements Command {
   name = 'get';
-  description = 'Pick up an item or currency from the room (alias for pickup)';
+  description = 'Pick up an item or currency from the room (alias for pickup). Supports partial currency names like "get g", "get go", "get gol" for gold.';
   private pickupCommand: PickupCommand;
 
   constructor(

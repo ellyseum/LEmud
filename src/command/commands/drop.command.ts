@@ -1,4 +1,4 @@
-import { ConnectedClient } from '../../types';
+import { ConnectedClient, Currency } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
@@ -6,10 +6,15 @@ import { RoomManager } from '../../room/roomManager';
 import { UserManager } from '../../user/userManager';
 import { ItemManager } from '../../utils/itemManager';
 
+// Define a type for valid currency types
+type CurrencyType = keyof Currency;
+
 export class DropCommand implements Command {
   name = 'drop';
-  description = 'Drop an item from your inventory';
+  description = 'Drop an item or currency from your inventory. Supports partial currency names (e.g., "g", "go", "cop").';
   private itemManager: ItemManager;
+  // Define known currency types
+  private currencyTypes: CurrencyType[] = ['gold', 'silver', 'copper'];
   
   constructor(
     private clients: Map<string, ConnectedClient>,
@@ -35,26 +40,17 @@ export class DropCommand implements Command {
       return;
     }
     
-    // Special cases for dropping currency
-    const goldMatch = args.match(/^(\d+)\s+gold$/i);
-    if (goldMatch) {
-      const amount = parseInt(goldMatch[1]);
-      this.dropCurrency(client, room, 'gold', amount);
-      return;
-    }
-    
-    const silverMatch = args.match(/^(\d+)\s+silver$/i);
-    if (silverMatch) {
-      const amount = parseInt(silverMatch[1]);
-      this.dropCurrency(client, room, 'silver', amount);
-      return;
-    }
-    
-    const copperMatch = args.match(/^(\d+)\s+copper$/i);
-    if (copperMatch) {
-      const amount = parseInt(copperMatch[1]);
-      this.dropCurrency(client, room, 'copper', amount);
-      return;
+    // Check for amount with currency (e.g., "10 gold" or "5 c")
+    const amountMatch = args.match(/^(\d+)\s+(.+)$/i);
+    if (amountMatch) {
+      const amount = parseInt(amountMatch[1]);
+      const currencyName = amountMatch[2];
+      const matchedCurrency = this.matchCurrency(currencyName);
+      
+      if (matchedCurrency) {
+        this.dropCurrency(client, room, matchedCurrency, amount);
+        return;
+      }
     }
     
     // Handle "all" command
@@ -73,26 +69,59 @@ export class DropCommand implements Command {
       }
       
       // Then drop all currency
-      if (client.user.inventory.currency.gold > 0) {
-        this.dropCurrency(client, room, 'gold', client.user.inventory.currency.gold);
-      }
-      
-      if (client.user.inventory.currency.silver > 0) {
-        this.dropCurrency(client, room, 'silver', client.user.inventory.currency.silver);
-      }
-      
-      if (client.user.inventory.currency.copper > 0) {
-        this.dropCurrency(client, room, 'copper', client.user.inventory.currency.copper);
+      for (const type of this.currencyTypes) {
+        if (client.user.inventory.currency[type] > 0) {
+          this.dropCurrency(client, room, type, client.user.inventory.currency[type]);
+        }
       }
       
       return;
+    }
+    
+    // Check for single currency name (e.g., "gold" or "g")
+    const matchedCurrency = this.matchCurrency(args.toLowerCase());
+    if (matchedCurrency) {
+      // When just the currency name is provided, drop all of that currency
+      const amount = client.user.inventory.currency[matchedCurrency];
+      if (amount > 0) {
+        this.dropCurrency(client, room, matchedCurrency, amount);
+        return;
+      } else {
+        writeToClient(client, colorize(`You don't have any ${matchedCurrency} pieces.\r\n`, 'yellow'));
+        return;
+      }
     }
     
     // Handle normal item dropping
     this.dropItem(client, room, args);
   }
   
-  private dropCurrency(client: ConnectedClient, room: any, type: 'gold' | 'silver' | 'copper', amount: number): void {
+  /**
+   * Match a partial currency name to a full currency type
+   * Returns the full currency type if a match is found, otherwise null
+   */
+  private matchCurrency(partialName: string): CurrencyType | null {
+    // Empty string is not a match
+    if (!partialName) return null;
+    
+    // First try exact matches
+    for (const type of this.currencyTypes) {
+      if (type === partialName) {
+        return type;
+      }
+    }
+    
+    // Then try partial matches (starts with)
+    for (const type of this.currencyTypes) {
+      if (type.startsWith(partialName)) {
+        return type;
+      }
+    }
+    
+    return null;
+  }
+  
+  private dropCurrency(client: ConnectedClient, room: any, type: CurrencyType, amount: number): void {
     if (!client.user) return;
     
     if (amount <= 0) {
