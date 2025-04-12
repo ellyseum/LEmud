@@ -32,6 +32,13 @@ export class RootCommand implements Command {
       return;
     }
     
+    // Permission check - user needs the "can_cast_root" flag
+    const REQUIRED_FLAG = 'can_cast_root';
+    if (!client.user.flags || !client.user.flags.includes(REQUIRED_FLAG)) {
+      writeToClient(client, colorize('You lack the necessary skill to cast this spell.\r\n', 'red'));
+      return;
+    }
+    
     // Check if player provided a target
     const targetName = args.trim();
     if (!targetName) {

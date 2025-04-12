@@ -529,6 +529,23 @@ export class UserManager {
       user.isUnconscious = stats.isUnconscious;
     }
 
+    // Handle flags array properly
+    if (stats.flags !== undefined) {
+      // Ensure flags is an array
+      if (!Array.isArray(stats.flags)) {
+        console.warn(`[UserManager] Attempted to update flags with non-array value for ${username}. Ignoring.`);
+        delete stats.flags; // Remove invalid flags from stats to avoid overwriting
+      } else {
+        // If the user doesn't have a flags array yet, initialize it
+        if (!user.flags) {
+          user.flags = [];
+        }
+        // Use the provided flags array
+        user.flags = [...stats.flags];
+        delete stats.flags; // Remove flags from stats to avoid double processing
+      }
+    }
+
     Object.assign(user, stats);
     this.saveUsers();
     return true;
@@ -632,5 +649,83 @@ export class UserManager {
         username: score.username,
         score: score.score
       }));
+  }
+
+  /**
+   * Adds a flag to a user. Ensures no duplicates.
+   * @param username The user to add the flag to
+   * @param flag The flag string to add
+   * @returns True if the flag was added, false otherwise (user not found or flag already exists)
+   */
+  public addFlag(username: string, flag: string): boolean {
+    const user = this.getUser(username);
+    if (!user) {
+      console.error(`[UserManager] Cannot add flag: User ${username} not found.`);
+      return false;
+    }
+
+    // Ensure flags array exists
+    if (!user.flags) {
+      user.flags = [];
+    }
+
+    // Check if flag already exists
+    if (!user.flags.includes(flag)) {
+      user.flags.push(flag);
+      this.saveUsers();
+      console.log(`[UserManager] Added flag '${flag}' to user ${username}.`);
+      return true;
+    } else {
+      console.log(`[UserManager] Flag '${flag}' already exists for user ${username}.`);
+      return false; // Indicate flag wasn't newly added
+    }
+  }
+
+  /**
+   * Removes a flag from a user.
+   * @param username The user to remove the flag from
+   * @param flag The flag string to remove
+   * @returns True if the flag was removed, false otherwise (user not found or flag didn't exist)
+   */
+  public removeFlag(username: string, flag: string): boolean {
+    const user = this.getUser(username);
+    if (!user || !user.flags) {
+      console.error(`[UserManager] Cannot remove flag: User ${username} not found or has no flags.`);
+      return false;
+    }
+
+    const initialLength = user.flags.length;
+    user.flags = user.flags.filter(f => f !== flag);
+
+    if (user.flags.length < initialLength) {
+      this.saveUsers();
+      console.log(`[UserManager] Removed flag '${flag}' from user ${username}.`);
+      return true;
+    } else {
+      console.log(`[UserManager] Flag '${flag}' not found for user ${username}.`);
+      return false; // Indicate flag wasn't found/removed
+    }
+  }
+
+  /**
+   * Checks if a user has a specific flag.
+   * @param username The user to check
+   * @param flag The flag string to check for
+   * @returns True if the user has the flag, false otherwise
+   */
+  public hasFlag(username: string, flag: string): boolean {
+    const user = this.getUser(username);
+    return !!user?.flags?.includes(flag);
+  }
+
+  /**
+   * Gets all flags for a user.
+   * @param username The user to get flags for
+   * @returns An array of flag strings, or empty array if user has no flags, or null if user not found
+   */
+  public getFlags(username: string): string[] | null {
+    const user = this.getUser(username);
+    if (!user) return null;
+    return [...(user.flags || [])]; // Return a copy or empty array
   }
 }

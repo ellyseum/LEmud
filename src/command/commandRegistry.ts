@@ -37,6 +37,9 @@ import { ScoresCommand } from './commands/scores.command';
 import { DebugCommand } from './commands/debug.command'; // Import our new Debug command
 import { RestrictCommand } from './commands/restrict.command'; // Import our new Restrict command
 import { RootCommand } from './commands/root.command'; // Import our new Root command
+import { AddFlagCommand } from './commands/addflag.command'; // Import our new AddFlag command
+import { RemoveFlagCommand } from './commands/removeflag.command'; // Import our new RemoveFlag command
+import { ListFlagsCommand } from './commands/listflags.command'; // Import our new ListFlags command
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -118,7 +121,10 @@ export class CommandRegistry {
       new ScoresCommand(), // Add ScoresCommand instance
       new DebugCommand(this.roomManager, this.userManager, this.combatSystem), // Add our new Debug command
       new RestrictCommand(this.userManager), // Add our new Restrict command
-      new RootCommand(this.userManager, this.roomManager) // Add our new Root command
+      new RootCommand(this.userManager, this.roomManager), // Add our new Root command
+      new AddFlagCommand(this.userManager), // Add our new flag management commands
+      new RemoveFlagCommand(this.userManager),
+      new ListFlagsCommand(this.userManager)
     ];
     
     // Register all commands

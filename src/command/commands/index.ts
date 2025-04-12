@@ -29,6 +29,9 @@ import './stats.command';
 import './sudo.command';
 import './unequip.command';
 import './yell.command';
+import './addflag.command'; // Import flag management commands
+import './removeflag.command';
+import './listflags.command';
 
 // Export ScoresCommand so it can be registered properly
 export * from './scores.command';
