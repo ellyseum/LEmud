@@ -50,31 +50,60 @@ export class AttackCommand implements Command {
       return;
     }
     
-    // Find target in the room
-    const target = this.roomManager.getNPCFromRoom(roomId, args.trim());
-    if (!target) {
-      // If not found by instance ID or template ID, try to find by name
-      const room = this.roomManager.getRoom(roomId);
-      if (room) {
-        const targetName = args.trim().toLowerCase();
-        const npcsInRoom = Array.from(room.npcs.values());
-        const matchByName = npcsInRoom.find(npc => 
-          npc.name.toLowerCase() === targetName || 
-          npc.name.toLowerCase().includes(targetName)
+    // Find target in the room - first try to get exact NPC by instance ID
+    const room = this.roomManager.getRoom(roomId);
+    if (!room) {
+      playerLogger.info(`Attack command: Invalid room ${roomId}`);
+      writeFormattedMessageToClient(client, colorize(`You are not in a valid location to attack from.\r\n`, 'red'));
+      return;
+    }
+    
+    let target = null;
+    const targetName = args.trim().toLowerCase();
+    
+    // First try direct instance ID match
+    if (room.npcs.has(targetName)) {
+      target = room.npcs.get(targetName);
+      playerLogger.info(`Attack command: Found direct match for instance ID ${targetName}`);
+    } 
+    // Then try by instance ID with partial match
+    else {
+      const npcsInRoom = Array.from(room.npcs.values());
+      const matchByInstanceId = npcsInRoom.find(npc => 
+        npc.instanceId.toLowerCase().includes(targetName)
+      );
+      
+      if (matchByInstanceId) {
+        target = matchByInstanceId;
+        playerLogger.info(`Attack command: Found partial instance ID match: ${matchByInstanceId.instanceId}`);
+      }
+      // If no instance ID match, try template ID
+      else {
+        const matchByTemplateId = npcsInRoom.find(npc => 
+          npc.templateId.toLowerCase() === targetName ||
+          npc.templateId.toLowerCase().includes(targetName)
         );
         
-        if (matchByName) {
-          // Found an NPC by name
-          playerLogger.info(`Attack command: Engaging combat with ${matchByName.name} (ID: ${matchByName.instanceId}) in room ${roomId}`);
-          const success = this.combatSystem.engageCombat(client, matchByName);
-          if (!success) {
-            playerLogger.warn(`Attack command: Failed to engage combat with ${matchByName.name} (ID: ${matchByName.instanceId})`);
-            writeFormattedMessageToClient(client, colorize(`Unable to engage combat with ${matchByName.name}.\r\n`, 'red'));
+        if (matchByTemplateId) {
+          target = matchByTemplateId;
+          playerLogger.info(`Attack command: Found template ID match: ${matchByTemplateId.templateId} with instance ID: ${matchByTemplateId.instanceId}`);
+        }
+        // Finally try by name
+        else {
+          const matchByName = npcsInRoom.find(npc => 
+            npc.name.toLowerCase() === targetName || 
+            npc.name.toLowerCase().includes(targetName)
+          );
+          
+          if (matchByName) {
+            target = matchByName;
+            playerLogger.info(`Attack command: Found name match: ${matchByName.name} with instance ID: ${matchByName.instanceId}`);
           }
-          return;
         }
       }
-      
+    }
+    
+    if (!target) {
       playerLogger.info(`Attack command: Target "${args.trim()}" not found in room ${roomId}`);
       writeFormattedMessageToClient(client, colorize(`You don't see a '${args.trim()}' here to attack.\r\n`, 'yellow'));
       return;

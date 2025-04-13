@@ -73,7 +73,7 @@ export class RoomManager {
     }
 
     // Add NPC initialization after loading rooms
-    this.initializeNPCs();
+    // this.initializeNPCs();
   }
 
   private saveRooms(): void {

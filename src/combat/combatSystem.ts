@@ -117,24 +117,28 @@ export class CombatSystem {
     const room = this.roomManager.getRoom(roomId);
     if (!room) return null;
     
-    // Verify the NPC is actually in this room
-    if (!room.npcs || !(room.npcs instanceof Map) || !room.npcs.has(entityName)) {
-      // Try template ID lookup if direct lookup fails
-      const npcsArray = Array.from(room.npcs?.values() || []);
-      if (!this.isNpcInRoomByTemplateId(room, entityName)) {
-        systemLogger.warn(`NPC ${entityName} not found in room ${roomId}`);
-        return null;
-      }
-    }
-    
-    // Get the NPC if it exists in the room
+    // First try to find the NPC by instance ID directly
     let npc: NPC | null = room.npcs.get(entityName) || null;
     
-    // If not found by instance ID, try to find by template ID
+    // If not found by instance ID, check if entityName might be a template ID
     if (!npc && room.npcs) {
       const matchingNPCs = Array.from(room.npcs.values()).filter((n: NPC) => n.templateId === entityName);
       if (matchingNPCs.length > 0) {
         npc = matchingNPCs[0];
+        
+        // Important: Create a mapping from template ID to the instance we're using
+        // but store the entity under its actual instanceId to prevent duplicates
+        if (npc.instanceId !== entityName) {
+          systemLogger.info(`Creating mapping from template ID ${entityName} to instance ID ${npc.instanceId}`);
+          
+          // Store by instance ID instead
+          if (!roomEntities.has(npc.instanceId)) {
+            roomEntities.set(npc.instanceId, npc);
+          }
+          
+          // Return the entity we found by template ID
+          return npc;
+        }
       }
     }
     
@@ -218,10 +222,13 @@ export class CombatSystem {
     if (!player.user || !player.user.currentRoomId) return false;
 
     const roomId = player.user.currentRoomId;
-    const entityId = this.getEntityId(roomId, target.name);
+    // Ensure we're using the instance ID for NPCs
+    const entityName = (target as any).instanceId || target.name;
+    const entityId = this.getEntityId(roomId, entityName);
     const playerLogger = getPlayerLogger(player.user.username);
     
-    const sharedTarget = this.getSharedEntity(roomId, target.name);
+    // Always get or create a shared entity using the instance ID if available
+    const sharedTarget = this.getSharedEntity(roomId, entityName);
     if (!sharedTarget) return false;
     
     // Check if player is already in combat with a different NPC
@@ -231,21 +238,21 @@ export class CombatSystem {
       combat.activeCombatants = [];
       
       // Log the target switch
-      systemLogger.debug(`Player ${player.user.username} switched target to ${target.name}`);
-      playerLogger.info(`Switched combat target to ${target.name}`);
+      systemLogger.debug(`Player ${player.user.username} switched target to ${sharedTarget.name} (ID: ${entityName})`);
+      playerLogger.info(`Switched combat target to ${sharedTarget.name} (ID: ${entityName})`);
       
       // Notify player
       writeFormattedMessageToClient(
         player,
-        colorize(`You turn your attention to ${target.name}.\r\n`, 'yellow')
+        colorize(`You turn your attention to ${sharedTarget.name}.\r\n`, 'yellow')
       );
     }
     
-    // Track that the player is targeting this entity
+    // Track that the player is targeting this entity - use instance ID
     this.trackEntityTargeter(entityId, player.user.username);
     
-    // Add the entity to active combat entities for this room
-    this.addEntityToCombatForRoom(roomId, target.name);
+    // Add the entity to active combat entities for this room - use instance ID
+    this.addEntityToCombatForRoom(roomId, entityName);
     
     // Note: We don't add aggression here anymore - aggression is only added when damage is dealt
     // or an attack is attempted and misses in the processAttack method
@@ -253,7 +260,7 @@ export class CombatSystem {
     // If a combat instance exists but the player's inCombat flag is off, re-engage combat
     if (combat && !player.user.inCombat) {
       systemLogger.debug(`Re-engaging combat for ${player.user.username}`);
-      playerLogger.info(`Re-engaging combat with ${target.name}`);
+      playerLogger.info(`Re-engaging combat with ${sharedTarget.name} (ID: ${entityName})`);
       
       player.user.inCombat = true;
       this.userManager.updateUserStats(player.user.username, { inCombat: true });
