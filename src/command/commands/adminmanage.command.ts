@@ -8,6 +8,11 @@ import { UserManager } from '../../user/userManager';
 import { SudoCommand } from './sudo.command';
 import { ItemManager } from '../../utils/itemManager';
 import { RoomManager } from '../../room/roomManager';
+import { createContextLogger } from '../../utils/logger';
+
+// Create a context-specific logger for AdminManage command
+const adminLogger = createContextLogger('AdminManage');
+const playerLogger = createContextLogger('Player');
 
 // Define admin levels
 export enum AdminLevel {
@@ -67,9 +72,9 @@ export class AdminManageCommand implements Command {
         ];
         this.saveAdmins();
       }
-      console.log(`[AdminManage] Loaded ${this.admins.length} admin users`);
+      adminLogger.info(`Loaded ${this.admins.length} admin users`);
     } catch (error) {
-      console.error('[AdminManage] Error loading admin users:', error);
+      adminLogger.error('Error loading admin users:', error);
       // Default to just the main admin if file can't be loaded
       this.admins = [
         {
@@ -94,14 +99,14 @@ export class AdminManageCommand implements Command {
     try {
       const adminData = { admins: this.admins };
       fs.writeFileSync(this.adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
-      console.log('[AdminManage] Saved admin users');
+      adminLogger.info('Saved admin users');
       
       // Ensure the SudoCommand is aware of the updated admin list
       if (this.sudoCommand) {
         this.sudoCommand.updateAdminList(this.admins);
       }
     } catch (error) {
-      console.error('[AdminManage] Error saving admin users:', error);
+      adminLogger.error('Error saving admin users:', error);
     }
   }
 
@@ -331,6 +336,8 @@ export class AdminManageCommand implements Command {
     this.admins.push(newAdmin);
     this.saveAdmins();
 
+    adminLogger.info(`Admin ${client.user.username} added new admin ${username} with level ${level}`);
+    playerLogger.info(`Player ${username} has been granted ${level} privileges by admin ${client.user.username}`);
     writeToClient(client, colorize(`${username} has been granted ${level} privileges.\r\n`, 'green'));
 
     // Notify the target user if they're online
@@ -370,6 +377,7 @@ export class AdminManageCommand implements Command {
     this.admins = this.admins.filter(admin => admin.username.toLowerCase() !== username.toLowerCase());
     this.saveAdmins();
 
+    adminLogger.info(`Admin ${client.user.username} removed admin ${username}`);
     writeToClient(client, colorize(`${username}'s admin privileges have been revoked.\r\n`, 'green'));
 
     // Notify the target user if they're online
@@ -407,6 +415,7 @@ export class AdminManageCommand implements Command {
       this.admins[adminIndex].level = newLevel;
       this.saveAdmins();
 
+      adminLogger.info(`Admin ${client.user.username} modified admin ${username}'s level to ${newLevel}`);
       writeToClient(client, colorize(`${username}'s admin level has been changed to ${newLevel}.\r\n`, 'green'));
 
       // Notify the target user if they're online
@@ -455,7 +464,7 @@ export class AdminManageCommand implements Command {
         }
       } catch (err) {
         // In case the findInstanceByPartialId method doesn't exist or throws
-        console.log(`[AdminManage] Error finding item by partial ID: ${err}`);
+        adminLogger.error(`Error finding item by partial ID: ${err}`);
         // Continue with normal flow using the original ID
       }
     }
@@ -564,7 +573,7 @@ export class AdminManageCommand implements Command {
     if (deleted) {
       writeToClient(client, colorize(`Item "${displayName}" (${realInstanceId}) has been permanently destroyed.\r\n`, 'green'));
       // Log the action
-      console.log(`[AdminManage] Admin ${client.user.username} destroyed item ${realInstanceId} (${displayName})`);
+      adminLogger.info(`Admin ${client.user.username} destroyed item ${realInstanceId} (${displayName})`);
     } else {
       writeToClient(client, colorize(`Error: Failed to remove item from database. Please check the logs.\r\n`, 'red'));
     }
@@ -652,7 +661,7 @@ export class AdminManageCommand implements Command {
       }
       
       // Log the action
-      console.log(`[AdminManage] Admin ${client.user.username} summoned player ${targetUser.username} to room ${currentRoomId} from ${oldRoomId || 'nowhere'}`);
+      adminLogger.info(`Admin ${client.user.username} summoned player ${targetUser.username} to room ${currentRoomId} from ${oldRoomId || 'nowhere'}`);
       
       return;
     }
@@ -684,8 +693,8 @@ export class AdminManageCommand implements Command {
         }
       } catch (err) {
         // In case the findInstanceByPartialId method doesn't exist or throws
+        adminLogger.error(`Error finding item by partial ID: ${err}`);
         // Just continue to try other entity types
-        console.log(`[AdminManage] Error finding item by partial ID: ${err}`);
       }
     }
     
@@ -834,7 +843,7 @@ export class AdminManageCommand implements Command {
       }
       
       // Log the action
-      console.log(`[AdminManage] Admin ${client.user.username} summoned item ${realInstanceId} (${displayName}) to room ${currentRoomId} from ${itemSourceInfo}`);
+      adminLogger.info(`Admin ${client.user.username} summoned item ${realInstanceId} (${displayName}) to room ${currentRoomId} from ${itemSourceInfo}`);
       
       return;
     }
@@ -878,13 +887,13 @@ export class AdminManageCommand implements Command {
         }
         
         // Log the action
-        console.log(`[AdminManage] Admin ${client.user.username} summoned NPC ${entityId} (${npcName}) to room ${currentRoomId}`);
+        adminLogger.info(`Admin ${client.user.username} summoned NPC ${entityId} (${npcName}) to room ${currentRoomId}`);
         
         return;
       }
     } catch (error) {
       // NPC manager might not exist or have a different structure
-      console.log(`[AdminManage] NPC manager not available or error: ${error}`);
+      adminLogger.error(`NPC manager not available or error: ${error}`);
     }
     
     // If we get here, the ID wasn't found as an item, NPC, or player

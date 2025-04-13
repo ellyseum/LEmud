@@ -13,6 +13,10 @@ import {
 import { writeFormattedMessageToClient } from '../utils/socketWriter';
 import { CombatSystem } from '../combat/combatSystem';
 import { ConnectedClient } from '../types';
+import { systemLogger, createMechanicsLogger } from '../utils/logger';
+
+// Create a specialized logger for effects
+const effectLogger = createMechanicsLogger('EffectManager');
 
 /**
  * EffectManager
@@ -36,7 +40,7 @@ export class EffectManager extends EventEmitter {
      */
     private constructor(userManager: UserManager, roomManager: RoomManager) {
         super();
-        console.log('Creating EffectManager instance');
+        effectLogger.info('Creating EffectManager instance');
         this.userManager = userManager;
         this.roomManager = roomManager;
         this.combatSystem = CombatSystem.getInstance(userManager, roomManager);
@@ -73,7 +77,7 @@ export class EffectManager extends EventEmitter {
     private startRealTimeProcessor(): void {
         if (this.realTimeProcessorIntervalId) return; // Already running
         
-        console.log(`[EffectManager] Starting real-time effect processor (interval: ${this.REAL_TIME_CHECK_INTERVAL_MS}ms)`);
+        effectLogger.info(`Starting real-time effect processor (interval: ${this.REAL_TIME_CHECK_INTERVAL_MS}ms)`);
         this.realTimeProcessorIntervalId = setInterval(() => {
             this.processRealTimeEffects();
         }, this.REAL_TIME_CHECK_INTERVAL_MS);
@@ -84,7 +88,7 @@ export class EffectManager extends EventEmitter {
      */
     public stopRealTimeProcessor(): void {
         if (this.realTimeProcessorIntervalId) {
-            console.log("[EffectManager] Stopping real-time effect processor.");
+            effectLogger.info("Stopping real-time effect processor.");
             clearInterval(this.realTimeProcessorIntervalId);
             this.realTimeProcessorIntervalId = null;
         }
@@ -98,8 +102,8 @@ export class EffectManager extends EventEmitter {
         isPlayer: boolean, 
         effectData: Omit<ActiveEffect, 'id' | 'remainingTicks' | 'lastTickApplied' | 'lastRealTimeApplied'>
     ): void {
-        console.log(`[EffectManager] Adding effect: ${effectData.type} to ${targetId}`);
-        console.log(`[EffectManager] Effect details: durationTicks=${effectData.durationTicks}, tickInterval=${effectData.tickInterval}, damagePerTick=${effectData.payload.damagePerTick}`);
+        effectLogger.info(`Adding effect: ${effectData.type} to ${targetId}`);
+        effectLogger.debug(`Effect details: durationTicks=${effectData.durationTicks}, tickInterval=${effectData.tickInterval}, damagePerTick=${effectData.payload.damagePerTick}`);
 
         const targetMap = isPlayer ? this.playerEffects : this.npcEffects;
         const existingEffects = targetMap.get(targetId) || [];
@@ -133,21 +137,21 @@ export class EffectManager extends EventEmitter {
                 case StackingBehavior.REFRESH:
                     // Remove all existing effects of this type
                     sameTypeEffects.forEach(e => effectsToRemove.push(e.id));
-                    console.log(`[EffectManager] Replacing/Refreshing effect type ${effectData.type} on ${targetId}`);
+                    effectLogger.debug(`Replacing/Refreshing effect type ${effectData.type} on ${targetId}`);
                     break;
 
                 case StackingBehavior.STACK_DURATION:
                     // Add duration to the first existing effect
                     if (sameTypeEffects[0]) {
                         sameTypeEffects[0].remainingTicks += effectData.durationTicks;
-                        console.log(`[EffectManager] Stacking duration for effect ${sameTypeEffects[0].id} (${effectData.type}) on ${targetId}. New duration: ${sameTypeEffects[0].remainingTicks}`);
+                        effectLogger.debug(`Stacking duration for effect ${sameTypeEffects[0].id} (${effectData.type}) on ${targetId}. New duration: ${sameTypeEffects[0].remainingTicks}`);
                         effectToAdd = null; // Don't add a new instance
                     }
                     break;
 
                 case StackingBehavior.STACK_INTENSITY:
                     // Do nothing special - both effects will exist and apply independently
-                    console.log(`[EffectManager] Stacking intensity for effect type ${effectData.type} on ${targetId}`);
+                    effectLogger.debug(`Stacking intensity for effect type ${effectData.type} on ${targetId}`);
                     break;
 
                 case StackingBehavior.STRONGEST_WINS:
@@ -165,17 +169,17 @@ export class EffectManager extends EventEmitter {
                     if (newStrength > existingStrength) {
                         // New effect is stronger, remove all existing ones
                         sameTypeEffects.forEach(e => effectsToRemove.push(e.id));
-                        console.log(`[EffectManager] New effect ${effectData.type} is stronger, replacing existing on ${targetId}`);
+                        effectLogger.debug(`New effect ${effectData.type} is stronger, replacing existing on ${targetId}`);
                     } else {
                         // Existing is stronger, ignore the new one
-                        console.log(`[EffectManager] Existing effect ${effectData.type} is stronger, ignoring new one on ${targetId}`);
+                        effectLogger.debug(`Existing effect ${effectData.type} is stronger, ignoring new one on ${targetId}`);
                         effectToAdd = null;
                     }
                     break;
 
                 case StackingBehavior.IGNORE:
                     // Ignore new effect if same type exists
-                    console.log(`[EffectManager] Ignoring new effect ${effectData.type} because one already exists on ${targetId}`);
+                    effectLogger.debug(`Ignoring new effect ${effectData.type} because one already exists on ${targetId}`);
                     effectToAdd = null;
                     break;
             }
@@ -189,7 +193,7 @@ export class EffectManager extends EventEmitter {
         // Add the new effect if not nullified by stacking rules
         if (effectToAdd) {
             updatedEffects.push(effectToAdd);
-            console.log(`[EffectManager] Applied effect ${effectToAdd.name} (${effectToAdd.id}) to ${targetId}`);
+            effectLogger.info(`Applied effect ${effectToAdd.name} (${effectToAdd.id}) to ${targetId}`);
             
             // Notify the target if it's a player
             if (isPlayer) {
@@ -221,7 +225,7 @@ export class EffectManager extends EventEmitter {
             const gameTimerManager = GameTimerManager.getInstance(this.userManager, this.roomManager);
             return gameTimerManager.getTickCount();
         } catch (err) {
-            console.error('[EffectManager] Error getting GameTimerManager tick count:', err);
+            effectLogger.error('Error getting GameTimerManager tick count:', err);
             return 0; // Default to 0 if can't get the real tick count
         }
     }
@@ -251,7 +255,7 @@ export class EffectManager extends EventEmitter {
                 }
                 
                 found = true;
-                console.log(`[EffectManager] Removed effect ${effectId} from player ${username}`);
+                effectLogger.info(`Removed effect ${effectId} from player ${username}`);
                 
                 // Notify the player
                 const client = this.userManager.getActiveUserSession(username);
@@ -282,7 +286,7 @@ export class EffectManager extends EventEmitter {
                         this.npcEffects.delete(npcId);
                     }
                     
-                    console.log(`[EffectManager] Removed effect ${effectId} from NPC ${npcId}`);
+                    effectLogger.info(`Removed effect ${effectId} from NPC ${npcId}`);
                     break;
                 }
             }
@@ -339,21 +343,21 @@ export class EffectManager extends EventEmitter {
      */
     public processGameTick(currentTick: number): void {
         const effectsToRemove: string[] = [];
-        console.log(`[EffectManager] Processing game tick ${currentTick} for effects`);
-        console.log(`[EffectManager] Player effects: ${this.playerEffects.size}, NPC effects: ${this.npcEffects.size}`);
+        effectLogger.debug(`Processing game tick ${currentTick} for effects`);
+        effectLogger.debug(`Player effects: ${this.playerEffects.size}, NPC effects: ${this.npcEffects.size}`);
 
         // Helper to process effects for a target
         const processTargetEffects = (targetId: string, effects: ActiveEffect[], isPlayer: boolean) => {
-            console.log(`[EffectManager] Processing ${effects.length} effects for ${isPlayer ? 'player' : 'NPC'} ${targetId}`);
+            effectLogger.debug(`Processing ${effects.length} effects for ${isPlayer ? 'player' : 'NPC'} ${targetId}`);
             
             for (const effect of effects) {
                 // Decrement remaining duration for ALL effects
                 effect.remainingTicks--;
-                console.log(`[EffectManager] Effect ${effect.type} (${effect.id}) has ${effect.remainingTicks} ticks remaining`);
+                effectLogger.debug(`Effect ${effect.type} (${effect.id}) has ${effect.remainingTicks} ticks remaining`);
 
                 // Check if effect has expired
                 if (effect.remainingTicks <= 0) {
-                    console.log(`[EffectManager] Effect ${effect.type} (${effect.id}) has expired, queuing for removal`);
+                    effectLogger.debug(`Effect ${effect.type} (${effect.id}) has expired, queuing for removal`);
                     effectsToRemove.push(effect.id);
                     continue;
                 }
@@ -361,12 +365,12 @@ export class EffectManager extends EventEmitter {
                 // Only process tick-based periodic effects here
                 if (!effect.isTimeBased && effect.tickInterval > 0 && 
                     (currentTick - effect.lastTickApplied) >= effect.tickInterval) {
-                    console.log(`[EffectManager] Applying tick-based effect ${effect.type} (${effect.id}) to ${targetId}`);
+                    effectLogger.debug(`Applying tick-based effect ${effect.type} (${effect.id}) to ${targetId}`);
                     effect.lastTickApplied = currentTick;
                     this.applyEffectPayload(effect, targetId, isPlayer);
                 } else {
-                    console.log(`[EffectManager] Skipping effect ${effect.type} (${effect.id}) - not ready to tick yet`);
-                    console.log(`[EffectManager] isTimeBased=${effect.isTimeBased}, tickInterval=${effect.tickInterval}, lastTick=${effect.lastTickApplied}, diff=${currentTick - effect.lastTickApplied}, realTimeIntervalMs=${effect.realTimeIntervalMs || 'undefined'}`);
+                    effectLogger.debug(`Skipping effect ${effect.type} (${effect.id}) - not ready to tick yet`);
+                    effectLogger.debug(`isTimeBased=${effect.isTimeBased}, tickInterval=${effect.tickInterval}, lastTick=${effect.lastTickApplied}, diff=${currentTick - effect.lastTickApplied}, realTimeIntervalMs=${effect.realTimeIntervalMs || 'undefined'}`);
                 }
             }
         };
@@ -383,7 +387,7 @@ export class EffectManager extends EventEmitter {
 
         // Remove expired effects
         if (effectsToRemove.length > 0) {
-            console.log(`[EffectManager] Removing ${effectsToRemove.length} expired effects`);
+            effectLogger.info(`Removing ${effectsToRemove.length} expired effects`);
             effectsToRemove.forEach(id => this.removeEffect(id));
         }
     }
@@ -574,7 +578,7 @@ export class EffectManager extends EventEmitter {
         // Clean up NPC from combat system tracking
         this.combatSystem.cleanupDeadEntity(roomId, npcId);
         
-        console.log(`[EffectManager] NPC ${npcId} died in room ${roomId} from an effect`);
+        effectLogger.info(`NPC ${npcId} died in room ${roomId} from an effect`);
     }
     
     /**
@@ -727,7 +731,7 @@ export class EffectManager extends EventEmitter {
             }
         }
         
-        console.warn(`[EffectManager] Could not find room for NPC with instance ID: ${npcInstanceId}`);
+        effectLogger.warn(`Could not find room for NPC with instance ID: ${npcInstanceId}`);
         return null;
     }
 
@@ -738,7 +742,7 @@ export class EffectManager extends EventEmitter {
         // Search through rooms to find the NPC by instance ID
         const roomId = this.findRoomForNpc(npcInstanceId);
         if (!roomId) {
-            console.warn(`[EffectManager] findNpcById: Could not find room for NPC with instance ID: ${npcInstanceId}`);
+            effectLogger.warn(`findNpcById: Could not find room for NPC with instance ID: ${npcInstanceId}`);
             return null;
         }
         

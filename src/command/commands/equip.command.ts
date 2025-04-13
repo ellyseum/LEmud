@@ -5,6 +5,7 @@ import { Command } from '../command.interface';
 import { ItemManager } from '../../utils/itemManager';
 import { UserManager } from '../../user/userManager';
 import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer';
+import { getPlayerLogger } from '../../utils/logger'; // Add logger import
 
 export class EquipCommand implements Command {
   name = 'equip';
@@ -20,8 +21,12 @@ export class EquipCommand implements Command {
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
 
+    // Get player logger for this user
+    const playerLogger = getPlayerLogger(client.user.username);
+
     if (!args) {
       writeToClient(client, colorize('What would you like to equip? (Usage: equip [item name])\r\n', 'red'));
+      playerLogger.info('Equip command: No item specified');
       return;
     }
 
@@ -33,6 +38,7 @@ export class EquipCommand implements Command {
     
     if (!itemId) {
       writeToClient(client, colorize(`You don't have an item called "${args}" in your inventory.\r\n`, 'red'));
+      playerLogger.info(`Equip command: Item "${args}" not found in inventory`);
       return;
     }
     
@@ -50,18 +56,29 @@ export class EquipCommand implements Command {
     
     if (!item) {
       writeToClient(client, colorize(`Error: Item "${args}" found in inventory but not in the database.\r\n`, 'red'));
+      playerLogger.warn(`Equip command: Item "${args}" (ID: ${itemId}) found in inventory but not in the database`);
       return;
     }
     
     // Check if the item can be equipped (it needs a slot)
     if (!item.slot) {
       writeToClient(client, colorize(`${item.name} cannot be equipped.\r\n`, 'red'));
+      playerLogger.info(`Equip command: Attempted to equip non-equippable item "${item.name}" (ID: ${itemId})`);
       return;
     }
     
     // Check item requirements
     if (!this.meetsRequirements(user, item)) {
       writeToClient(client, colorize(`You don't meet the requirements to equip ${item.name}.\r\n`, 'red'));
+      
+      // Log requirements not met
+      let reqInfo = `Equip command: Requirements not met for "${item.name}" (ID: ${itemId}) - `;
+      if (item.requirements) {
+        if (item.requirements.level) reqInfo += `Level req: ${item.requirements.level}, `;
+        if (item.requirements.strength) reqInfo += `Strength req: ${item.requirements.strength}, `;
+        if (item.requirements.dexterity) reqInfo += `Dexterity req: ${item.requirements.dexterity}`;
+      }
+      playerLogger.info(reqInfo);
       
       // Show requirements
       if (item.requirements) {
@@ -108,6 +125,9 @@ export class EquipCommand implements Command {
         // Add the current item back to inventory
         user.inventory.items.push(currentItemId);
         writeToClient(client, colorize(`You unequip ${currentItem.name}.\r\n`, 'yellow'));
+        
+        // Log the unequip action
+        playerLogger.info(`Unequipped item from ${item.slot} slot: ${currentItem.name} (ID: ${currentItemId})`);
         
         // Add to item instance history if applicable
         if (currentInstance) {
@@ -159,6 +179,9 @@ export class EquipCommand implements Command {
     
     // Display equip message with proper item name
     writeToClient(client, colorize(`You equip ${displayName}.\r\n`, 'green'));
+    
+    // Log the successful equip action
+    playerLogger.info(`Equipped item in ${item.slot} slot: ${stripColorCodes(displayName)} (ID: ${itemId}), attack: ${user.attack}, defense: ${user.defense}`);
     
     // Show any stat changes if the item has stat bonuses
     if (item.stats) {

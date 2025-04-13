@@ -6,6 +6,7 @@ import { colorize } from '../utils/colors';
 import { writeToClient, writeFormattedMessageToClient, drawCommandPrompt } from '../utils/socketWriter';
 import { formatUsername } from '../utils/formatters';
 import { NPC } from '../combat/npc';
+import { systemLogger, getPlayerLogger } from '../utils/logger';
 
 const ROOMS_FILE = path.join(__dirname, '..', '..', 'data', 'rooms.json');
 const DEFAULT_ROOM_ID = 'start'; // ID for the starting room
@@ -33,7 +34,7 @@ export class RoomManager {
 
   // Make constructor private for singleton pattern
   private constructor(clients: Map<string, ConnectedClient>) {
-    console.log('Creating RoomManager instance');
+    systemLogger.info('Creating RoomManager instance');
     this.clients = clients;
     this.loadRooms();
     this.ensureStartingRoom();
@@ -56,6 +57,8 @@ export class RoomManager {
         const data = fs.readFileSync(ROOMS_FILE, 'utf8');
         const roomDataArray: RoomData[] = JSON.parse(data);
         
+        systemLogger.info(`Loading ${roomDataArray.length} rooms...`);
+        
         roomDataArray.forEach(roomData => {
           const room = new Room(roomData);
           this.rooms.set(room.id, room);
@@ -65,7 +68,7 @@ export class RoomManager {
         this.saveRooms();
       }
     } catch (error) {
-      console.error('Error loading rooms:', error);
+      systemLogger.error('Error loading rooms:', error);
       this.ensureStartingRoom(); // Make sure we have at least the starting room
     }
 
@@ -102,7 +105,7 @@ export class RoomManager {
       
       fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsData, null, 2));
     } catch (error) {
-      console.error('Error saving rooms:', error);
+      systemLogger.error('Error saving rooms:', error);
     }
   }
 
@@ -279,6 +282,10 @@ export class RoomManager {
 
         // NOW update user's current room
         client.user.currentRoomId = nextRoomId;
+
+        // Log the player's movement
+        const playerLogger = getPlayerLogger(client.user.username);
+        playerLogger.info(`Moved to room ${nextRoomId}: ${nextRoom.name}`);
         
         // Show the new room description with formatted message to redraw prompt after
         writeFormattedMessageToClient(
@@ -357,7 +364,7 @@ export class RoomManager {
       }
       return null;
     } catch (err) {
-      console.error('[RoomManager] Error getting CombatSystem instance:', err);
+      systemLogger.error('[RoomManager] Error getting CombatSystem instance:', err);
       return null;
     }
   }
@@ -384,6 +391,11 @@ export class RoomManager {
       `${formatUsername(username)} enters the room.\r\n`,
       username // Exclude the player themselves
     );
+
+    // Log the player's entrance
+    systemLogger.info(`Player ${username} entered room ${roomId}`);
+    const playerLogger = getPlayerLogger(username);
+    playerLogger.info(`Entered room ${roomId}: ${room.name}`);
   }
 
   /**
@@ -950,7 +962,7 @@ export class RoomManager {
     const startingRoom = this.getRoom(startingRoomId);
 
     if (!startingRoom) {
-      console.error("Error: Starting room does not exist!");
+      systemLogger.error("Error: Starting room does not exist!");
       return false;
     }
 
@@ -974,6 +986,10 @@ export class RoomManager {
       client.user.username
     );
 
+    // Log the teleportation
+    const playerLogger = getPlayerLogger(client.user.username);
+    playerLogger.info(`Teleported to starting room: ${startingRoom.name}`);
+    
     return true;
   }
 
@@ -1006,7 +1022,7 @@ export class RoomManager {
           const npc = NPC.fromNPCData(npcTemplate);
           startingRoom.addNPC(npc);
         } else {
-          console.warn('Cat NPC not found in data, using default values');
+          systemLogger.warn('Cat NPC not found in data, using default values');
           const catNPC = new NPC('cat', 10, 10, [1, 3], false, false, 75);
           startingRoom.addNPC(catNPC);
         }

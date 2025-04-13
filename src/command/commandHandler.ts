@@ -7,6 +7,7 @@ import { CombatSystem } from '../combat/combatSystem';
 import { CommandRegistry } from './commandRegistry';
 import { GameTimerManager } from '../timer/gameTimerManager';
 import { StateMachine } from '../state/stateMachine'; // Add StateMachine import
+import { systemLogger, getPlayerLogger } from '../utils/logger'; // Add logger imports
 // Import the commands index file to ensure all commands are registered
 import './commands';
 
@@ -171,7 +172,21 @@ export class CommandHandler {
     const command = this.commands.getCommand(commandName);
     
     if (command) {
-      command.execute(client, args);
+      try {
+        command.execute(client, args);
+        if (client.user) {
+          const playerLogger = getPlayerLogger(client.user.username);
+          systemLogger.debug(`Player ${client.user.username} executed command: ${commandName}`);
+          playerLogger.info(`Executed command: ${commandName} ${args}`);
+        }
+      } catch (error) {
+        systemLogger.error(`Error executing command ${commandName}:`, error);
+        if (client.user) {
+          // Fix: Safely handle error.message when error is of type 'unknown'
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          getPlayerLogger(client.user.username).error(`Error with command ${commandName}: ${errorMessage}`);
+        }
+      }
       
       // Display the command prompt after command execution
       // (many commands will draw the prompt themselves, but this ensures it always happens)
@@ -179,6 +194,10 @@ export class CommandHandler {
     } else {
       // Use the CommandRegistry to handle unknown commands
       // This will show the "Unknown command" message and display the help command
+      systemLogger.debug(`Unknown command attempted: ${commandName}`);
+      if (client.user) {
+        getPlayerLogger(client.user.username).info(`Attempted unknown command: ${commandName}`);
+      }
       this.commands.executeCommand(client, commandText);
       
       // Display the command prompt after

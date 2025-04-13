@@ -4,6 +4,7 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { ItemManager } from '../../utils/itemManager';
 import { colorizeItemName } from '../../utils/itemNameColorizer';
+import { getPlayerLogger } from '../../utils/logger';
 
 export class EquipmentCommand implements Command {
   name = 'equipment';
@@ -18,6 +19,11 @@ export class EquipmentCommand implements Command {
     if (!client.user) return;
 
     const user = client.user;
+    const playerLogger = getPlayerLogger(user.username);
+    
+    // Log that player is checking their equipment
+    const equippedItemsCount = user.equipment ? Object.keys(user.equipment).filter(slot => user.equipment![slot]).length : 0;
+    playerLogger.info(`Checked equipment - ${equippedItemsCount} items equipped, Attack: ${user.attack}, Defense: ${user.defense}`);
     
     writeToClient(client, colorize('=== Your Equipment ===\r\n', 'magenta'));
     

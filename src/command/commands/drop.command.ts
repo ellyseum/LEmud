@@ -7,6 +7,7 @@ import { UserManager } from '../../user/userManager';
 import { ItemManager } from '../../utils/itemManager';
 import { formatUsername } from '../../utils/formatters';
 import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer';
+import { getPlayerLogger } from '../../utils/logger'; // Add logger import
 
 // Define a type for valid currency types
 type CurrencyType = keyof Currency;
@@ -158,6 +159,10 @@ export class DropCommand implements Command {
       room, 
       `${formatUsername(client.user.username)} drops ${amount} ${type} piece${amount === 1 ? '' : 's'}.\r\n`
     );
+    
+    // Log the currency drop
+    const playerLogger = getPlayerLogger(client.user.username);
+    playerLogger.info(`Dropped ${amount} ${type} piece${amount === 1 ? '' : 's'} in room ${room.id}`);
   }
   
   /**
@@ -348,6 +353,10 @@ export class DropCommand implements Command {
         `${formatUsername(client.user.username)} drops the ${displayName}.\r\n`
       );
       
+      // Log the item drop
+      const playerLogger = getPlayerLogger(client.user.username);
+      playerLogger.info(`Dropped item: ${stripColorCodes(rawDisplayName)} (ID: ${itemId}) in room ${room.id}`);
+      
       return;
     }
     
@@ -393,6 +402,10 @@ export class DropCommand implements Command {
           `${formatUsername(client.user.username)} drops the ${colorizedName}.\r\n`
         );
         
+        // Log the upgraded legacy item drop
+        const playerLogger = getPlayerLogger(client.user.username);
+        playerLogger.info(`Dropped upgraded legacy item: ${displayName} (new instance ID: ${instance.instanceId}) in room ${room.id}`);
+        
         return;
       }
     }
@@ -415,6 +428,10 @@ export class DropCommand implements Command {
       room, 
       `${formatUsername(client.user.username)} drops the ${displayName}.\r\n`
     );
+    
+    // Log the legacy item drop
+    const playerLogger = getPlayerLogger(client.user.username);
+    playerLogger.info(`Dropped legacy item: ${displayName} (ID: ${itemId}) in room ${room.id}`);
   }
   
   /**

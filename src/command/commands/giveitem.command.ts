@@ -8,6 +8,10 @@ import { UserManager } from '../../user/userManager';
 import { SudoCommand } from './sudo.command';
 import { RoomManager } from '../../room/roomManager';
 import { colorizeItemName } from '../../utils/itemNameColorizer';
+import { createContextLogger } from '../../utils/logger';
+
+// Create a player action logger
+const playerLogger = createContextLogger('Player');
 
 export class GiveItemCommand implements Command {
   name = 'giveitem';
@@ -147,6 +151,9 @@ export class GiveItemCommand implements Command {
     // Save the changes
     this.userManager.updateUserInventory(targetUsername, targetUser.inventory);
     
+    // Log the player action
+    playerLogger.info(`${client.user.username} gave ${item.name} (${itemId}, instance: ${instanceId}) to ${targetUsername}`);
+    
     // Notify the admin
     if (targetUsername === client.user.username) {
       writeToClient(client, colorize(`Added ${item.name} to your inventory. Instance ID: ${instanceId}\r\n`, 'green'));
@@ -253,11 +260,14 @@ export class GiveItemCommand implements Command {
     // Add transfer to item history
     this.itemManager.addItemHistory(fullInstanceId, 'admin-transfer', `Transferred from ${location} ${owner ? `(${owner})` : ''} to ${targetUsername} by admin ${client.user.username}`);
     
+    // Log the player action
+    const itemName = instance.properties?.customName || template.name;
+    playerLogger.info(`${client.user.username} transferred ${itemName} (instance: ${fullInstanceId}) from ${location || 'unknown'} ${owner ? `(${owner})` : ''} to ${targetUsername}`);
+    
     // Save the changes
     this.userManager.updateUserInventory(targetUsername, targetUser.inventory);
     
     // Notify the admin
-    const itemName = instance.properties?.customName || template.name;
     if (targetUsername === client.user.username) {
       writeToClient(client, colorize(`Added ${colorizeItemName(itemName)} to your inventory. Full ID: ${fullInstanceId}\r\n`, 'green'));
     } else {

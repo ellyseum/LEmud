@@ -10,6 +10,10 @@ import { CommandHandler } from '../utils/commandHandler';
 import { ItemManager } from '../utils/itemManager';
 import { CommandRegistry } from '../command/commandRegistry';
 import { StateMachine } from '../state/stateMachine'; // Add StateMachine import
+import { createContextLogger } from '../utils/logger';
+
+// Create context-specific logger for authenticated state
+const authStateLogger = createContextLogger('AuthenticatedState');
 
 export class AuthenticatedState implements ClientState {
   name = ClientStateType.AUTHENTICATED;
@@ -61,7 +65,7 @@ export class AuthenticatedState implements ClientState {
       client.user.intelligence === undefined || 
       client.user.charisma === undefined
     )) {
-      console.log(`[AuthenticatedState] Initializing missing statistics for ${client.user.username}`);
+      authStateLogger.info(`Initializing missing statistics for ${client.user.username}`);
       
       // Create default stats object with only the missing properties
       const defaultStats: Partial<User> = {};
@@ -89,7 +93,7 @@ export class AuthenticatedState implements ClientState {
       client.user.defense === undefined ||
       client.user.equipment === undefined
     )) {
-      console.log(`[AuthenticatedState] Initializing missing combat stats and equipment for ${client.user.username}`);
+      authStateLogger.info(`Initializing missing combat stats and equipment for ${client.user.username}`);
       
       // Create default values for missing properties
       const defaultCombatStats: Partial<User> = {};
@@ -130,7 +134,7 @@ export class AuthenticatedState implements ClientState {
 
     // Check and fix inconsistent unconscious state
     if (client.user.isUnconscious && client.user.health > 0) {
-      console.log(`[AuthenticatedState] Fixing inconsistent unconscious state for ${client.user.username}. HP: ${client.user.health}, but marked as unconscious`);
+      authStateLogger.info(`Fixing inconsistent unconscious state for ${client.user.username}. HP: ${client.user.health}, but marked as unconscious`);
       client.user.isUnconscious = false;
       this.userManager.updateUserStats(client.user.username, { isUnconscious: false });
       writeToClient(client, colorize(`You regain consciousness as your health has been restored above 0.\r\n`, 'green'));
@@ -155,7 +159,7 @@ export class AuthenticatedState implements ClientState {
         const npcsArray = Array.from(room.npcs.values());
         if (npcsArray.length > 0) {
           const firstNpc = npcsArray[0];
-          console.log(`[AuthenticatedState] Room has NPCs. First NPC: ${firstNpc.name}`);
+          authStateLogger.debug(`Room has NPCs. First NPC: ${firstNpc.name}`);
         }
         this.checkForHostileNPCs(client, room);
       }
@@ -171,11 +175,11 @@ export class AuthenticatedState implements ClientState {
     
     // If player is in combat, make sure the prompt shows the correct state
     if (client.user.inCombat) {
-      console.log(`[AuthenticatedState] User ${client.user.username} entered with inCombat flag set`);
+      authStateLogger.info(`User ${client.user.username} entered with inCombat flag set`);
       
       // Fix for combat after session transfer: ensure combat system knows about this client
       if (!this.combatSystem.isInCombat(client)) {
-        console.log(`[AuthenticatedState] Combat flag mismatch - fixing`);
+        authStateLogger.info(`Combat flag mismatch - fixing`);
         
         // Get the current room to find potential targets
         const room = this.roomManager.getRoom(client.user.currentRoomId);
@@ -183,7 +187,7 @@ export class AuthenticatedState implements ClientState {
           const npcsArray = Array.from(room.npcs.values());
           if (npcsArray.length > 0) {
             const firstNpc = npcsArray[0];
-            console.log(`[AuthenticatedState] Room has NPCs. First NPC: ${firstNpc.name}`);
+            authStateLogger.debug(`Room has NPCs. First NPC: ${firstNpc.name}`);
           }
           this.commandHandler.handleAttackCommand(client, [npcsArray[0].instanceId]);
         } else {
@@ -253,14 +257,14 @@ export class AuthenticatedState implements ClientState {
   private checkForHostileNPCs(client: ConnectedClient, room: any): void {
     if (!client.user || !room || !room.npcs || !room.npcs.size) return;
     
-    console.log(`[AuthenticatedState] Checking for hostile NPCs in room ${room.id} for player ${client.user.username}`);
+    authStateLogger.debug(`Checking for hostile NPCs in room ${room.id} for player ${client.user.username}`);
     
     for (const npc of room.npcs.values()) {
       // Create a temporary entity to check if it's hostile
       const npcEntity = this.combatSystem['getSharedEntity'](room.id, npc.instanceId);
       
       if (npcEntity && npcEntity.isHostile) {
-        console.log(`[AuthenticatedState] Found hostile NPC ${npc.instanceId} in room ${room.id}`);
+        authStateLogger.info(`Found hostile NPC ${npc.instanceId} in room ${room.id}`);
         
         // Add the entity to active combat entities for this room
         this.combatSystem['addEntityToCombatForRoom'](room.id, npc.instanceId);

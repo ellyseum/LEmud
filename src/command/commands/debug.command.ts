@@ -8,11 +8,13 @@ import { UserManager } from '../../user/userManager';
 import { SudoCommand } from './sudo.command';
 import { CombatSystem } from '../../combat/combatSystem';
 import { ItemManager } from '../../utils/itemManager';
+import { getPlayerLogger } from '../../utils/logger';
 
 export class DebugCommand implements Command {
   name = 'debug';
   description = 'Inspect game elements and data (admin only)';
   private itemManager: ItemManager;
+  private playerLogger: any;
 
   constructor(
     private roomManager: RoomManager,
@@ -20,10 +22,15 @@ export class DebugCommand implements Command {
     private combatSystem: CombatSystem
   ) {
     this.itemManager = ItemManager.getInstance();
+    // Initialize with a default admin logger - will be updated with the correct username during execution
+    this.playerLogger = getPlayerLogger('admin');
   }
 
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
+    
+    // Initialize player logger with the current user's username
+    this.playerLogger = getPlayerLogger(client.user.username);
     
     // Check if user has admin privileges
     if (!SudoCommand.isAuthorizedUser(client.user.username)) {
@@ -36,6 +43,8 @@ export class DebugCommand implements Command {
 
     if (!subcommand) {
       this.showHelp(client);
+      // Log the help request
+      this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} viewed debug command help`);
       return;
     }
 
@@ -43,21 +52,33 @@ export class DebugCommand implements Command {
     switch (subcommand.toLowerCase()) {
       case 'npc':
         this.debugNPC(client, target);
+        // Log the NPC debug request
+        this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} examined NPC '${target}'`);
         break;
       case 'room':
         this.debugRoom(client, target);
+        // Log the room debug request
+        this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} examined room '${target}'`);
         break;
       case 'player':
         this.debugPlayer(client, target);
+        // Log the player debug request
+        this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} examined player '${target}'`);
         break;
       case 'combat':
         this.debugCombat(client, target);
+        // Log the combat debug request
+        this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} examined combat in room '${target}'`);
         break;
       case 'system':
         this.debugSystem(client);
+        // Log the system debug request
+        this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} viewed system information`);
         break;
       case 'item':
         this.debugItem(client, target);
+        // Log the item debug request
+        this.playerLogger.info(`ADMIN DEBUG: ${client.user.username} examined item '${target}'`);
         break;
       default:
         writeToClient(client, colorize(`Unknown debug subcommand: ${subcommand}\r\n`, 'red'));
@@ -567,7 +588,7 @@ export class DebugCommand implements Command {
         // Show quality if available
         const qualityStr = instance.properties?.quality ? ` - Quality: ${instance.properties.quality}` : '';
         
-        writeToClient(client, colorize(`  ${index + 1}. ${displayName} [${instance.instanceId}]${durabilityStr}${qualityStr}\r\n`, 'white'));
+        writeToClient(client, colorize(`  ${index + 1}. ${displayName} [${instance.id || instance.instanceId || instance.name}]${durabilityStr}${qualityStr}\r\n`, 'white'));
       });
     }
   }

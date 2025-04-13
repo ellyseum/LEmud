@@ -7,6 +7,7 @@ import { colorize } from '../utils/colors';
 import { standardizeUsername } from '../utils/formatters';
 import { CombatSystem } from '../combat/combatSystem';
 import { RoomManager } from '../room/roomManager';
+import { systemLogger, getPlayerLogger } from '../utils/logger';
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -136,7 +137,7 @@ export class UserManager {
       // Save after migration to ensure all users have the correct structure
       this.saveUsers();
     } catch (error) {
-      console.error('Error loading users:', error);
+      systemLogger.error('Error loading users:', error);
       this.users = [];
     }
   }
@@ -145,7 +146,7 @@ export class UserManager {
     try {
       fs.writeFileSync(USERS_FILE, JSON.stringify(this.users, null, 2));
     } catch (error) {
-      console.error('Error saving users:', error);
+      systemLogger.error('Error saving users:', error);
     }
   }
 
@@ -182,9 +183,9 @@ export class UserManager {
         date: new Date(score.date)
       }));
       
-      console.log(`[UserManager] Loaded ${this.snakeScores.length} snake scores from file`);
+      systemLogger.info(`[UserManager] Loaded ${this.snakeScores.length} snake scores from file`);
     } catch (error) {
-      console.error('Error loading snake scores:', error);
+      systemLogger.error('Error loading snake scores:', error);
       this.snakeScores = [];
     }
   }
@@ -197,7 +198,7 @@ export class UserManager {
       };
       fs.writeFileSync(SNAKE_SCORES_FILE, JSON.stringify(data, null, 2));
     } catch (error) {
-      console.error('Error saving snake scores:', error);
+      systemLogger.error('Error saving snake scores:', error);
     }
   }
 
@@ -234,7 +235,7 @@ export class UserManager {
     });
     
     if (migrationCount > 0) {
-      console.log(`[UserManager] Migrated ${migrationCount} snake scores from users.json to snake-scores.json`);
+      systemLogger.info(`[UserManager] Migrated ${migrationCount} snake scores from users.json to snake-scores.json`);
       // Save both files
       this.saveUsers();
       this.saveSnakeScores();
@@ -298,6 +299,10 @@ export class UserManager {
     this.activeUserSessions.set(standardized, client);
     // Clear any pending transfers for this user
     this.pendingTransfers.delete(standardized);
+
+    systemLogger.info(`User ${username} logged in`);
+    const playerLogger = getPlayerLogger(username);
+    playerLogger.info(`Logged in successfully`);
   }
 
   public unregisterUserSession(username: string): void {
@@ -305,6 +310,9 @@ export class UserManager {
     this.activeUserSessions.delete(standardized);
     // Also clean up any pending transfers
     this.pendingTransfers.delete(standardized);
+
+    systemLogger.info(`User ${username} disconnected`);
+    getPlayerLogger(username).info(`Disconnected from server`);
   }
 
   // Request a transfer of the session for the user
@@ -366,7 +374,7 @@ export class UserManager {
       if (existingClient.user) {
         // Capture if user is in combat BEFORE making any changes
         const inCombat = existingClient.user.inCombat || false;
-        console.log(`[UserManager] User ${username} inCombat status: ${inCombat}`);
+        systemLogger.info(`[UserManager] User ${username} inCombat status: ${inCombat}`);
         
         // Clone the user from existing client
         const user = this.getUser(username);
@@ -394,7 +402,7 @@ export class UserManager {
               const combatSystem = CombatSystem.getInstance(this, roomManager);
               combatSystem.handleSessionTransfer(existingClient, newClient);
             } catch (error) {
-              console.error('Error transferring combat state:', error);
+              systemLogger.error('Error transferring combat state:', error);
             }
           }
           
@@ -412,7 +420,7 @@ export class UserManager {
       // Disconnect existing client after a longer delay
       // This ensures all combat processing has a chance to complete
       setTimeout(() => {
-        console.log(`[UserManager] Disconnecting old client for ${username} after transfer`);
+        systemLogger.info(`[UserManager] Disconnecting old client for ${username} after transfer`);
         // Only now mark the client as not authenticated
         existingClient.authenticated = false;
         existingClient.user = null;
@@ -533,7 +541,7 @@ export class UserManager {
     if (stats.flags !== undefined) {
       // Ensure flags is an array
       if (!Array.isArray(stats.flags)) {
-        console.warn(`[UserManager] Attempted to update flags with non-array value for ${username}. Ignoring.`);
+        systemLogger.warn(`[UserManager] Attempted to update flags with non-array value for ${username}. Ignoring.`);
         delete stats.flags; // Remove invalid flags from stats to avoid overwriting
       } else {
         // If the user doesn't have a flags array yet, initialize it
@@ -624,7 +632,7 @@ export class UserManager {
         
         // Save to file
         this.saveSnakeScores();
-        console.log(`[UserManager] Updated snake high score for ${username}: ${scoreData.score}`);
+        systemLogger.info(`[UserManager] Updated snake high score for ${username}: ${scoreData.score}`);
       }
     } else {
       // New high score for this user
@@ -636,7 +644,7 @@ export class UserManager {
       
       // Save to file
       this.saveSnakeScores();
-      console.log(`[UserManager] Added new snake high score for ${username}: ${scoreData.score}`);
+      systemLogger.info(`[UserManager] Added new snake high score for ${username}: ${scoreData.score}`);
     }
   }
 
@@ -660,7 +668,7 @@ export class UserManager {
   public addFlag(username: string, flag: string): boolean {
     const user = this.getUser(username);
     if (!user) {
-      console.error(`[UserManager] Cannot add flag: User ${username} not found.`);
+      systemLogger.error(`[UserManager] Cannot add flag: User ${username} not found.`);
       return false;
     }
 
@@ -673,10 +681,10 @@ export class UserManager {
     if (!user.flags.includes(flag)) {
       user.flags.push(flag);
       this.saveUsers();
-      console.log(`[UserManager] Added flag '${flag}' to user ${username}.`);
+      systemLogger.info(`[UserManager] Added flag '${flag}' to user ${username}.`);
       return true;
     } else {
-      console.log(`[UserManager] Flag '${flag}' already exists for user ${username}.`);
+      systemLogger.info(`[UserManager] Flag '${flag}' already exists for user ${username}.`);
       return false; // Indicate flag wasn't newly added
     }
   }
@@ -690,7 +698,7 @@ export class UserManager {
   public removeFlag(username: string, flag: string): boolean {
     const user = this.getUser(username);
     if (!user || !user.flags) {
-      console.error(`[UserManager] Cannot remove flag: User ${username} not found or has no flags.`);
+      systemLogger.error(`[UserManager] Cannot remove flag: User ${username} not found or has no flags.`);
       return false;
     }
 
@@ -699,10 +707,10 @@ export class UserManager {
 
     if (user.flags.length < initialLength) {
       this.saveUsers();
-      console.log(`[UserManager] Removed flag '${flag}' from user ${username}.`);
+      systemLogger.info(`[UserManager] Removed flag '${flag}' from user ${username}.`);
       return true;
     } else {
-      console.log(`[UserManager] Flag '${flag}' not found for user ${username}.`);
+      systemLogger.info(`[UserManager] Flag '${flag}' not found for user ${username}.`);
       return false; // Indicate flag wasn't found/removed
     }
   }

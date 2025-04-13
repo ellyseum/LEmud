@@ -5,6 +5,7 @@ import { Command } from '../command.interface';
 import { formatUsername } from '../../utils/formatters';
 import { ItemManager } from '../../utils/itemManager';
 import { colorizeItemName } from '../../utils/itemNameColorizer';
+import { getPlayerLogger } from '../../utils/logger';
 
 export class InventoryCommand implements Command {
   name = 'inventory';
@@ -18,6 +19,9 @@ export class InventoryCommand implements Command {
 
   execute(client: ConnectedClient, _args: string): void {
     if (!client.user) return;
+
+    // Get player logger
+    const playerLogger = getPlayerLogger(client.user.username);
 
     // Ensure inventory structure exists
     if (!client.user.inventory) {
@@ -34,6 +38,14 @@ export class InventoryCommand implements Command {
     if (!client.user.inventory.currency) {
       client.user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
     }
+
+    // Log inventory check
+    const itemCount = client.user.inventory.items ? client.user.inventory.items.length : 0;
+    const goldAmount = client.user.inventory.currency?.gold || 0;
+    const silverAmount = client.user.inventory.currency?.silver || 0;
+    const copperAmount = client.user.inventory.currency?.copper || 0;
+    
+    playerLogger.info(`Checked inventory - Items: ${itemCount}, Currency: ${goldAmount}g ${silverAmount}s ${copperAmount}c`);
 
     this.displayInventory(client);
   }

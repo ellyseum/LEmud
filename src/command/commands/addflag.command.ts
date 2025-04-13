@@ -5,6 +5,10 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { UserManager } from '../../user/userManager';
 import { SudoCommand } from './sudo.command';
+import { createContextLogger } from '../../utils/logger';
+
+// Create a player action logger
+const playerLogger = createContextLogger('Player');
 
 export class AddFlagCommand implements Command {
     name = 'addflag';
@@ -15,7 +19,7 @@ export class AddFlagCommand implements Command {
     execute(client: ConnectedClient, args: string): void {
         if (!client.user) return;
 
-        // Admin check
+        // Check if admin mode is enabled for this user
         const sudoCommand = SudoCommand.getInstance();
         if (!sudoCommand.isAuthorized(client.user.username)) {
             writeToClient(client, colorize('You do not have permission to use this command.\r\n', 'red'));
@@ -23,30 +27,73 @@ export class AddFlagCommand implements Command {
             return;
         }
 
-        const parts = args.trim().split(/\s+/);
-        if (parts.length < 2) {
-            writeToClient(client, colorize(`Usage: ${this.name} <username> <flag>\r\n`, 'yellow'));
+        const [username, flag, ...valueTokens] = args.split(' ');
+        
+        if (!username || !flag) {
+            writeToClient(client, colorize('Usage: addflag [username] [flag] [value]\r\n', 'yellow'));
+            writeToClient(client, colorize('Example: addflag player1 canEdit true\r\n', 'yellow'));
             return;
         }
 
-        const targetUsername = parts[0];
-        const flagToAdd = parts[1];
-
-        if (!flagToAdd) {
-            writeToClient(client, colorize(`You must specify a flag to add.\r\n`, 'yellow'));
+        // Check if the user exists
+        const user = this.userManager.getUser(username);
+        if (!user) {
+            writeToClient(client, colorize(`User "${username}" not found.\r\n`, 'red'));
             return;
         }
 
-        const success = this.userManager.addFlag(targetUsername, flagToAdd);
+        // Join the value tokens back together
+        const valueRaw = valueTokens.join(' ');
+        let value: any;
 
-        if (success) {
-            writeToClient(client, colorize(`Flag '${flagToAdd}' added to user ${targetUsername}.\r\n`, 'green'));
+        // Try to parse value as numeric or boolean if possible
+        if (valueRaw === 'true') {
+            value = true;
+        } else if (valueRaw === 'false') {
+            value = false;
+        } else if (!isNaN(Number(valueRaw))) {
+            value = Number(valueRaw);
         } else {
-            // Check if user exists first
-            if (!this.userManager.getUser(targetUsername)) {
-                writeToClient(client, colorize(`User ${targetUsername} not found.\r\n`, 'red'));
-            } else {
-                writeToClient(client, colorize(`Flag '${flagToAdd}' might already exist for user ${targetUsername} or another error occurred.\r\n`, 'yellow'));
+            value = valueRaw; // Keep as string
+        }
+
+        // Format flag with its value
+        const flagEntry = `${flag}:${value}`;
+        
+        // Initialize flags array if it doesn't exist yet
+        if (!user.flags) {
+            user.flags = [];
+        }
+        
+        // Remove any existing flag with the same name
+        user.flags = user.flags.filter(f => !f.startsWith(`${flag}:`));
+        
+        // Add the new flag
+        user.flags.push(flagEntry);
+        
+        // Update the user's flags using the proper UserManager method
+        // The UserManager has an updateUserStats method that takes a username and a partial User object
+        const success = this.userManager.updateUserStats(username, { flags: user.flags });
+        
+        if (!success) {
+            // If the update failed, notify the admin
+            writeToClient(client, colorize(
+                "\r\n\x1b[33mWarning: Could not save user data permanently. Flag was added in memory only.\x1b[0m\r\n", 
+                "yellow"
+            ));
+        }
+        
+        // Log the player action
+        playerLogger.info(`${client.user.username} added flag "${flag}" with value "${value}" to user "${username}"`);
+
+        // Success message to admin
+        writeToClient(client, colorize(`Set flag "${flag}" to "${value}" for user "${username}".\r\n`, 'green'));
+
+        // Notify the target user if they're online
+        if (username !== client.user.username) {
+            const targetClient = this.userManager.getActiveUserSession(username);
+            if (targetClient) {
+                writeToClient(targetClient, colorize(`Admin ${client.user.username} has updated your account flags.\r\n`, 'yellow'));
             }
         }
     }

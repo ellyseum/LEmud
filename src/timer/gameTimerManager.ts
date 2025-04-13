@@ -5,6 +5,10 @@ import { RoomManager } from '../room/roomManager';
 import { UserManager } from '../user/userManager';
 import { CombatSystem } from '../combat/combatSystem';
 import { EffectManager } from '../effects/effectManager';
+import { systemLogger, createContextLogger } from '../utils/logger';
+
+// Create a context-specific logger for GameTimerManager
+const timerLogger = createContextLogger('GameTimerManager');
 
 // Configuration interface for the game timer system
 export interface GameTimerConfig {
@@ -32,7 +36,7 @@ function loadGameTimerConfig(): GameTimerConfig {
       };
     }
   } catch (error) {
-    console.error('Error loading game timer configuration:', error);
+    systemLogger.error('Error loading game timer configuration:', error);
   }
   
   // If file doesn't exist or there's an error, use defaults
@@ -52,7 +56,7 @@ function saveGameTimerConfig(config: GameTimerConfig): void {
     
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   } catch (error) {
-    console.error('Error saving game timer configuration:', error);
+    systemLogger.error('Error saving game timer configuration:', error);
   }
 }
 
@@ -69,7 +73,7 @@ export class GameTimerManager extends EventEmitter {
   
   private constructor(userManager: UserManager, roomManager: RoomManager) {
     super();
-    console.log('Creating GameTimerManager instance');
+    timerLogger.info('Creating GameTimerManager instance');
     this.config = loadGameTimerConfig();
     this.userManager = userManager;
     this.roomManager = roomManager;
@@ -134,7 +138,7 @@ export class GameTimerManager extends EventEmitter {
     
     this.running = true;
     this.intervalId = setInterval(() => this.tick(), this.config.tickInterval);
-    console.log(`Game timer started: ${this.config.tickInterval}ms interval, saving every ${this.config.saveInterval} ticks`);
+    timerLogger.info(`Game timer started: ${this.config.tickInterval}ms interval, saving every ${this.config.saveInterval} ticks`);
   }
   
   /**
@@ -146,7 +150,7 @@ export class GameTimerManager extends EventEmitter {
     clearInterval(this.intervalId);
     this.intervalId = null;
     this.running = false;
-    console.log('Game timer stopped');
+    timerLogger.info('Game timer stopped');
   }
   
   /**
@@ -175,7 +179,7 @@ export class GameTimerManager extends EventEmitter {
    */
   private tick(): void {
     this.tickCount++;
-    console.log(`Game tick ${this.tickCount}`);
+    timerLogger.debug(`Game tick ${this.tickCount}`);
     
     // Process effects first so stat modifiers apply to subsequent actions
     this.effectManager.processGameTick(this.tickCount);
@@ -188,9 +192,9 @@ export class GameTimerManager extends EventEmitter {
     
     // Check if it's time to save
     if (this.tickCount % this.config.saveInterval === 0) {
-      console.log('Saving all game data...');
+      timerLogger.info('Saving all game data...');
       this.forceSave();
-      console.log('Game data saved successfully');
+      timerLogger.info('Game data saved successfully');
     }
   }
   
@@ -198,7 +202,7 @@ export class GameTimerManager extends EventEmitter {
    * Save all game data
    */
   private saveData(): void {
-    console.log('Saving all game data...');
+    timerLogger.info('Saving all game data...');
     
     try {
       // Save users
@@ -210,9 +214,9 @@ export class GameTimerManager extends EventEmitter {
       // Emit save event for other systems to hook into
       this.emit('save');
       
-      console.log('Game data saved successfully');
+      timerLogger.info('Game data saved successfully');
     } catch (error) {
-      console.error('Error saving game data:', error);
+      timerLogger.error('Error saving game data:', error);
     }
   }
   

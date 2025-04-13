@@ -7,6 +7,7 @@ import { UserManager } from '../../user/userManager';
 import { ItemManager } from '../../utils/itemManager';
 import { formatUsername } from '../../utils/formatters';
 import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer';
+import { getPlayerLogger } from '../../utils/logger'; // Add logger import
 
 // Define a type for valid currency types
 type CurrencyType = keyof Currency;
@@ -358,6 +359,10 @@ export class PickupCommand implements Command {
       room, 
       `${formatUsername(client.user.username)} picks up ${amount} ${type} piece${amount === 1 ? '' : 's'}.\r\n`
     );
+    
+    // Log the currency pickup
+    const playerLogger = getPlayerLogger(client.user.username);
+    playerLogger.info(`Picked up ${amount} ${type} piece${amount === 1 ? '' : 's'} from room ${room.id}`);
   }
   
   private pickupSpecificCurrency(client: ConnectedClient, room: any, type: CurrencyType, amount: number): void {
@@ -409,6 +414,14 @@ export class PickupCommand implements Command {
       room, 
       `${formatUsername(client.user.username)} picks up ${actualAmount} ${type} piece${actualAmount === 1 ? '' : 's'}.\r\n`
     );
+    
+    // Log the currency pickup - include specified and actual amount
+    const playerLogger = getPlayerLogger(client.user.username);
+    if (actualAmount === amount) {
+      playerLogger.info(`Picked up ${amount} ${type} piece${amount === 1 ? '' : 's'} from room ${room.id}`);
+    } else {
+      playerLogger.info(`Picked up ${actualAmount} ${type} piece${actualAmount === 1 ? '' : 's'} (requested: ${amount}) from room ${room.id}`);
+    }
   }
   
   /**
@@ -593,6 +606,10 @@ export class PickupCommand implements Command {
       room, 
       `${formatUsername(client.user.username)} picks up the ${displayName}.\r\n`
     );
+    
+    // Log the pickup action - record more details for better tracking
+    const playerLogger = getPlayerLogger(client.user.username);
+    playerLogger.info(`Picked up item: ${stripColorCodes(rawDisplayName)} (ID: ${instanceId}) from room ${room.id}`);
   }
   
   /**
@@ -682,6 +699,10 @@ export class PickupCommand implements Command {
       room, 
       `${formatUsername(client.user.username)} picks up the ${displayName}.\r\n`
     );
+    
+    // Log the legacy item pickup
+    const playerLogger = getPlayerLogger(client.user.username);
+    playerLogger.info(`Picked up legacy item: ${displayName} (ID: ${itemId}) from room ${room.id}`);
   }
 
   /**

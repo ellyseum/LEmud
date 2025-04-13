@@ -35,9 +35,10 @@ import './yell.command';
 import './addflag.command'; // Import flag management commands
 import './removeflag.command';
 import './listflags.command';
+import { systemLogger } from '../../utils/logger';
 
 // Export ScoresCommand so it can be registered properly
 export * from './scores.command';
 
 // This file ensures all commands are imported and registered with the command registry
-console.log('[CommandRegistry] Loading all commands');
+systemLogger.info('Loading all commands');

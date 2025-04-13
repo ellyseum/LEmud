@@ -25,6 +25,7 @@ import { GameTimerManager } from './timer/gameTimerManager';
 import { CombatSystem } from './combat/combatSystem';
 import { AdminLevel } from './command/commands/adminmanage.command';
 import { SnakeGameState } from './states/snake-game.state';
+import { systemLogger, getPlayerLogger } from './utils/logger'; // Import loggers
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -111,7 +112,7 @@ const io = new SocketIOServer(httpServer);
 
 // Add Socket.IO handler
 io.on('connection', (socket) => {
-  console.log(`Socket.IO client connected: ${socket.id}`);
+  systemLogger.info(`Socket.IO client connected: ${socket.id}`);
   
   // Create our custom connection wrapper
   const connection = new SocketIOConnection(socket);
@@ -141,7 +142,7 @@ io.on('connection', (socket) => {
       client.adminMonitorSocket = socket;
       client.isBeingMonitored = true;
       
-      console.log(`Admin is now monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+      systemLogger.info(`Admin is now monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
       
       // Send initial data to the admin
       socket.emit('monitor-connected', { 
@@ -218,7 +219,7 @@ io.on('connection', (socket) => {
           // Set the input blocking state on the client
           client.isInputBlocked = blockData.blocked;
           
-          console.log(`Admin has ${blockData.blocked ? 'blocked' : 'unblocked'} input for client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+          systemLogger.info(`Admin has ${blockData.blocked ? 'blocked' : 'unblocked'} input for client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
           
           // Notify the user that their input has been blocked/unblocked
           if (client.authenticated) {
@@ -242,7 +243,7 @@ io.on('connection', (socket) => {
       socket.on('admin-message', (messageData) => {
         if (messageData.clientId === clientId && client.authenticated) {
           // Log the message being sent
-          console.log(`Admin sent message to client ${clientId}${client.user ? ` (${client.user.username})` : ''}: ${messageData.message}`);
+          systemLogger.info(`Admin sent message to client ${clientId}${client.user ? ` (${client.user.username})` : ''}: ${messageData.message}`);
           
           // Create a 3D box with the message inside
           const boxedMessage = createAdminMessageBox(messageData.message);
@@ -275,7 +276,7 @@ io.on('connection', (socket) => {
     
     const client = clients.get(clientId);
     if (client && client.adminMonitorSocket === socket) {
-      console.log(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+      systemLogger.info(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
       client.isBeingMonitored = false;
       client.isInputBlocked = false; // Also unblock input when monitoring stops
       client.adminMonitorSocket = undefined;
@@ -285,7 +286,7 @@ io.on('connection', (socket) => {
 
 // Create TELNET server
 const telnetServer = net.createServer(socket => {
-  console.log(`TELNET client connected: ${socket.remoteAddress}`);
+  systemLogger.info(`TELNET client connected: ${socket.remoteAddress}`);
   
   // Create our custom connection wrapper
   const connection = new TelnetConnection(socket);
@@ -330,18 +331,18 @@ function setupClient(connection: IConnection): void {
   
   // Handle client disconnect
   connection.on('end', () => {
-    console.log(`Client disconnected: ${clientId}`);
+    systemLogger.info(`Client disconnected: ${clientId}`);
     handleClientDisconnect(client, clientId, true);
   });
   
   // Handle connection errors similarly
   connection.on('error', (err) => {
-    console.error(`Error with client ${clientId}:`, err);
+    systemLogger.error(`Error with client ${clientId}: ${err.message}`, { error: err });
     handleClientDisconnect(client, clientId, false);
   });
 
   connection.on('close', () => {
-    console.log(`Client disconnected: ${clientId}`);
+    systemLogger.info(`Client disconnected: ${clientId}`);
     handleClientDisconnect(client, clientId, true);
   });
 }
@@ -865,8 +866,6 @@ function processInput(client: ConnectedClient, input: string): void {
   // Trim whitespace from beginning and end of input
   const trimmedInput = input.trim();
   
-  console.log(`Processing input from client in state ${client.state}: "${trimmedInput}"`);
-
   // Check for forced transitions (like transfer requests)
   if (client.stateData.forcedTransition) {
     const forcedState = client.stateData.forcedTransition;
@@ -892,7 +891,7 @@ function processInput(client: ConnectedClient, input: string): void {
     // Check if client should be disconnected (due to too many failed attempts)
     if (client.stateData.disconnect) {
       setTimeout(() => {
-        console.log(`Disconnecting client due to too many failed password attempts`);
+        systemLogger.info(`Disconnecting client due to too many failed password attempts`);
         client.connection.end();
       }, 1000); // Brief delay to ensure the error message is sent
     }
@@ -1018,7 +1017,7 @@ function checkForIdleClients() {
     
     // Skip clients that are being monitored by an admin
     if (client.isBeingMonitored) {
-      console.log(`Skipping idle check for monitored client: ${client.user?.username || 'anonymous'}`);
+      systemLogger.debug(`Skipping idle check for monitored client: ${client.user?.username || 'anonymous'}`);
       return;
     }
     
@@ -1027,7 +1026,7 @@ function checkForIdleClients() {
     
     // If client has exceeded the idle timeout
     if (idleTime > idleTimeoutMs) {
-      console.log(`Client ${clientId} idle for ${Math.floor(idleTime / 1000)}s, disconnecting (timeout: ${idleTimeoutMinutes}m)`);
+      systemLogger.info(`Client ${clientId} idle for ${Math.floor(idleTime / 1000)}s, disconnecting (timeout: ${idleTimeoutMinutes}m)`);
       
       // Send a message to the client explaining the disconnection
       if (client.connection) {
@@ -1047,12 +1046,12 @@ const idleCheckTimer = setInterval(checkForIdleClients, IDLE_CHECK_INTERVAL);
 
 // Check for admin user on startup and create if needed
 async function checkAndCreateAdminUser(): Promise<boolean> {
-  console.log('\nChecking for admin user...');
+  systemLogger.info('Checking for admin user...');
   
   // Check if admin user exists
   if (!userManager.userExists('admin')) {
-    console.log(colorize('No admin user found. Creating admin account...', 'yellow'));
-    console.log(colorize('Server startup will halt until admin setup is complete.', 'yellow'));
+    systemLogger.warn('No admin user found. Creating admin account...');
+    systemLogger.warn('Server startup will halt until admin setup is complete.');
     
     let adminCreated = false;
     
@@ -1064,7 +1063,7 @@ async function checkAndCreateAdminUser(): Promise<boolean> {
         
         // Validate password
         if (password.length < 6) {
-          console.log(colorize('Password must be at least 6 characters long. Please try again.', 'red'));
+          systemLogger.warn('Password must be at least 6 characters long. Please try again.');
           continue; // Skip the rest of this iteration and try again
         }
         
@@ -1073,7 +1072,7 @@ async function checkAndCreateAdminUser(): Promise<boolean> {
         
         // Check if passwords match
         if (password !== confirmPassword) {
-          console.log(colorize('Passwords do not match. Please try again.', 'red'));
+          systemLogger.warn('Passwords do not match. Please try again.');
           continue; // Skip the rest of this iteration and try again
         }
         
@@ -1081,7 +1080,7 @@ async function checkAndCreateAdminUser(): Promise<boolean> {
         const success = userManager.createUser('admin', password);
         
         if (success) {
-          console.log(colorize('Admin user created successfully!', 'green'));
+          systemLogger.info('Admin user created successfully!');
           
           // Create admin directory if it doesn't exist
           const adminDir = path.join(DATA_DIR, 'admin');
@@ -1104,32 +1103,32 @@ async function checkAndCreateAdminUser(): Promise<boolean> {
           
           try {
             fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
-            console.log(colorize('Admin privileges configured.', 'green'));
+            systemLogger.info('Admin privileges configured.');
             adminCreated = true; // Mark as successfully created so we exit the loop
           } catch (error) {
-            console.error('Error creating admin.json file:', error);
-            console.log(colorize('Failed to create admin configuration. Please try again.', 'red'));
+            systemLogger.error('Error creating admin.json file:', error);
+            systemLogger.warn('Failed to create admin configuration. Please try again.');
             // Continue the loop to try again
           }
         } else {
-          console.log(colorize('Error creating admin user. Please try again.', 'red'));
+          systemLogger.warn('Error creating admin user. Please try again.');
           // Continue the loop to try again
         }
       } catch (error) {
-        console.error('Error during admin setup:', error);
-        console.log(colorize('An error occurred during setup. Please try again.', 'red'));
+        systemLogger.error('Error during admin setup:', error);
+        systemLogger.warn('An error occurred during setup. Please try again.');
         // Continue the loop to try again
       }
     }
     
     return true; // Return true since we don't exit the loop until admin is created
   } else {
-    console.log(colorize('Admin user already exists.', 'green'));
+    systemLogger.info('Admin user already exists.');
     
     // Ensure admin.json exists with the admin user
     const adminFilePath = path.join(DATA_DIR, 'admin.json');
     if (!fs.existsSync(adminFilePath)) {
-      console.log(colorize('Creating admin.json file...', 'yellow'));
+      systemLogger.warn('Creating admin.json file...');
       
       // Create admin directory if it doesn't exist
       const adminDir = path.join(DATA_DIR, 'admin');
@@ -1151,9 +1150,9 @@ async function checkAndCreateAdminUser(): Promise<boolean> {
       
       try {
         fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
-        console.log(colorize('Admin privileges configured.', 'green'));
+        systemLogger.info('Admin privileges configured.');
       } catch (error) {
-        console.error('Error creating admin.json file:', error);
+        systemLogger.error('Error creating admin.json file:', error);
         return false;
       }
     }
@@ -1234,11 +1233,11 @@ const startServer = async () => {
   // First check and create admin user if needed
   const adminSetupSuccess = await checkAndCreateAdminUser();
   if (!adminSetupSuccess) {
-    console.log(colorize('Admin setup failed. Server startup aborted.', 'red'));
+    systemLogger.error('Admin setup failed. Server startup aborted.');
     process.exit(1);
   }
   
-  console.log(colorize('Admin user verified. Continuing with server startup...', 'green'));
+  systemLogger.info('Admin user verified. Continuing with server startup...');
   
   // Try to create the TELNET server with error handling
   const telnetServer = net.createServer((socket) => {
@@ -1254,20 +1253,20 @@ const startServer = async () => {
 
   telnetServer.on('error', (err: Error & {code?: string}) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`Port ${TELNET_PORT} is already in use. Is another instance running?`);
-      console.log(`Trying alternative port ${TELNET_PORT + 1}...`);
+      systemLogger.error(`Port ${TELNET_PORT} is already in use. Is another instance running?`);
+      systemLogger.info(`Trying alternative port ${TELNET_PORT + 1}...`);
       telnetServer.listen(TELNET_PORT + 1);
     } else {
-      console.error('TELNET server error:', err);
+      systemLogger.error('TELNET server error:', err);
     }
   });
 
   telnetServer.listen(TELNET_PORT, () => {
     const address = telnetServer.address();
     if (address && typeof address !== 'string') {
-      console.log(`TELNET server running on port ${address.port}`);
+      systemLogger.info(`TELNET server running on port ${address.port}`);
     } else {
-      console.log(`TELNET server running`);
+      systemLogger.info(`TELNET server running`);
     }
   });
 
@@ -1277,17 +1276,17 @@ const startServer = async () => {
   
   httpServer.on('error', (err: Error & {code?: string}) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`Port ${WS_PORT} is already in use. Is another instance running?`);
-      console.log(`Trying alternative port ${WS_PORT + 1}...`);
+      systemLogger.error(`Port ${WS_PORT} is already in use. Is another instance running?`);
+      systemLogger.info(`Trying alternative port ${WS_PORT + 1}...`);
       httpServer.listen(WS_PORT + 1);
     } else {
-      console.error('HTTP server error:', err);
+      systemLogger.error('HTTP server error:', err);
     }
   });
   
   // Add Socket.IO handler
   io.on('connection', (socket) => {
-    console.log(`Socket.IO client connected: ${socket.id}`);
+    systemLogger.info(`Socket.IO client connected: ${socket.id}`);
     
     // Create our custom connection wrapper
     const connection = new SocketIOConnection(socket);
@@ -1317,7 +1316,7 @@ const startServer = async () => {
         client.adminMonitorSocket = socket;
         client.isBeingMonitored = true;
         
-        console.log(`Admin is now monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+        systemLogger.info(`Admin is now monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
         
         // Send initial data to the admin
         socket.emit('monitor-connected', { 
@@ -1394,7 +1393,7 @@ const startServer = async () => {
             // Set the input blocking state on the client
             client.isInputBlocked = blockData.blocked;
             
-            console.log(`Admin has ${blockData.blocked ? 'blocked' : 'unblocked'} input for client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+            systemLogger.info(`Admin has ${blockData.blocked ? 'blocked' : 'unblocked'} input for client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
             
             // Notify the user that their input has been blocked/unblocked
             if (client.authenticated) {
@@ -1418,7 +1417,7 @@ const startServer = async () => {
         socket.on('admin-message', (messageData) => {
           if (messageData.clientId === clientId && client.authenticated) {
             // Log the message being sent
-            console.log(`Admin sent message to client ${clientId}${client.user ? ` (${client.user.username})` : ''}: ${messageData.message}`);
+            systemLogger.info(`Admin sent message to client ${clientId}${client.user ? ` (${client.user.username})` : ''}: ${messageData.message}`);
             
             // Create a 3D box with the message inside
             const boxedMessage = createAdminMessageBox(messageData.message);
@@ -1458,7 +1457,7 @@ const startServer = async () => {
       
       const client = clients.get(clientId);
       if (client && client.adminMonitorSocket === socket) {
-        console.log(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
+        systemLogger.info(`Admin stopped monitoring client ${clientId}${client.user ? ` (${client.user.username})` : ''}`);
         client.isBeingMonitored = false;
         client.isInputBlocked = false; // Also unblock input when monitoring stops
         client.adminMonitorSocket = undefined;
@@ -1469,11 +1468,11 @@ const startServer = async () => {
   httpServer.listen(WS_PORT, () => {
     const address = httpServer.address();
     if (address && typeof address !== 'string') {
-      console.log(`HTTP and Socket.IO server running on port ${address.port}`);
-      console.log(`Admin interface available at http://localhost:${address.port}/admin`);
+      systemLogger.info(`HTTP and Socket.IO server running on port ${address.port}`);
+      systemLogger.info(`Admin interface available at http://localhost:${address.port}/admin`);
     } else {
-      console.log(`HTTP and Socket.IO server running`);
-      console.log(`Admin interface available`);
+      systemLogger.info(`HTTP and Socket.IO server running`);
+      systemLogger.info(`Admin interface available`);
     }
   });
 };
@@ -1484,12 +1483,12 @@ async function init() {
   await startServer();
   
   // Only start the game timer after server is up and admin is created
-  console.log(colorize('Starting game timer system...', 'green'));
+  systemLogger.info('Starting game timer system...');
   gameTimerManager.start();
   
   // Setup graceful shutdown to save data and properly clean up
   process.on('SIGINT', () => {
-    console.log('Shutting down server...');
+    systemLogger.info('Shutting down server...');
     
     // Stop the game timer system
     gameTimerManager.stop();
@@ -1508,7 +1507,7 @@ async function init() {
     CommandRegistry.resetInstance();
     
     // Exit the process
-    console.log('Server shutdown complete');
+    systemLogger.info('Server shutdown complete');
     process.exit(0);
   });
 }

@@ -7,6 +7,10 @@ import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
 import { CombatSystem } from './combatSystem';
 import { ItemManager } from '../utils/itemManager';
+import { systemLogger, createContextLogger, createMechanicsLogger } from '../utils/logger';
+
+// Create a context-specific logger for Combat
+const combatLogger = createMechanicsLogger('Combat');
 
 export class Combat {
   rounds: number = 0;
@@ -35,20 +39,20 @@ export class Combat {
   processRound(): void {
     // First check if the player is still connected and authenticated
     if (!this.isPlayerValid()) {
-      console.log(`[Combat] Player ${this.player.user?.username || 'unknown'} is no longer valid, ending combat`);
+      combatLogger.info(`Player ${this.player.user?.username || 'unknown'} is no longer valid, ending combat`);
       this.activeCombatants = []; // Clear combatants to end combat
       return;
     }
     
     if (!this.player.user || this.isDone()) {
-      console.log(`[Combat] Cannot process round: player user is ${this.player.user ? 'valid' : 'invalid'}, isDone=${this.isDone()}`);
+      combatLogger.debug(`Cannot process round: player user is ${this.player.user ? 'valid' : 'invalid'}, isDone=${this.isDone()}`);
       return;
     }
 
     // Check if player is still in the correct room with the NPCs
     const playerRoomId = this.player.user.currentRoomId;
     if (!playerRoomId) {
-      console.log(`[Combat] Player ${this.player.user.username} has no room, ending combat`);
+      combatLogger.info(`Player ${this.player.user.username} has no room, ending combat`);
       this.activeCombatants = []; // End combat
       return;
     }
@@ -59,7 +63,7 @@ export class Combat {
     // Get the room to check for NPCs directly
     const room = this.roomManager.getRoom(playerRoomId);
     if (!room) {
-      console.log(`[Combat] Player ${this.player.user.username} is in non-existent room ${playerRoomId}, ending combat`);
+      combatLogger.warn(`Player ${this.player.user.username} is in non-existent room ${playerRoomId}, ending combat`);
       this.activeCombatants = []; // End combat
       return;
     }
@@ -67,27 +71,27 @@ export class Combat {
     for (const combatant of this.activeCombatants) {
       // Check if the NPC is still in the room by name
       if (!room.npcs.has(combatant.name) && !this.isNpcInRoomByTemplateId(room, combatant.name)) {
-        console.log(`[Combat] NPC ${combatant.name} is no longer in room ${playerRoomId}`);
+        combatLogger.debug(`NPC ${combatant.name} is no longer in room ${playerRoomId}`);
         invalidCombatants.push(combatant);
       }
     }
     
     // Remove combatants that are in a different room
     if (invalidCombatants.length > 0) {
-      console.log(`[Combat] Removing ${invalidCombatants.length} combatants not in the same room as player`);
+      combatLogger.info(`Removing ${invalidCombatants.length} combatants not in the same room as player`);
       this.activeCombatants = this.activeCombatants.filter(
         c => !invalidCombatants.includes(c)
       );
       
       // If no valid combatants remain, end combat
       if (this.activeCombatants.length === 0) {
-        console.log(`[Combat] No valid combatants remain in player's room, ending combat`);
+        combatLogger.info(`No valid combatants remain in player's room, ending combat`);
         return;
       }
     }
 
     this.rounds++;
-    console.log(`[Combat] Processing round ${this.rounds} for ${this.player.user.username} against ${this.activeCombatants.length} combatants`);
+    combatLogger.info(`Processing round ${this.rounds} for ${this.player.user.username} against ${this.activeCombatants.length} combatants`);
     
     // Process each combatant
     for (let i = 0; i < this.activeCombatants.length; i++) {
@@ -487,10 +491,10 @@ export class Combat {
     // Remove the NPC from the room
     // FIXED: Use instanceId instead of name for removing NPC from room
     if ((npc as any).instanceId) {
-      console.log(`[Combat] Removing NPC with instanceId ${(npc as any).instanceId} from room ${roomId}`);
+      combatLogger.info(`Removing NPC with instanceId ${(npc as any).instanceId} from room ${roomId}`);
       this.roomManager.removeNPCFromRoom(roomId, (npc as any).instanceId);
     } else {
-      console.warn(`[Combat] Cannot remove NPC ${npc.name} from room: no instanceId available`);
+      combatLogger.warn(`Cannot remove NPC ${npc.name} from room: no instanceId available`);
       // Fallback to using name, though this likely won't work with the new Map implementation
       this.roomManager.removeNPCFromRoom(roomId, npc.name);
     }
@@ -621,18 +625,18 @@ export class Combat {
     // CRITICAL FIX: More aggressive client reference updating
     if (this.player && this.player.stateData && 
        (this.player.stateData.transferInProgress || this.player.stateData.isSessionTransfer)) {
-      console.log(`[Combat] Session transfer in progress for player, considering valid`);
+      combatLogger.debug(`Session transfer in progress for player, considering valid`);
       return true;
     }
     
     // Case where player reference is completely broken
     if (!this.player || !this.player.user) {
-      console.log(`[Combat] Player is invalid: null player or user`);
+      combatLogger.debug(`Player is invalid: null player or user`);
       
       // Add an additional 5-second grace period for lost references during transfers
       const currentTime = Date.now();
       if (this.lastActivityTime && currentTime - this.lastActivityTime < 5000) {
-        console.log(`[Combat] Within grace period (${currentTime - this.lastActivityTime}ms), temporarily considering valid`);
+        combatLogger.debug(`Within grace period (${currentTime - this.lastActivityTime}ms), temporarily considering valid`);
         return true;
       }
       
@@ -648,13 +652,13 @@ export class Combat {
       const newClient = allClients[0];
       // Don't log if it's the same client to reduce noise
       if (newClient !== this.player) {
-        console.log(`[Combat] Updating player reference from ${this.player.id || 'unknown'} to ${newClient.id || 'unknown'}`);
+        combatLogger.info(`Updating player reference from ${this.player.id || 'unknown'} to ${newClient.id || 'unknown'}`);
         this.player = newClient;
       }
       return true;
     }
     
-    console.log(`[Combat] No valid clients found for ${username}, marking invalid`);
+    combatLogger.warn(`No valid clients found for ${username}, marking invalid`);
     return false;
   }
   
@@ -669,7 +673,7 @@ export class Combat {
     if (this.player.user && newClient.user.username === this.player.user.username) {
       const oldClientId = this.player.id || 'unknown';
       const newClientId = newClient.id || 'unknown';
-      console.log(`[Combat] Updating client reference for ${newClient.user.username} from ${oldClientId} to ${newClientId}`);
+      combatLogger.info(`Updating client reference for ${newClient.user.username} from ${oldClientId} to ${newClientId}`);
       
       // CRITICAL: Make sure we preserve the combat state if needed
       const hadActiveCombatants = this.activeCombatants.length > 0;
@@ -688,7 +692,7 @@ export class Combat {
       
       // Handle case where active combatants might be lost during transfer
       if (hadActiveCombatants && this.activeCombatants.length === 0) {
-        console.log(`[Combat] Restoring ${activeCombatantsCopy.length} combatants that were lost in transfer`);
+        combatLogger.info(`Restoring ${activeCombatantsCopy.length} combatants that were lost in transfer`);
         this.activeCombatants = activeCombatantsCopy;
       }
       
@@ -696,13 +700,13 @@ export class Combat {
       this.lastActivityTime = Date.now();
       
       // Log combat status
-      console.log(`[Combat] After update, player.user.inCombat = ${newClient.user.inCombat}`);
-      console.log(`[Combat] Active combatants after update: ${this.activeCombatants.length}`);
+      combatLogger.debug(`After update, player.user.inCombat = ${newClient.user.inCombat}`);
+      combatLogger.debug(`Active combatants after update: ${this.activeCombatants.length}`);
     } else {
       if (!this.player.user) {
-        console.log(`[Combat] Cannot update client reference: player has no user property`);
+        combatLogger.warn(`Cannot update client reference: player has no user property`);
       } else {
-        console.log(`[Combat] Username mismatch: expected ${this.player.user.username}, got ${newClient.user.username}`);
+        combatLogger.warn(`Username mismatch: expected ${this.player.user.username}, got ${newClient.user.username}`);
       }
     }
   }

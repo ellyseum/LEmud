@@ -4,6 +4,7 @@ import { RoomManager } from '../../room/roomManager';
 import { colorize } from '../../utils/colors';
 import { writeToClient, writeMessageToClient, writeFormattedMessageToClient } from '../../utils/socketWriter';
 import { formatUsername } from '../../utils/formatters';
+import { getPlayerLogger } from '../../utils/logger';
 
 export class LookCommand implements Command {
   name = 'look';
@@ -19,8 +20,17 @@ export class LookCommand implements Command {
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
 
+    // Get player logger
+    const playerLogger = getPlayerLogger(client.user.username);
+    const roomId = client.user.currentRoomId || this.roomManager.getStartingRoomId();
+    const room = this.roomManager.getRoom(roomId);
+    const roomName = room ? room.name : "unknown location";
+
     // If no arguments, look at the current room
     if (!args.trim()) {
+      // Log that player is looking around the room
+      playerLogger.info(`Looked around in room ${roomId} (${roomName})`);
+      
       // Look at the current room
       this.roomManager.lookRoom(client);
       
@@ -32,6 +42,8 @@ export class LookCommand implements Command {
     // Check if the argument is a direction
     const direction = this.parseDirection(args.trim().toLowerCase());
     if (direction) {
+      const fullDirection = this.getFullDirectionName(direction);
+      playerLogger.info(`Looked ${fullDirection} from room ${roomId} (${roomName})`);
       this.lookInDirection(client, direction);
       return;
     }
@@ -43,6 +55,9 @@ export class LookCommand implements Command {
       // If a preposition was used, extract just the entity name
       entityName = prepositionMatch[1].trim();
     }
+
+    // Log that player is examining an entity
+    playerLogger.info(`Examined entity "${entityName}" in room ${roomId} (${roomName})`);
 
     // Look at the entity (whether or not a preposition was used)
     this.roomManager.lookAtEntity(client, entityName);

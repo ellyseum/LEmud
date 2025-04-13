@@ -7,69 +7,113 @@ import { ItemManager } from '../../utils/itemManager';
 import { formatUsername } from '../../utils/formatters';
 import { RoomManager } from '../../room/roomManager';
 import { stripColorCodes, colorizeItemName } from '../../utils/itemNameColorizer';
+import { createContextLogger, getPlayerLogger } from '../../utils/logger';
+import { SudoCommand } from './sudo.command';
+
+// Create a context-specific logger for DestroyCommand
+const destroyLogger = createContextLogger('DestroyCommand');
+
+// Create a player action logger
+const playerLogger = createContextLogger('Player');
 
 export class DestroyCommand implements Command {
   name = 'destroy';
   description = 'Permanently destroy an item in your inventory';
   private userManager: UserManager;
   private itemManager: ItemManager;
+  private roomManager: RoomManager;
 
   constructor(
     private clients: Map<string, ConnectedClient>
   ) {
     this.userManager = UserManager.getInstance();
     this.itemManager = ItemManager.getInstance();
+    // Fix: Pass clients map instead of private activeUserSessions
+    this.roomManager = RoomManager.getInstance(this.clients);
   }
 
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
 
-    // Store pending destroy items in state data
-    if (!client.stateData.pendingDestroy) {
-      client.stateData.pendingDestroy = undefined;
+    // Admin check
+    const sudoCommand = SudoCommand.getInstance();
+    if (!sudoCommand.isAuthorized(client.user.username)) {
+      writeToClient(client, colorize('You do not have permission to use this command.\r\n', 'red'));
+      writeToClient(client, colorize('Use "sudo" to gain admin privileges if authorized.\r\n', 'yellow'));
+      return;
     }
 
     if (!args) {
-      writeToClient(client, colorize('Destroy what?\r\n', 'yellow'));
+      writeToClient(client, colorize('Usage: destroy <instanceId>\r\n', 'yellow'));
       return;
     }
 
-    const argParts = args.toLowerCase().split(' ');
-    
-    // Handle confirmation flow
-    if (argParts[0] === 'confirm') {
-      this.handleConfirmation(client);
-      return;
-    }
+    const instanceId = args.trim();
 
-    if (argParts[0] === 'cancel') {
-      this.handleCancellation(client);
-      return;
-    }
+    // First try exact match
+    let instance = this.itemManager.getItemInstance(instanceId);
+    let fullInstanceId = instanceId;
 
-    // Regular destroy command - use the full args string for partial matching
-    const itemName = args.toLowerCase();
-    
-    // Find the item in the user's inventory
-    const { itemId, index, displayName } = this.findItemInInventory(client, itemName);
-    
-    if (!itemId) {
-      writeToClient(client, colorize(`You don't have a ${itemName}.\r\n`, 'yellow'));
-      return;
-    }
-
-    // Check if the item is currently equipped
-    if (client.user.equipment) {
-      const isEquipped = Object.values(client.user.equipment).includes(itemId);
-      if (isEquipped) {
-        writeToClient(client, colorize(`You must unequip the ${displayName} before destroying it.\r\n`, 'yellow'));
-        return;
+    // If not found but it's at least 8 characters, try partial matching
+    if (!instance && instanceId.length >= 8) {
+      try {
+        instance = this.itemManager.findInstanceByPartialId(instanceId);
+        if (instance) {
+          fullInstanceId = instance.instanceId;
+        }
+      } catch (err) {
+        // Continue with normal flow if partial matching fails
       }
     }
 
-    // Set pending destroy
-    client.stateData.pendingDestroy = { itemId, index, displayName };
-    writeToClient(client, colorize(`Are you sure you want to permanently destroy ${colorizeItemName(displayName)}`, 'red') + colorize(`? This action cannot be undone. (destroy confirm/cancel)\r\n`, 'red'));
+    if (!instance) {
+      writeToClient(client, colorize(`Item instance with ID "${instanceId}" not found.\r\n`, 'red'));
+      return;
+    }
+
+    // Get the template for display purposes
+    const template = this.itemManager.getItem(instance.templateId);
+    if (!template) {
+      writeToClient(client, colorize(`Template for item instance "${fullInstanceId}" not found.\r\n`, 'red'));
+      return;
+    }
+
+    // Find and remove the item from all possible locations
+    const { location, owner } = this.findAndRemoveItem(fullInstanceId);
+
+    // Delete the instance
+    const success = this.itemManager.deleteItemInstance(fullInstanceId);
+
+    if (success) {
+      // Log the player action
+      const itemName = instance.properties?.customName || template.name;
+      if (location && owner) {
+        playerLogger.info(`${client.user.username} destroyed ${itemName} (instance: ${fullInstanceId}) from ${owner}'s ${location}`);
+      } else if (location) {
+        playerLogger.info(`${client.user.username} destroyed ${itemName} (instance: ${fullInstanceId}) from ${location}`);
+      } else {
+        playerLogger.info(`${client.user.username} destroyed ${itemName} (instance: ${fullInstanceId})`);
+      }
+
+      // Notify the admin
+      if (location && owner) {
+        writeToClient(client, colorize(`Destroyed ${itemName} (instance: ${fullInstanceId}) from ${owner}'s ${location}.\r\n`, 'green'));
+      } else if (location) {
+        writeToClient(client, colorize(`Destroyed ${itemName} (instance: ${fullInstanceId}) from ${location}.\r\n`, 'green'));
+      } else {
+        writeToClient(client, colorize(`Destroyed ${itemName} (instance: ${fullInstanceId}).\r\n`, 'green'));
+      }
+
+      // Notify the previous owner if they're online and not the admin
+      if (owner && owner !== client.user.username) {
+        const ownerClient = this.userManager.getActiveUserSession(owner);
+        if (ownerClient) {
+          writeToClient(ownerClient, colorize(`An admin has destroyed ${itemName} from your possession.\r\n`, 'yellow'));
+        }
+      }
+    } else {
+      writeToClient(client, colorize(`Failed to destroy item instance "${fullInstanceId}".\r\n`, 'red'));
+    }
   }
 
   private handleConfirmation(client: ConnectedClient): void {
@@ -79,6 +123,12 @@ export class DestroyCommand implements Command {
     }
 
     const { itemId, index, displayName } = client.stateData.pendingDestroy;
+    
+    // Get player logger for this user
+    const playerLogger = getPlayerLogger(client.user.username);
+    
+    // Log item destruction
+    playerLogger.info(`Destroyed item: ${stripColorCodes(displayName)} (ID: ${itemId})`);
     
     // Remove the item from inventory
     client.user.inventory.items.splice(index, 1);
@@ -96,6 +146,12 @@ export class DestroyCommand implements Command {
         `Destroyed by ${client.user.username}`
       );
       
+      // Get item template info for better logging
+      const template = this.itemManager.getItem(instance.templateId);
+      if (template) {
+        playerLogger.info(`Item details - Template: ${template.name}, Type: ${template.type || 'unknown'}, Stats: ${JSON.stringify(template.stats || {})}`);
+      }
+      
       // Delete the item instance from the item instances table
       this.itemManager.deleteItemInstance(itemId);
     }
@@ -112,7 +168,14 @@ export class DestroyCommand implements Command {
       return;
     }
 
-    const { displayName } = client.stateData.pendingDestroy;
+    const { displayName, itemId } = client.stateData.pendingDestroy;
+    
+    // Get player logger for this user
+    if (client.user) {
+      const playerLogger = getPlayerLogger(client.user.username);
+      playerLogger.info(`Cancelled destruction of item: ${stripColorCodes(displayName)} (ID: ${itemId})`);
+    }
+    
     writeToClient(client, colorize(`You decide not to destroy the ${colorizeItemName(displayName)}.\r\n`, 'green'));
     
     // Clear pending destroy
@@ -133,7 +196,7 @@ export class DestroyCommand implements Command {
       // Save the changes to disk
       this.itemManager.saveItemInstances();
       
-      console.log(`[DestroyCommand] Deleted item instance ${instanceId} from itemInstances.`);
+      destroyLogger.info(`Deleted item instance ${instanceId} from itemInstances.`);
     }
   }
 
@@ -254,5 +317,66 @@ export class DestroyCommand implements Command {
     }
     
     return { itemId, index: itemIndex, displayName };
+  }
+
+  /**
+   * Find and remove an item from all possible locations (inventory, equipment, room)
+   * @param instanceId The ID of the item to find and remove
+   * @returns Information about where the item was found and from whom
+   */
+  private findAndRemoveItem(instanceId: string): { location?: string, owner?: string } {
+    // Check all user inventories and equipment
+    const users = this.userManager.getAllUsers();
+    for (const user of users) {
+      // Check inventory
+      if (user.inventory?.items?.includes(instanceId)) {
+        // Remove from inventory
+        const index = user.inventory.items.indexOf(instanceId);
+        if (index !== -1) {
+          user.inventory.items.splice(index, 1);
+          this.userManager.updateUserInventory(user.username, user.inventory);
+          return { location: 'inventory', owner: user.username };
+        }
+      }
+
+      // Check equipment slots
+      if (user.equipment) {
+        for (const [slot, equippedItemId] of Object.entries(user.equipment)) {
+          if (equippedItemId === instanceId) {
+            // Remove from equipment
+            delete user.equipment[slot];
+            this.userManager.updateUserStats(user.username, { equipment: user.equipment });
+            return { location: `equipment (${slot})`, owner: user.username };
+          }
+        }
+      }
+    }
+
+    // Check all rooms
+    const rooms = this.roomManager.getAllRooms();
+    for (const room of rooms) {
+      // Check room's itemInstances Map first
+      if (room.hasItemInstance(instanceId)) {
+        room.removeItemInstance(instanceId);
+        this.roomManager.updateRoom(room);
+        return { location: `room ${room.id}` };
+      }
+      
+      // Then check legacy items array (compare by name, not ID)
+      const itemIndex = room.items.findIndex(item => {
+        const itemName = typeof item === 'string' ? item : item.name;
+        return itemName === instanceId;
+      });
+      
+      if (itemIndex !== -1) {
+        room.items.splice(itemIndex, 1);
+        this.roomManager.updateRoom(room);
+        return { location: `room ${room.id} (legacy item)` };
+      }
+    }
+
+    // Item not found in any location
+    destroyLogger.warn(`Item ${instanceId} not found in any inventory, equipment, or room`);
+    return {};
   }
 }

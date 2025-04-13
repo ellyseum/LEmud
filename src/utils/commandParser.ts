@@ -1,3 +1,9 @@
+import { createContextLogger } from './logger';
+import { ConnectedClient } from '../types';
+
+// Create a context-specific logger for CommandParser
+const parserLogger = createContextLogger('CommandParser');
+
 export interface ParsedCommand {
   command: string;
   args: string[];
@@ -15,7 +21,7 @@ export class CommandParser {
       // For players in combat, we'll interpret an empty input as an attack command
       // This allows players to just press Enter to attack during combat
       if (this.client.user && this.client.user.inCombat) {
-        console.log(`[CommandParser] Converting empty input to attack command for player in combat`);
+        parserLogger.debug(`Converting empty input to attack command for player in combat`);
         return {
           command: 'attack',
           args: []

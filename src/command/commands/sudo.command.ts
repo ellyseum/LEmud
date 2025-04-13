@@ -8,6 +8,12 @@ import { AdminLevel, AdminUser } from './adminmanage.command';
 // Import drawCommandPrompt to force prompt redraw
 import { drawCommandPrompt } from '../../utils/promptFormatter';
 import { CommandRegistry } from '../commandRegistry';
+import { createContextLogger } from '../../utils/logger';
+
+// Create a context-specific logger for SudoCommand
+const sudoLogger = createContextLogger('SudoCommand');
+// Create a player action logger
+const playerLogger = createContextLogger('Player');
 
 export class SudoCommand implements Command {
   name = 'sudo';
@@ -92,9 +98,9 @@ export class SudoCommand implements Command {
         ];
         this.saveAdmins();
       }
-      console.log(`[SudoCommand] Loaded ${this.adminUsers.length} admin users`);
+      sudoLogger.info(`Loaded ${this.adminUsers.length} admin users`);
     } catch (error) {
-      console.error('[SudoCommand] Error loading admin users:', error);
+      sudoLogger.error('Error loading admin users:', error);
       // Default to just the main admin if file can't be loaded
       this.adminUsers = [
         {
@@ -114,9 +120,9 @@ export class SudoCommand implements Command {
     try {
       const adminData = { admins: this.adminUsers };
       fs.writeFileSync(this.adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
-      console.log('[SudoCommand] Saved admin users');
+      sudoLogger.info('Saved admin users');
     } catch (error) {
-      console.error('[SudoCommand] Error saving admin users:', error);
+      sudoLogger.error('Error saving admin users:', error);
     }
   }
 
@@ -125,7 +131,7 @@ export class SudoCommand implements Command {
    */
   public updateAdminList(admins: AdminUser[]): void {
     this.adminUsers = admins;
-    console.log(`[SudoCommand] Updated admin list with ${this.adminUsers.length} users`);
+    sudoLogger.info(`Updated admin list with ${this.adminUsers.length} users`);
   }
 
   /**
@@ -170,6 +176,9 @@ export class SudoCommand implements Command {
       // Disable admin access
       SudoCommand.activeAdmins.delete(username.toLowerCase());
       writeToClient(client, colorize('Admin privileges disabled.\r\n', 'yellow'));
+      
+      // Log the player action
+      playerLogger.info(`${username} disabled admin privileges`);
 
       // Force prompt redraw to update admin status in prompt
       drawCommandPrompt(client);
@@ -197,6 +206,9 @@ export class SudoCommand implements Command {
 
       // Execute the command
       writeToClient(client, colorize(`Executing with ${adminLevel} privileges: ${args}\r\n`, 'yellow'));
+      
+      // Log the player action
+      playerLogger.info(`${username} executed command with ${adminLevel} privileges: ${args}`);
 
       // Use the command registry directly if available
       if (SudoCommand.commandRegistry) {
@@ -219,6 +231,9 @@ export class SudoCommand implements Command {
     // Enable admin privileges (full sudo mode)
     SudoCommand.activeAdmins.add(username.toLowerCase());
     writeToClient(client, colorize(`${adminLevel.toUpperCase()} privileges enabled. Use "sudo" again to disable.\r\n`, 'green'));
+    
+    // Log the player action
+    playerLogger.info(`${username} enabled ${adminLevel.toUpperCase()} admin privileges`);
 
     // Show different message based on admin level
     switch (adminLevel) {

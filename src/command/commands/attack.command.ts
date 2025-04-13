@@ -4,6 +4,7 @@ import { writeToClient, writeFormattedMessageToClient } from '../../utils/socket
 import { Command } from '../command.interface';
 import { CombatSystem } from '../../combat/combatSystem';
 import { RoomManager } from '../../room/roomManager';
+import { systemLogger, getPlayerLogger } from '../../utils/logger'; // Import our loggers
 
 export class AttackCommand implements Command {
   name = 'attack';
@@ -17,18 +18,24 @@ export class AttackCommand implements Command {
   execute(client: ConnectedClient, args: string): void {
     // Early return if user is not defined
     if (!client.user) {
+      systemLogger.warn(`Unauthenticated user ${client.id} attempted attack command`);
       writeFormattedMessageToClient(client, colorize(`You must be logged in to attack.\r\n`, 'red'));
       return;
     }
     
+    // Get player logger for this user
+    const playerLogger = getPlayerLogger(client.user.username);
+    
     // Check if player is unconscious
     if (client.user.isUnconscious) {
+      playerLogger.info(`Attack command rejected: Player is unconscious`);
       writeFormattedMessageToClient(client, colorize(`You are unconscious and cannot attack.\r\n`, 'red'));
       return;
     }
     
     // Check if combat system is unavailable
     if (!this.combatSystem) {
+      systemLogger.error(`Combat system unavailable for player ${client.user.username}`);
       writeFormattedMessageToClient(client, colorize(`Combat system is currently unavailable.\r\n`, 'red'));
       return;
     }
@@ -38,6 +45,7 @@ export class AttackCommand implements Command {
     
     // If no target specified
     if (!args.trim()) {
+      playerLogger.info(`Attack command: No target specified`);
       writeFormattedMessageToClient(client, colorize(`Attack what?\r\n`, 'yellow'));
       return;
     }
@@ -57,30 +65,36 @@ export class AttackCommand implements Command {
         
         if (matchByName) {
           // Found an NPC by name
+          playerLogger.info(`Attack command: Engaging combat with ${matchByName.name} (ID: ${matchByName.instanceId}) in room ${roomId}`);
           const success = this.combatSystem.engageCombat(client, matchByName);
           if (!success) {
+            playerLogger.warn(`Attack command: Failed to engage combat with ${matchByName.name} (ID: ${matchByName.instanceId})`);
             writeFormattedMessageToClient(client, colorize(`Unable to engage combat with ${matchByName.name}.\r\n`, 'red'));
           }
           return;
         }
       }
       
+      playerLogger.info(`Attack command: Target "${args.trim()}" not found in room ${roomId}`);
       writeFormattedMessageToClient(client, colorize(`You don't see a '${args.trim()}' here to attack.\r\n`, 'yellow'));
       return;
     }
     
     // If already in combat, add the new target 
     if (client.user.inCombat) {
+      playerLogger.info(`Attack command: Adding target ${target.name} (ID: ${target.instanceId}) to existing combat in room ${roomId}`);
       // Add this target to the existing combat
       this.combatSystem.engageCombat(client, target);
       return;
     }
     
     // Engage in combat with the target
+    playerLogger.info(`Attack command: Initiating combat with ${target.name} (ID: ${target.instanceId}) in room ${roomId}`);
     const success = this.combatSystem.engageCombat(client, target);
     
     // Log success/failure
     if (!success) {
+      playerLogger.warn(`Attack command: Failed to engage combat with ${target.name} (ID: ${target.instanceId})`);
       writeFormattedMessageToClient(client, colorize(`Unable to engage combat with ${target.name}.\r\n`, 'red'));
     }
   }

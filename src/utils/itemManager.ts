@@ -3,6 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GameItem, User, EquipmentSlot, ItemTemplate, ItemInstance } from '../types';
+import { createContextLogger } from './logger';
+
+// Create a context-specific logger for ItemManager
+const itemLogger = createContextLogger('ItemManager');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const ITEMS_FILE = path.join(DATA_DIR, 'items.json');
@@ -237,7 +241,7 @@ export class ItemManager {
       });
       
     } catch (error) {
-      console.error('Error loading items:', error);
+      itemLogger.error('Error loading items:', error);
       this.items = new Map();
     }
   }
@@ -268,9 +272,9 @@ export class ItemManager {
         this.itemInstances.set(instance.instanceId, instance);
       });
       
-      console.log(`[ItemManager] Loaded ${instances.length} item instances.`);
+      itemLogger.info(`Loaded ${instances.length} item instances.`);
     } catch (error) {
-      console.error('Error loading item instances:', error);
+      itemLogger.error('Error loading item instances:', error);
       this.itemInstances = new Map();
     }
   }
@@ -282,9 +286,9 @@ export class ItemManager {
     try {
       const instances = Array.from(this.itemInstances.values());
       fs.writeFileSync(ITEM_INSTANCES_FILE, JSON.stringify(instances, null, 2));
-      console.log(`[ItemManager] Saved ${instances.length} item instances.`);
+      itemLogger.info(`Saved ${instances.length} item instances.`);
     } catch (error) {
-      console.error('Error saving item instances:', error);
+      itemLogger.error('Error saving item instances:', error);
     }
   }
 
@@ -293,7 +297,7 @@ export class ItemManager {
       const itemArray = Array.from(this.items.values());
       fs.writeFileSync(ITEMS_FILE, JSON.stringify(itemArray, null, 2));
     } catch (error) {
-      console.error('Error saving items:', error);
+      itemLogger.error('Error saving items:', error);
     }
   }
 
@@ -339,7 +343,7 @@ export class ItemManager {
     // Check if template exists
     const template = this.getItem(templateId);
     if (!template) {
-      console.error(`[ItemManager] Cannot create instance: Template ${templateId} not found.`);
+      itemLogger.error(`Cannot create instance: Template ${templateId} not found.`);
       return null;
     }
 
@@ -389,7 +393,7 @@ export class ItemManager {
 
     // Store the instance
     this.itemInstances.set(instanceId, instance);
-    console.log(`[ItemManager] Created item instance ${instanceId} of ${templateId} (quality: ${instance.properties?.quality || 'unknown'})`);
+    itemLogger.info(`Created item instance ${instanceId} of ${templateId} (quality: ${instance.properties?.quality || 'unknown'})`);
     
     // Save to disk
     this.saveItemInstances();
@@ -433,7 +437,7 @@ export class ItemManager {
   public addItemHistory(instanceId: string, event: string, details?: string): boolean {
     const instance = this.itemInstances.get(instanceId);
     if (!instance) {
-      console.error(`[ItemManager] Cannot add history: Instance ${instanceId} not found.`);
+      itemLogger.error(`Cannot add history: Instance ${instanceId} not found.`);
       return false;
     }
     
@@ -1006,7 +1010,7 @@ export class ItemManager {
     const deleted = this.itemInstances.delete(instanceId);
     if (deleted) {
       this.saveItemInstances();
-      console.log(`[ItemManager] Deleted item instance ${instanceId}`);
+      itemLogger.info(`Deleted item instance ${instanceId}`);
     }
     return deleted;
   }

@@ -3,6 +3,7 @@ import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { UserManager } from '../../user/userManager';
+import { getPlayerLogger } from '../../utils/logger';
 
 // No need to import writeCommandPrompt as it's handled by the CommandHandler
 
@@ -15,11 +16,15 @@ export class DamageCommand implements Command {
   execute(client: ConnectedClient, args: string): void {
     if (!client.user) return;
     
+    // Get player logger for this user
+    const playerLogger = getPlayerLogger(client.user.username);
+    
     // Parse the damage amount
     const amount = parseInt(args, 10) || 0;
     
     if (amount <= 0) {
       writeToClient(client, colorize('Please specify a positive amount of damage.\r\n', 'yellow'));
+      playerLogger.info('Damage command: Invalid damage amount specified');
       return;
     }
     
@@ -34,6 +39,9 @@ export class DamageCommand implements Command {
     // Save the changes
     this.userManager.updateUserStats(client.user.username, { health: newHealth });
     
+    // Log health change
+    playerLogger.info(`Health changed from ${oldHealth} to ${newHealth} (damage: ${actualDamage})`);
+    
     if (actualDamage > 0) {
       writeToClient(client, colorize(`You have taken ${actualDamage} damage!\r\n`, 'red'));
       
@@ -42,16 +50,23 @@ export class DamageCommand implements Command {
         client.user.isUnconscious = true;
         this.userManager.updateUserStats(client.user.username, { isUnconscious: true });
         writeToClient(client, colorize(`You collapse to the ground unconscious! You are bleeding out and will die at -10 HP.\r\n`, 'red'));
+        
+        // Log unconscious state
+        playerLogger.warn(`Player fell unconscious at ${newHealth} HP`);
       }
       // Check if player is fully dead (-10 HP)
       else if (newHealth <= -10) {
         writeToClient(client, colorize(`You have died! Your body will be transported to the starting area.\r\n`, 'red'));
+        
+        // Log death
+        playerLogger.warn(`Player died at ${newHealth} HP`);
         
         // In a real implementation, this would trigger the respawn logic
         // But for this testing command, we'll just report the death
       }
     } else {
       writeToClient(client, colorize(`You avoided the damage!\r\n`, 'green'));
+      playerLogger.info('Player avoided damage');
     }
     
     // Command prompt will be displayed by CommandHandler after this function returns

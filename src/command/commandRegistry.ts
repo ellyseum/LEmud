@@ -5,6 +5,10 @@ import { writeToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { RoomManager } from '../room/roomManager';
 import { CombatSystem } from '../combat/combatSystem';
+import { systemLogger, createContextLogger } from '../utils/logger';
+
+// Create a context-specific logger for CommandRegistry
+const commandLogger = createContextLogger('CommandRegistry');
 
 // Command imports
 import { SayCommand } from './commands/say.command';
@@ -73,7 +77,7 @@ export class CommandRegistry {
     stateMachine: any // Add StateMachine instance
   ): CommandRegistry {
     if (!CommandRegistry.instance) {
-      console.log('Creating CommandRegistry instance');
+      commandLogger.info('Creating CommandRegistry instance');
       CommandRegistry.instance = new CommandRegistry(clients, roomManager, combatSystem, userManager, stateMachine);
     } else {
       // Update references if they've changed
@@ -111,7 +115,7 @@ export class CommandRegistry {
       new YellCommand(this.clients),
       new HistoryCommand(),
       new AttackCommand(this.combatSystem, this.roomManager),
-      new BreakCommand(this.combatSystem),
+      new BreakCommand(this.combatSystem, this.userManager),
       new SpawnCommand(this.roomManager),
       new EquipCommand(),
       new UnequipCommand(),
@@ -213,7 +217,7 @@ export class CommandRegistry {
       this.registerAlias(dir, 'move', dir);
       // Only log this message when verbose logging is enabled or on first initialization
       if (CommandRegistry.instance === this) {
-        console.log(`Registered direction alias: ${dir} -> move ${dir}`);
+        commandLogger.debug(`Registered direction alias: ${dir} -> move ${dir}`);
       }
     }
 
@@ -222,7 +226,7 @@ export class CommandRegistry {
       this.registerAlias(shortDir, 'move', fullDir);
       // Only log this message when verbose logging is enabled or on first initialization
       if (CommandRegistry.instance === this) {
-        console.log(`Registered short direction alias: ${shortDir} -> move ${fullDir}`);
+        commandLogger.debug(`Registered short direction alias: ${shortDir} -> move ${fullDir}`);
       }
     }
   }
@@ -317,7 +321,7 @@ export class CommandRegistry {
           const direction = this.convertShortToFullDirection(lowercaseCommand);
           moveCommand.execute(client, direction);
         } catch (err: unknown) {
-          console.error(`Error executing direction command ${lowercaseCommand}:`, err);
+          commandLogger.error(`Error executing direction command ${lowercaseCommand}:`, err);
           if (err instanceof Error) {
             writeToClient(client, colorize(`Error moving: ${err.message}\r\n`, 'red'));
           } else {
@@ -335,7 +339,7 @@ export class CommandRegistry {
       try {
         command.execute(client, args.join(' '));
       } catch (err: unknown) {
-        console.error(`Error executing command ${commandName}:`, err);
+        commandLogger.error(`Error executing command ${commandName}:`, err);
         if (err instanceof Error) {
           writeToClient(client, colorize(`Error executing command: ${err.message}\r\n`, 'red'));
         } else {
@@ -353,7 +357,7 @@ export class CommandRegistry {
           const aliasArgs = alias.args ? alias.args : args.join(' ');
           aliasCommand.execute(client, aliasArgs.trim());
         } catch (err: unknown) {
-          console.error(`Error executing alias ${commandName}:`, err);
+          commandLogger.error(`Error executing alias ${commandName}:`, err);
           if (err instanceof Error) {
             writeToClient(client, colorize(`Error executing command: ${err.message}\r\n`, 'red'));
           } else {

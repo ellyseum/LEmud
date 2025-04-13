@@ -7,6 +7,7 @@ import { UserManager } from '../user/userManager';
 import { NPC } from './npc';
 import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
+import { systemLogger, getPlayerLogger } from '../utils/logger'; // Import our loggers
 
 export class CombatSystem {
   private static instance: CombatSystem | null = null;
@@ -47,7 +48,7 @@ export class CombatSystem {
       this.roomCombatEntities.set(roomId, new Set());
     }
     this.roomCombatEntities.get(roomId)!.add(entityName);
-    console.log(`[CombatSystem] Added ${entityName} to active combat in room ${roomId}`);
+    systemLogger.info(`Added ${entityName} to active combat in room ${roomId}`);
   }
 
   /**
@@ -56,7 +57,7 @@ export class CombatSystem {
   private removeEntityFromCombatForRoom(roomId: string, entityName: string): void {
     if (this.roomCombatEntities.has(roomId)) {
       this.roomCombatEntities.get(roomId)!.delete(entityName);
-      console.log(`[CombatSystem] Removed ${entityName} from active combat in room ${roomId}`);
+      systemLogger.info(`Removed ${entityName} from active combat in room ${roomId}`);
       
       // Clean up if no more combat entities in this room
       if (this.roomCombatEntities.get(roomId)!.size === 0) {
@@ -121,7 +122,7 @@ export class CombatSystem {
       // Try template ID lookup if direct lookup fails
       const npcsArray = Array.from(room.npcs?.values() || []);
       if (!this.isNpcInRoomByTemplateId(room, entityName)) {
-        console.log(`[CombatSystem] NPC ${entityName} not found in room ${roomId}`);
+        systemLogger.warn(`NPC ${entityName} not found in room ${roomId}`);
         return null;
       }
     }
@@ -218,6 +219,7 @@ export class CombatSystem {
 
     const roomId = player.user.currentRoomId;
     const entityId = this.getEntityId(roomId, target.name);
+    const playerLogger = getPlayerLogger(player.user.username);
     
     const sharedTarget = this.getSharedEntity(roomId, target.name);
     if (!sharedTarget) return false;
@@ -229,7 +231,8 @@ export class CombatSystem {
       combat.activeCombatants = [];
       
       // Log the target switch
-      console.log(`[CombatSystem] Player ${player.user.username} switched target to ${target.name}`);
+      systemLogger.debug(`Player ${player.user.username} switched target to ${target.name}`);
+      playerLogger.info(`Switched combat target to ${target.name}`);
       
       // Notify player
       writeFormattedMessageToClient(
@@ -249,7 +252,9 @@ export class CombatSystem {
 
     // If a combat instance exists but the player's inCombat flag is off, re-engage combat
     if (combat && !player.user.inCombat) {
-      console.log(`[CombatSystem] Re-engaging combat for ${player.user.username}`);
+      systemLogger.debug(`Re-engaging combat for ${player.user.username}`);
+      playerLogger.info(`Re-engaging combat with ${target.name}`);
+      
       player.user.inCombat = true;
       this.userManager.updateUserStats(player.user.username, { inCombat: true });
       writeToClient(player, colorize(`*Combat Engaged*\r\n`, 'boldYellow'));
@@ -333,7 +338,7 @@ export class CombatSystem {
     // Increment the global combat round
     this.currentRound++;
     
-    console.log(`[CombatSystem] Processing combat round ${this.currentRound} for ${this.combats.size} active combats`);
+    systemLogger.debug(`Processing combat round ${this.currentRound} for ${this.combats.size} active combats`);
     
     // Clear the list of entities that have attacked this round
     this.entitiesAttackedThisRound.clear();
@@ -352,7 +357,7 @@ export class CombatSystem {
       
       if ((!client || !client.authenticated || !client.user) &&
           (!combat.lastActivityTime || currentTime - combat.lastActivityTime > MAX_INACTIVE_TIME)) {
-        console.log(`[CombatSystem] Player ${username} is no longer valid, marking for removal`);
+        systemLogger.warn(`Player ${username} is no longer valid, marking for removal from combat system`);
         // Player is no longer valid, mark for removal
         playersToRemove.push(username);
         continue;
@@ -360,11 +365,11 @@ export class CombatSystem {
       
       // CRITICAL: Ensure player reference is updated
       if (client && client.user && client !== combat.player) {
-        console.log(`[CombatSystem] Updating combat player reference for ${username}`);
+        systemLogger.debug(`Updating combat player reference for ${username}`);
         combat.updateClientReference(client);
       }
       
-      console.log(`[CombatSystem] Processing combat for ${username} with ${combat.activeCombatants.length} combatants`);
+      systemLogger.debug(`Processing combat for ${username} with ${combat.activeCombatants.length} combatants`);
       
       // Update last activity time
       combat.lastActivityTime = currentTime;
@@ -375,7 +380,12 @@ export class CombatSystem {
       
       // Check if combat is done
       if (combat.isDone()) {
-        console.log(`[CombatSystem] Combat for ${username} is done, cleaning up`);
+        systemLogger.info(`Combat for ${username} is done, cleaning up`);
+        const playerLogger = client?.user ? getPlayerLogger(client.user.username) : null;
+        if (playerLogger) {
+          playerLogger.info(`Combat ended`);
+        }
+        
         combat.endCombat();
         playersToRemove.push(username);
       }
@@ -383,7 +393,7 @@ export class CombatSystem {
     
     // Clean up any combats that are done or have disconnected players
     for (const username of playersToRemove) {
-      console.log(`[CombatSystem] Removing combat for ${username}`);
+      systemLogger.debug(`Removing combat for ${username}`);
       this.combats.delete(username);
       
       // Clean up entity targeters for this player
@@ -510,12 +520,12 @@ export class CombatSystem {
     
     // Check if we have data for this NPC
     if (npcData.has(name)) {
-      console.log(`[CombatSystem] Creating NPC ${name} from data`);
+      systemLogger.debug(`Creating NPC ${name} from data`);
       return NPC.fromNPCData(npcData.get(name)!);
     }
     
     // Fallback to default NPC if no data found
-    console.log(`[CombatSystem] No data found for NPC ${name}, creating default`);
+    systemLogger.warn(`No data found for NPC ${name}, creating default`);
     return new NPC(
       name,
       20,  // health
@@ -616,7 +626,8 @@ export class CombatSystem {
     if (!oldClient.user || !newClient.user) return;
     
     const username = oldClient.user.username;
-    console.log(`[CombatSystem] Handling session transfer for ${username}`);
+    systemLogger.info(`Handling session transfer for ${username}`);
+    const playerLogger = getPlayerLogger(username);
     
     // Mark the transfer in progress to prevent combat from ending prematurely
     if (oldClient.stateData) {
@@ -629,7 +640,9 @@ export class CombatSystem {
     // CRITICAL FIX: Always preserve the inCombat flag
     const inCombat = oldClient.user.inCombat;
     if (inCombat) {
-      console.log(`[CombatSystem] User ${username} is in combat, preserving combat state`);
+      systemLogger.info(`User ${username} is in combat, preserving combat state`);
+      playerLogger.info(`Session transfer while in combat - preserving combat state`);
+      
       newClient.user.inCombat = true;
       this.userManager.updateUserStats(username, { inCombat: true });
       
@@ -637,7 +650,7 @@ export class CombatSystem {
       let combat = this.combats.get(username);
       
       if (combat) {
-        console.log(`[CombatSystem] Found existing combat instance for ${username}`);
+        systemLogger.debug(`Found existing combat instance for ${username}`);
         
         // IMPORTANT - Clone info from old combat before updating reference
         const activeCombatantsCopy = [...combat.activeCombatants];
@@ -647,12 +660,14 @@ export class CombatSystem {
         
         // Verify active combatants are still present after reference update
         if (combat.activeCombatants.length === 0 && activeCombatantsCopy.length > 0) {
-          console.log(`[CombatSystem] Warning: Lost combatants during reference update, restoring`);
+          systemLogger.warn(`Warning: Lost combatants during reference update, restoring`);
           combat.activeCombatants = activeCombatantsCopy;
         }
       } else {
         // No existing combat found but user is in combat - recreate it
-        console.log(`[CombatSystem] No combat instance found but user ${username} has inCombat flag, recreating`);
+        systemLogger.warn(`No combat instance found but user ${username} has inCombat flag, recreating`);
+        playerLogger.warn(`Combat instance missing but inCombat flag is set - recreating combat`);
+        
         combat = new Combat(newClient, this.userManager, this.roomManager, this);
         
         // Add stronger reference binding to prevent it from being garbage collected
@@ -674,7 +689,8 @@ export class CombatSystem {
                 combat.addTarget(npc);
                 const entityId = this.getEntityId(newClient.user.currentRoomId, firstNpc.instanceId);
                 this.trackEntityTargeter(entityId, username);
-                console.log(`[CombatSystem] Added ${firstNpc.name} as target for ${username} during transfer recreation`);
+                systemLogger.info(`Added ${firstNpc.name} as target for ${username} during transfer recreation`);
+                playerLogger.info(`Added ${firstNpc.name} as combat target during session transfer`);
                 
                 // Reset NPC attack state to prevent immediate attack
                 this.resetEntityAttackStatus(entityId);
@@ -708,8 +724,7 @@ export class CombatSystem {
         combat.lastActivityTime = Date.now();
       }
     } else {
-      console.log(`[CombatSystem] User ${username} is not in combat, nothing to transfer`);
-      newClient.user.inCombat = false;
+      systemLogger.debug(`User ${username} is not in combat, nothing to transfer`);
     }
     
     // Remove the transfer in progress flag after a delay
@@ -729,7 +744,7 @@ export class CombatSystem {
     if (!player.user) return;
     
     const username = player.user.username;
-    console.log(`[CombatSystem] Player ${username} moved rooms while in combat. Combat will continue until next tick checks positions.`);
+    systemLogger.debug(`Player ${username} moved rooms while in combat. Combat will continue until next tick checks positions.`);
     
     // We intentionally don't end combat here, allowing the player to move freely
     // The combat system's processRound() will handle ending combat during the next tick
@@ -746,12 +761,12 @@ export class CombatSystem {
     
     // Process combat for each room with active combat entities
     for (const [roomId, entities] of this.roomCombatEntities.entries()) {
-      console.log(`[CombatSystem] Processing room combat for room ${roomId} with ${entities.size} entities`);
+      systemLogger.debug(`Processing room combat for room ${roomId} with ${entities.size} entities`);
       
       // Get the room to verify it exists
       const room = this.roomManager.getRoom(roomId);
       if (!room) {
-        console.log(`[CombatSystem] Room ${roomId} not found, skipping combat processing`);
+        systemLogger.warn(`Room ${roomId} not found, skipping combat processing`);
         continue;
       }
       
@@ -765,7 +780,7 @@ export class CombatSystem {
         
         // Skip if entity doesn't exist or is already dead
         if (!entity || !entity.isAlive()) {
-          console.log(`[CombatSystem] Entity ${entityName} in room ${roomId} is dead or missing, removing from combat`);
+          systemLogger.info(`Entity ${entityName} in room ${roomId} is dead or missing, removing from combat`);
           this.removeEntityFromCombatForRoom(roomId, entityName);
           continue;
         }
@@ -802,7 +817,9 @@ export class CombatSystem {
             const targetPlayer = this.findClientByUsername(targetPlayerName);
             
             if (targetPlayer && targetPlayer.user) {
-              console.log(`[CombatSystem] Hostile NPC ${entityName} attacking player ${targetPlayerName} without prior aggression`);
+              systemLogger.info(`Hostile NPC ${entityName} attacking player ${targetPlayerName} without prior aggression`);
+              const playerLogger = getPlayerLogger(targetPlayerName);
+              playerLogger.info(`Hostile NPC ${entityName} initiated combat in room ${roomId}`);
               
               // Add aggression so future attacks prioritize this player
               entity.addAggression(targetPlayerName, 0);
@@ -1085,7 +1102,7 @@ export class CombatSystem {
    * were already in the room before the NPC spawned
    */
   private scanRoomsForHostileNPCs(): void {
-    console.log(`[CombatSystem] Scanning all rooms for hostile NPCs and players`);
+    systemLogger.debug(`Scanning all rooms for hostile NPCs and players`);
     
     // Get all rooms from the room manager
     const rooms = this.roomManager.getAllRooms();
@@ -1102,7 +1119,7 @@ export class CombatSystem {
         const entity = npc;
         
         if (entity && entity.isHostile) {
-          console.log(`[CombatSystem] Found hostile NPC ${npc.name} (${npcId}) in room ${room.id} with ${room.players.length} players`);
+          systemLogger.debug(`Found hostile NPC ${npc.name} (${npcId}) in room ${room.id} with ${room.players.length} players`);
           
           // Add the entity to active combat entities for this room if not already
           if (!this.isEntityInCombat(room.id, npcId)) {
@@ -1115,7 +1132,9 @@ export class CombatSystem {
           // For each player in the room, ensure they're on the NPC's aggression list
           for (const playerName of room.players) {
             if (!entity.hasAggression(playerName)) {
-              console.log(`[CombatSystem] Adding player ${playerName} to aggression list of ${npc.name} in room ${room.id}`);
+              systemLogger.debug(`Adding player ${playerName} to aggression list of ${npc.name} in room ${room.id}`);
+              const playerLogger = getPlayerLogger(playerName);
+              playerLogger.info(`Hostile NPC ${npc.name} is now aware of your presence in room ${room.id}`);
               
               // Add aggression with 0 damage to indicate awareness rather than damage dealt
               entity.addAggression(playerName, 0);
@@ -1124,5 +1143,73 @@ export class CombatSystem {
         }
       }
     }
+  }
+
+  /**
+   * Get all opponents for a player in combat using their username
+   * @param playerOrUsername The player's username or client object
+   * @returns Array of opponents the player is fighting
+   */
+  getOpponents(playerOrUsername: string | ConnectedClient): CombatEntity[] {
+    // Handle both string and ConnectedClient inputs safely
+    let username: string;
+    
+    if (typeof playerOrUsername === 'string') {
+      username = playerOrUsername;
+    } else if (playerOrUsername?.user?.username) {
+      username = playerOrUsername.user.username;
+    } else {
+      systemLogger.warn('getOpponents called with invalid player data');
+      return [];
+    }
+    
+    // Find which combat this player is in
+    const combat = this.getCombatForEntity(username);
+    if (!combat) {
+      return [];
+    }
+    
+    // Safely access activeCombatants and ensure it's an array
+    const activeCombatants = combat.activeCombatants || [];
+    
+    // Return all entities that are not this player
+    return activeCombatants.filter(entity => {
+      if (!entity) return false;
+      
+      // For NPCs, always include them as opponents
+      if (entity instanceof NPC) {
+        return true;
+      }
+      
+      // For other entities, check if it's not the current player
+      // First try to use getName() method from CombatEntity interface
+      if (typeof entity.getName === 'function' && entity.getName() === username) {
+        return false;
+      }
+      
+      // Fallback to checking the name property directly
+      return entity.name !== username;
+    });
+  }
+
+  /**
+   * Get the combat instance in which an entity (player) is participating
+   * @param entityName The name of the entity (username for players)
+   * @returns The combat instance, or null if not found
+   */
+  private getCombatForEntity(entityName: string): Combat | null {
+    // Check if this is a player and we have a direct combat instance for them
+    if (this.combats.has(entityName)) {
+      return this.combats.get(entityName) || null;
+    }
+    
+    // If not found directly, search all combats
+    for (const combat of this.combats.values()) {
+      if (combat.activeCombatants.some(entity => entity.name === entityName)) {
+        return combat;
+      }
+    }
+    
+    return null;
   }
 }

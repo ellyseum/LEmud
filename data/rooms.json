@@ -28,11 +28,7 @@
         "templateId": "sword-epic"
       }
     ],
-    "npcs": [
-      "cat",
-      "cat",
-      "dog"
-    ],
+    "npcs": [],
     "currency": {
       "gold": 0,
       "silver": 0,

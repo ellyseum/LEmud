@@ -7,6 +7,7 @@ import { RoomManager } from '../../room/roomManager';
 import { EffectManager } from '../../effects/effectManager';
 import { EffectType } from '../../types/effects';
 import { NPC } from '../../combat/npc';
+import { systemLogger, getPlayerLogger } from '../../utils/logger'; // Import our loggers
 
 export class EffectCommand implements Command {
   name = 'effect';
@@ -57,24 +58,28 @@ export class EffectCommand implements Command {
   }
 
   private applyEffect(client: ConnectedClient, args: string[]): void {
-    // Validate args
-    if (args.length < 3) {
-      writeFormattedMessageToClient(
-        client,
-        '\r\n\x1b[31mUsage: effect apply <target> <type> <duration> [tick_interval] [damage/heal] [real_time_ms] [block_movement]\x1b[0m\r\n'
-      );
-      return;
-    }
-
     // Ensure client.user is not null
     if (!client.user) {
       writeFormattedMessageToClient(client, '\r\nYou must be logged in to use this command.\r\n');
       return;
     }
+    
+    // Get player logger for the admin
+    const playerLogger = getPlayerLogger(client.user.username);
+    
+    // Validate args
+    if (args.length < 3) {
+      writeFormattedMessageToClient(
+        client,
+        '\r\n\x1b[31mUsage: effect apply <target> <effectType> [duration] [tickInterval] [amount] [realTimeMs] [blockMovement]\x1b[0m\r\n'
+      );
+      playerLogger.info('Failed to apply effect: Invalid command format');
+      return;
+    }
 
     const targetName = args[0];
     const effectTypeStr = args[1].toUpperCase();
-    const durationTicks = parseInt(args[2], 10);
+    const duration = args.length > 2 ? parseInt(args[2], 10) : 10;
     const tickInterval = args.length > 3 ? parseInt(args[3], 10) : 1;
     const amount = args.length > 4 ? parseInt(args[4], 10) : 0;
     const realTimeMs = args.length > 5 ? parseInt(args[5], 10) : 0;
@@ -86,100 +91,83 @@ export class EffectCommand implements Command {
         client,
         `\r\n\x1b[31mInvalid effect type. Valid types: ${Object.keys(EffectType).join(', ')}\x1b[0m\r\n`
       );
+      playerLogger.warn(`Effect command: Invalid effect type "${effectTypeStr}" specified`);
       return;
     }
 
     const effectType = EffectType[effectTypeStr as keyof typeof EffectType];
-
-    // Find the target (player or NPC)
-    const targetClient = this.userManager.getActiveUserSession(targetName);
+    let targetId: string;
+    let targetDisplayName: string;
     let isPlayer = true;
-    let targetId = targetName;
-    let targetDisplayName = targetName;
-    
-    if (!targetClient) {
-      // Not a player, check if it's an NPC in the current room
-      isPlayer = false;
+
+    // Figure out if this is a player or NPC
+    const targetUser = this.userManager.getUser(targetName);
+    if (targetUser) {
+      targetId = targetUser.username;
+      targetDisplayName = targetUser.username;
       
-      const roomId = client.user.currentRoomId;
-      if (!roomId) {
-        writeFormattedMessageToClient(
-          client,
-          `\r\n\x1b[31mError: You're not in a valid room.\x1b[0m\r\n`
-        );
-        return;
-      }
+      // Log to target's log file when a player effect is applied
+      const targetLogger = getPlayerLogger(targetName);
+      targetLogger.info(`Admin ${client.user.username} applied ${effectTypeStr} effect to you (duration: ${duration}, amount: ${amount})`);
+    } else {
+      // Check if it's an NPC
+      let currentRoom = null;
       
-      const room = this.roomManager.getRoom(roomId);
-      if (!room) {
-        writeFormattedMessageToClient(
-          client,
-          `\r\n\x1b[31mError: Could not find your current room.\x1b[0m\r\n`
-        );
-        return;
-      }
-      
-      // Try to find an NPC with the given instance ID first
-      let npc = room.getNPC(targetName);
-      
-      // If not found by instance ID, try to find by name (template ID)
-      if (!npc) {
-        const matchingNPCs = room.findNPCsByTemplateId(targetName);
-        if (matchingNPCs.length > 0) {
-          npc = matchingNPCs[0];
-        } else {
-          // Try to find by name
-          const npcsMatchingName = Array.from(room.npcs.values()).filter(n => 
-            n.name.toLowerCase() === targetName.toLowerCase());
-          
-          if (npcsMatchingName.length > 0) {
-            npc = npcsMatchingName[0];
+      // Only attempt to find rooms if client.user is defined
+      if (client?.user?.username) {
+        // Find the current room by checking all rooms that contain the player
+        const rooms = this.roomManager.getAllRooms();
+        for (const room of rooms) {
+          if (room.players && room.players.includes(client.user.username)) {
+            currentRoom = room;
+            break;
           }
         }
       }
-      
+
+      if (!currentRoom) {
+        writeFormattedMessageToClient(
+          client,
+          '\r\n\x1b[31mYou are not in a room.\x1b[0m\r\n'
+        );
+        playerLogger.warn(`Effect command: Failed to apply effect - admin not in a room`);
+        return;
+      }
+
+      let npc = null;
+      if (currentRoom && currentRoom.npcs instanceof Map) {
+        // Try to find NPC by name in the room's NPC collection
+        for (const [_, roomNpc] of currentRoom.npcs.entries()) {
+          if (roomNpc.name.toLowerCase() === targetName.toLowerCase()) {
+            npc = roomNpc;
+            break;
+          }
+        }
+      }
+
       if (!npc) {
         writeFormattedMessageToClient(
           client,
-          `\r\n\x1b[31mTarget NPC '${targetName}' not found in your room.\x1b[0m\r\n`
+          `\r\n\x1b[31mTarget not found: ${targetName}\x1b[0m\r\n`
         );
+        playerLogger.warn(`Effect command: Target not found "${targetName}"`);
         return;
       }
-      
-      targetId = npc.instanceId;
+
+      targetId = npc.instanceId || npc.name; // Use instanceId or fallback to name
       targetDisplayName = npc.name;
+      isPlayer = false;
     }
 
-    // Create effect payload based on effect type
-    const effectPayload: any = {};
+    // Calculate duration in ticks
+    let durationTicks = duration;
     
-    if (amount > 0) {
-      if (effectType === EffectType.POISON || effectType === EffectType.DAMAGE_OVER_TIME) {
-        effectPayload.damagePerTick = amount;
-      } else if (effectType === EffectType.REGEN || effectType === EffectType.HEAL_OVER_TIME) {
-        effectPayload.healPerTick = amount;
-      } else {
-        // Assume it's a stat modifier effect
-        effectPayload.statModifiers = {};
-        
-        switch(effectType) {
-          case EffectType.STRENGTH_BUFF:
-            effectPayload.statModifiers.strength = amount;
-            break;
-          case EffectType.AGILITY_BUFF:
-            effectPayload.statModifiers.agility = amount;
-            break;
-          case EffectType.ATTACK_BUFF:
-            effectPayload.statModifiers.attack = amount;
-            break;
-          case EffectType.DEFENSE_BUFF:
-            effectPayload.statModifiers.defense = amount;
-            break;
-          // Add more stat modifiers as needed
-        }
-      }
-    }
-    
+    // Create effect payload
+    const effectPayload: any = {
+      amount: amount,
+    };
+
+    // Add specific effect type properties
     if (blockMovement) {
       effectPayload.blockMovement = true;
     }
@@ -193,8 +181,8 @@ export class EffectCommand implements Command {
       effectPayload.blockCombat = true;
     }
 
-    // Apply the effect
-    this.effectManager.addEffect(targetId, isPlayer, {
+    // Create the effect object
+    const effectObject = {
       type: effectType,
       name: this.getEffectName(effectType),
       description: this.getEffectDescription(effectType, amount),
@@ -206,7 +194,18 @@ export class EffectCommand implements Command {
       targetId: targetId,
       isPlayerEffect: isPlayer,
       sourceId: client.user.username,
-    });
+    };
+
+    // Apply the effect
+    this.effectManager.addEffect(targetId, isPlayer, effectObject);
+
+    // Log the effect application
+    const effectDetails = `${effectObject.name} (${effectType})` + 
+      (amount > 0 ? ` with amount ${amount}` : '') + 
+      ` for ${durationTicks} ticks` +
+      (blockMovement ? ' (blocks movement)' : '');
+    
+    playerLogger.info(`Applied ${effectTypeStr} effect to ${targetDisplayName} (duration: ${durationTicks} ticks, amount: ${amount}, blockMovement: ${blockMovement})`);
 
     writeFormattedMessageToClient(
       client,
@@ -228,6 +227,9 @@ export class EffectCommand implements Command {
       writeFormattedMessageToClient(client, '\r\nYou must be logged in to use this command.\r\n');
       return;
     }
+    
+    // Get admin logger
+    const adminLogger = getPlayerLogger(client.user.username);
 
     const targetName = args[0];
     let targetId = targetName;
@@ -247,6 +249,7 @@ export class EffectCommand implements Command {
           client,
           `\r\n\x1b[31mError: You're not in a valid room.\x1b[0m\r\n`
         );
+        adminLogger.warn(`Effect command: Admin not in a valid room when trying to remove effect`);
         return;
       }
       
@@ -256,6 +259,7 @@ export class EffectCommand implements Command {
           client,
           `\r\n\x1b[31mError: Could not find your current room.\x1b[0m\r\n`
         );
+        adminLogger.warn(`Effect command: Room ${roomId} not found when trying to remove effect`);
         return;
       }
       
@@ -283,10 +287,11 @@ export class EffectCommand implements Command {
           client,
           `\r\n\x1b[31mTarget NPC '${targetName}' not found in your room.\x1b[0m\r\n`
         );
+        adminLogger.warn(`Effect command: Target NPC '${targetName}' not found in room ${roomId} when trying to remove effect`);
         return;
       }
       
-      targetId = npc.instanceId;
+      targetId = npc.instanceId || npc.name; // Use instanceId or fallback to name
       targetDisplayName = npc.name;
     }
 
@@ -298,6 +303,7 @@ export class EffectCommand implements Command {
         client,
         `\r\n\x1b[33m${targetDisplayName} has no active effects.\x1b[0m\r\n`
       );
+      adminLogger.info(`Effect command: No effects found to remove from ${isPlayer ? 'player' : 'NPC'} ${targetDisplayName}`);
       return;
     }
 
@@ -311,10 +317,21 @@ export class EffectCommand implements Command {
           client,
           `\r\n\x1b[31mNo effect with ID ${effectId} found on ${targetDisplayName}.\x1b[0m\r\n`
         );
+        adminLogger.warn(`Effect command: Effect with ID ${effectId} not found on ${targetDisplayName}`);
         return;
       }
       
+      // Log before removing
+      adminLogger.info(`Removing effect: ${effect.name} (${effect.type}) from ${isPlayer ? 'player' : 'NPC'} ${targetDisplayName} (${targetId})`);
+      
+      // If target is a player, also log to their player log
+      if (isPlayer && targetClient?.user) {
+        const targetLogger = getPlayerLogger(targetClient.user.username);
+        targetLogger.info(`Effect removed: ${effect.name} (${effect.type}) by admin ${client.user.username}`);
+      }
+      
       this.effectManager.removeEffect(effectId);
+      
       writeFormattedMessageToClient(
         client,
         `\r\n\x1b[32mRemoved effect ${effect.name} from ${targetDisplayName}.\x1b[0m\r\n`
@@ -322,6 +339,17 @@ export class EffectCommand implements Command {
     } else {
       // Remove all effects
       let count = 0;
+      
+      // Log all effects being removed
+      const effectNames = effects.map(e => e.name).join(', ');
+      adminLogger.info(`Removing all effects (${effectNames}) from ${isPlayer ? 'player' : 'NPC'} ${targetDisplayName} (${targetId})`);
+      
+      // If target is a player, also log to their player log
+      if (isPlayer && targetClient?.user) {
+        const targetLogger = getPlayerLogger(targetClient.user.username);
+        targetLogger.info(`All effects removed by admin ${client.user.username}: ${effectNames}`);
+      }
+      
       for (const effect of effects) {
         this.effectManager.removeEffect(effect.id);
         count++;
@@ -341,6 +369,9 @@ export class EffectCommand implements Command {
       return;
     }
     
+    // Get player logger for the admin
+    const adminLogger = getPlayerLogger(client.user.username);
+    
     let targetId = client.user.username;
     let targetDisplayName = client.user.username; 
     let isPlayer = true;
@@ -354,6 +385,15 @@ export class EffectCommand implements Command {
       if (targetClient) {
         targetId = targetName;
         targetDisplayName = targetName;
+        
+        // Log admin viewing another player's effects
+        if (targetName.toLowerCase() !== client.user.username.toLowerCase()) {
+          adminLogger.info(`Admin viewed effects for player ${targetName}`);
+          
+          // Log to target player's log that their effects were viewed
+          const targetLogger = getPlayerLogger(targetName);
+          targetLogger.info(`Player ${client.user.username} (admin) viewed your active effects`);
+        }
       } else {
         // Not a player, check if it's an NPC
         isPlayer = false;
@@ -403,9 +443,15 @@ export class EffectCommand implements Command {
           return;
         }
         
-        targetId = npc.instanceId;
+        targetId = npc.instanceId || npc.name; // Use instanceId or fallback to name
         targetDisplayName = npc.name;
+        
+        // Log admin viewing an NPC's effects
+        adminLogger.info(`Admin viewed effects for NPC ${targetDisplayName} (${targetId})`);
       }
+    } else {
+      // Viewing own effects
+      adminLogger.info(`Checked own active effects`);
     }
 
     // Get effects for the target
@@ -465,6 +511,12 @@ export class EffectCommand implements Command {
   }
 
   private showHelp(client: ConnectedClient): void {
+    // Ensure client.user is not null and log the help request
+    if (client.user) {
+      const adminLogger = getPlayerLogger(client.user.username);
+      adminLogger.info('Viewed help for effect command');
+    }
+    
     let helpText = '\r\n\x1b[36mEffect Command Usage:\x1b[0m\r\n';
     helpText += 'effect apply <target> <type> <duration> [tick_interval] [amount] [real_time_ms] [block_movement]\r\n';
     helpText += 'effect remove <target> [effect_id]\r\n';
