@@ -379,12 +379,28 @@ export class Room {
       description += colorize(`You notice ${currencyText} here.`, 'green') + '\r\n';
     }
 
-    // Handle both new item instances and legacy items
-    const itemDescriptions: { name: string, count: number }[] = [];
-    const instanceNameCounts = new Map<string, number>();
+    // Combined approach: collect all items but preserve ordering with static items first
+    const allItemDescriptions: { name: string, count: number }[] = [];
     
-    // Add item instances from the new system, grouping identical items
+    // First, add legacy/static items from room.items
+    if (this.items.length > 0) {
+      const legacyNameCounts = new Map<string, number>();
+      
+      this.items.forEach(item => {
+        const name = this.getItemName(item);
+        legacyNameCounts.set(name, (legacyNameCounts.get(name) || 0) + 1);
+      });
+      
+      // Add legacy items to the beginning of the display list
+      legacyNameCounts.forEach((count, name) => {
+        allItemDescriptions.push({ name, count });
+      });
+    }
+    
+    // Next, add item instances from room.itemInstances
     if (this.itemInstances.size > 0) {
+      const instanceNameCounts = new Map<string, number>();
+      
       for (const [instanceId, templateId] of this.itemInstances.entries()) {
         // Get the template for the proper name
         const template = this.itemManager.getItem(templateId);
@@ -399,30 +415,15 @@ export class Room {
         }
       }
       
-      // Add to the display list with counts
+      // Add instance items after the legacy items
       instanceNameCounts.forEach((count, name) => {
-        itemDescriptions.push({ name, count });
+        allItemDescriptions.push({ name, count });
       });
     }
     
-    // Also add any legacy items (for backwards compatibility)
-    if (this.items.length > 0) {
-      const legacyNameCounts = new Map<string, number>();
-      
-      this.items.forEach(item => {
-        const name = this.getItemName(item);
-        legacyNameCounts.set(name, (legacyNameCounts.get(name) || 0) + 1);
-      });
-      
-      // Add legacy items to the display list
-      legacyNameCounts.forEach((count, name) => {
-        itemDescriptions.push({ name, count });
-      });
-    }
-    
-    // Format the item description text
-    if (itemDescriptions.length > 0) {
-      const itemTexts: string[] = itemDescriptions.map(item => {
+    // Format and display all items together in a single line
+    if (allItemDescriptions.length > 0) {
+      const itemTexts: string[] = allItemDescriptions.map(item => {
         // Process color codes in item name
         const processedName = colorizeItemName(item.name);
         
@@ -437,7 +438,7 @@ export class Room {
         description += colorize(`You see ${itemTexts[0]}.`, 'green') + '\r\n';
       } else {
         const lastItem = itemTexts.pop();
-        description += colorize(`You see ${itemTexts.join(', ')}, and ${lastItem}.`, 'green') + '\r\n';
+        description += colorize(`You see ${itemTexts.join(', ')}`, 'green') + colorize(`, and ${lastItem}.`, 'green') + '\r\n';
       }
     }
 

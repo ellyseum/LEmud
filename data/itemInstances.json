@@ -539,5 +539,76 @@
         "details": "Equipped by asdf in slot mainHand"
       }
     ]
+  },
+  {
+    "instanceId": "f5874db0-5cff-443e-bc43-63ebf8849544",
+    "templateId": "sword-002",
+    "created": "2025-04-13T07:37:14.651Z",
+    "createdBy": "asdf",
+    "properties": {
+      "durability": {
+        "current": 100,
+        "max": 100
+      },
+      "quality": "common"
+    },
+    "history": [
+      {
+        "timestamp": "2025-04-13T07:37:14.651Z",
+        "event": "created",
+        "details": "Created by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T07:37:14.653Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T07:43:18.424Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T07:43:23.197Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T07:43:28.117Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T07:43:30.900Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      }
+    ]
+  },
+  {
+    "instanceId": "41281d0e-9e97-4e16-8e71-967a20e8e0c7",
+    "templateId": "crystal ball",
+    "created": "2025-04-13T07:38:43.433Z",
+    "createdBy": "asdf",
+    "properties": {
+      "quality": "common"
+    },
+    "history": [
+      {
+        "timestamp": "2025-04-13T07:38:43.433Z",
+        "event": "created",
+        "details": "Created by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T07:38:43.435Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2 (migrated from legacy item)"
+      },
+      {
+        "timestamp": "2025-04-13T07:38:49.655Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      }
+    ]
   }
 ]

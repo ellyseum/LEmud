@@ -17,6 +17,13 @@
     }
   },
   {
+    "id": "crystal ball",
+    "name": "crystal ball",
+    "description": "A shiny crystal ball that glows with a faint light.",
+    "type": "static",
+    "weight": 999
+  },
+  {
     "id": "sword-002",
     "name": "steel sword",
     "description": "A sturdy steel sword with a sharp edge.",

@@ -11,6 +11,9 @@ import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer
 // Define a type for valid currency types
 type CurrencyType = keyof Currency;
 
+// Define an extended item type that includes 'static'
+type ExtendedItemType = 'weapon' | 'armor' | 'consumable' | 'quest' | 'misc' | 'static';
+
 export class PickupCommand implements Command {
   name = 'pickup';
   description = 'Pick up an item or currency from the current room. Supports partial currency names (e.g., "g", "go", "gol" for gold).';
@@ -538,6 +541,12 @@ export class PickupCommand implements Command {
     
     if (!template) {
       writeToClient(client, colorize(`That item seems to be broken and can't be picked up.\r\n`, 'red'));
+      return;
+    }
+    
+    // Check if the item is static (cannot be picked up)
+    if ((template.type as ExtendedItemType) === 'static') {
+      writeToClient(client, colorize(`The ${template.name} cannot be moved.\r\n`, 'yellow'));
       return;
     }
     
