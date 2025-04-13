@@ -21,6 +21,7 @@ import './move.command';
 import './pickup.command';
 import './quit.command';
 import './rename.command'; // Import our new rename command
+import './resetname.command'; // Import our new resetname command
 import './repair.command'; // Import our new repair command
 import './restrict.command'; // Import our restrict command
 import './root.command'; // Import our new root command

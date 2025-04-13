@@ -637,6 +637,35 @@ export class ItemManager {
   }
   
   /**
+   * Remove a custom name from an item, setting it back to its original template name
+   */
+  public removeCustomName(instanceId: string, resetBy: string): boolean {
+    const instance = this.getItemInstance(instanceId);
+    if (!instance) return false;
+    
+    // If there's no custom name, nothing to do
+    if (!instance.properties?.customName) return false;
+    
+    // Get the original template name for the history entry
+    const template = this.getItem(instance.templateId);
+    if (!template) return false;
+    
+    // Delete the custom name property
+    delete instance.properties.customName;
+    
+    // Add to history
+    this.addItemHistory(
+      instanceId, 
+      'name-reset', 
+      `Custom name removed by ${resetBy}, reverted to "${template.name}"`
+    );
+    
+    // Save changes
+    this.saveItemInstances();
+    return true;
+  }
+  
+  /**
    * Add an enchantment to an item
    */
   public addEnchantment(

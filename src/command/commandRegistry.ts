@@ -45,7 +45,8 @@ import { AddFlagCommand } from './commands/addflag.command'; // Import our new A
 import { RemoveFlagCommand } from './commands/removeflag.command'; // Import our new RemoveFlag command
 import { ListFlagsCommand } from './commands/listflags.command'; // Import our new ListFlags command
 import { DestroyCommand } from './commands/destroy.command'; // Import our new Destroy command
-import { RenameCommand } from './commands/rename.command'; // Import our new Rename command
+import { RenameCommand } from './commands/rename.command'; // Updated to match the constructor definition of RenameCommand
+import { ResetNameCommand } from './commands/resetname.command'; // Import our new Reset Name command
 import { RepairCommand } from './commands/repair.command'; // Import our new Repair command
 
 export class CommandRegistry {
@@ -134,6 +135,7 @@ export class CommandRegistry {
       new ListFlagsCommand(this.userManager),
       new DestroyCommand(this.clients), // Add our new Destroy command
       new RenameCommand(), // Updated to match the constructor definition of RenameCommand
+      new ResetNameCommand(), // Add our new ResetName command
       new RepairCommand(), // Add our new Repair command
     ];
     
@@ -203,6 +205,10 @@ export class CommandRegistry {
     // Add aliases for rename command
     this.aliases.set('name', {commandName: 'rename'});
     this.aliases.set('label', {commandName: 'rename'});
+    // Add aliases for resetname command
+    this.aliases.set('originalname', {commandName: 'resetname'});
+    this.aliases.set('defaultname', {commandName: 'resetname'});
+    this.aliases.set('unnickname', {commandName: 'resetname'});
     // Add aliases for repair command
     this.aliases.set('fix', {commandName: 'repair'});
     this.aliases.set('mend', {commandName: 'repair'});

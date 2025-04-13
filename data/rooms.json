@@ -52,12 +52,7 @@
     "items": [
       "crystal ball"
     ],
-    "itemInstances": [
-      {
-        "instanceId": "f5874db0-5cff-443e-bc43-63ebf8849544",
-        "templateId": "sword-002"
-      }
-    ],
+    "itemInstances": [],
     "npcs": [],
     "currency": {
       "gold": 0,
