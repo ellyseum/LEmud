@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/command/commands/sudo.command.ts
 import fs from 'fs';
 import path from 'path';
 import { ConnectedClient } from '../../types';
@@ -54,6 +53,22 @@ export class SudoCommand implements Command {
 
     // Check if user has active sudo
     return SudoCommand.activeAdmins.has(username.toLowerCase());
+  }
+
+  /**
+   * Check if a user is a super admin
+   */
+  public isSuperAdmin(username: string): boolean {
+    // Special case: admin user is always a super admin
+    if (username.toLowerCase() === 'admin') return true;
+
+    // Get the admin user from the list
+    const admin = this.adminUsers.find(admin => 
+      admin.username.toLowerCase() === username.toLowerCase()
+    );
+    
+    // Check if the user is a super admin
+    return admin?.level === AdminLevel.SUPER && SudoCommand.activeAdmins.has(username.toLowerCase());
   }
 
   /**

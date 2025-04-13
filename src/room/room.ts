@@ -1,8 +1,9 @@
 import { formatUsername } from '../utils/formatters';
 import { colorize } from '../utils/colors';
-import { Currency, Exit, Item } from '../types';
+import { Currency, Exit, Item, ItemInstance } from '../types';
 import { ItemManager } from '../utils/itemManager';
 import { NPC } from '../combat/npc';
+import { colorizeItemName } from '../utils/itemNameColorizer';
 
 export class Room {
   id: string;
@@ -10,11 +11,17 @@ export class Room {
   description: string;
   exits: Exit[];
   players: string[] = [];
+  
+  // Replace items array with a map of instanceId -> templateId
+  private itemInstances: Map<string, string> = new Map(); // instanceId -> templateId
+  
+  // Keep the old items array for backward compatibility during migration
   items: Item[] = [];
+  
   currency: Currency = { gold: 0, silver: 0, copper: 0 };
-  // Changed from string[] to Map<instanceId, NPC>
   npcs: Map<string, NPC> = new Map();
   private itemManager: ItemManager;
+  public hasChanged: boolean = false;
 
   constructor(room: any) {
     this.id = room.id;
@@ -22,10 +29,27 @@ export class Room {
     this.description = room.description || room.longDescription;
     this.exits = room.exits || [];
     this.players = room.players || [];
+    
+    // Initialize itemInstances
+    this.itemInstances = new Map();
+    if (room.itemInstances) {
+      // If data has already been migrated to new format
+      if (room.itemInstances instanceof Map) {
+        this.itemInstances = room.itemInstances;
+      } else if (Array.isArray(room.itemInstances)) {
+        // Deserialize from JSON array format
+        room.itemInstances.forEach((item: {instanceId: string, templateId: string}) => {
+          this.itemInstances.set(item.instanceId, item.templateId);
+        });
+      }
+    }
+    
+    // Initialize legacy items for backward compatibility
     this.items = room.items || room.objects || [];
+    
     this.currency = room.currency || { gold: 0, silver: 0, copper: 0 };
     
-    // Initialize NPCs - handle both old string[] format and new Map format
+    // Initialize NPCs
     this.npcs = new Map();
     if (room.npcs) {
       if (Array.isArray(room.npcs)) {
@@ -85,7 +109,127 @@ export class Room {
   }
 
   /**
-   * Add an item to the room
+   * Add an item instance to the room
+   */
+  addItemInstance(instanceId: string, templateId: string): void {
+    this.itemInstances.set(instanceId, templateId);
+    this.hasChanged = true;
+  }
+
+  /**
+   * Remove an item instance from the room - now supporting partial IDs
+   * with proper handling of ambiguous matches
+   */
+  removeItemInstance(instanceId: string): boolean {
+    // Try direct match first (most efficient)
+    if (this.itemInstances.has(instanceId)) {
+      const result = this.itemInstances.delete(instanceId);
+      if (result) {
+        this.hasChanged = true;
+      }
+      return result;
+    }
+    
+    // Try to find by partial ID, which handles ambiguity
+    const matchedId = this.findItemInstanceId(instanceId);
+    
+    // If undefined, it means multiple items matched (ambiguous)
+    if (matchedId === undefined) {
+      return false;
+    }
+    
+    // If a unique match was found, remove it
+    if (matchedId) {
+      const result = this.itemInstances.delete(matchedId);
+      if (result) {
+        this.hasChanged = true;
+      }
+      return result;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if room has an item instance - now supporting partial IDs
+   * with proper handling of ambiguous matches
+   */
+  hasItemInstance(instanceId: string): boolean | undefined {
+    // Check for direct match first (most efficient)
+    if (this.itemInstances.has(instanceId)) {
+      return true;
+    }
+    
+    // Try to find by partial ID, which handles ambiguity
+    const matchedId = this.findItemInstanceId(instanceId);
+    
+    // If undefined, it means multiple items matched (ambiguous)
+    if (matchedId === undefined) {
+      return undefined;
+    }
+    
+    // Return true if a matching ID was found, false otherwise
+    return !!matchedId;
+  }
+
+  /**
+   * Get a matching item instance ID from a partial ID
+   * Returns the full ID if found, null if not found, or undefined if ambiguous
+   */
+  findItemInstanceId(partialId: string): string | null | undefined {
+    // Try direct match first (most efficient)
+    if (this.itemInstances.has(partialId)) {
+      return partialId;
+    }
+    
+    // If not found and at least 8 characters long, try matching by partial ID
+    if (partialId.length >= 8) {
+      const partialIdLower = partialId.toLowerCase();
+      let matchingId: string | null = null;
+      let multipleMatches = false;
+      
+      // Check for matches
+      for (const existingId of this.itemInstances.keys()) {
+        if (existingId.toLowerCase().startsWith(partialIdLower)) {
+          // If we already found a match, this is ambiguous
+          if (matchingId) {
+            multipleMatches = true;
+            break;
+          }
+          matchingId = existingId;
+        }
+      }
+      
+      // Return undefined to signal ambiguity
+      if (multipleMatches) {
+        return undefined;
+      }
+      
+      return matchingId;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get all item instances in the room
+   */
+  getItemInstances(): Map<string, string> {
+    return new Map(this.itemInstances);
+  }
+
+  /**
+   * Serialize item instances for JSON storage
+   */
+  serializeItemInstances(): Array<{instanceId: string, templateId: string}> {
+    return Array.from(this.itemInstances.entries()).map(([instanceId, templateId]) => ({
+      instanceId,
+      templateId
+    }));
+  }
+
+  /**
+   * Legacy method for backward compatibility
    */
   addItem(item: string | {name: string}): void {
     // Convert string IDs to Item objects before adding to the array
@@ -95,6 +239,7 @@ export class Room {
       // Convert string to item object with proper name property
       this.items.push({name: item} as Item);
     }
+    this.hasChanged = true;
   }
 
   /**
@@ -234,14 +379,65 @@ export class Room {
       description += colorize(`You notice ${currencyText} here.`, 'green') + '\r\n';
     }
 
-    // Add items description
+    // Handle both new item instances and legacy items
+    const itemDescriptions: { name: string, count: number }[] = [];
+    const instanceNameCounts = new Map<string, number>();
+    
+    // Add item instances from the new system, grouping identical items
+    if (this.itemInstances.size > 0) {
+      for (const [instanceId, templateId] of this.itemInstances.entries()) {
+        // Get the template for the proper name
+        const template = this.itemManager.getItem(templateId);
+        if (template) {
+          // Get the instance for any custom name
+          const instance = this.itemManager.getItemInstance(instanceId);
+          // Use custom name if available, otherwise template name
+          const rawDisplayName = instance?.properties?.customName || template.name;
+          
+          // Count items with the same display name
+          instanceNameCounts.set(rawDisplayName, (instanceNameCounts.get(rawDisplayName) || 0) + 1);
+        }
+      }
+      
+      // Add to the display list with counts
+      instanceNameCounts.forEach((count, name) => {
+        itemDescriptions.push({ name, count });
+      });
+    }
+    
+    // Also add any legacy items (for backwards compatibility)
     if (this.items.length > 0) {
-      if (this.items.length === 1) {
-        description += colorize(`You see a ${this.getItemName(this.items[0])}.`, 'green') + '\r\n';
+      const legacyNameCounts = new Map<string, number>();
+      
+      this.items.forEach(item => {
+        const name = this.getItemName(item);
+        legacyNameCounts.set(name, (legacyNameCounts.get(name) || 0) + 1);
+      });
+      
+      // Add legacy items to the display list
+      legacyNameCounts.forEach((count, name) => {
+        itemDescriptions.push({ name, count });
+      });
+    }
+    
+    // Format the item description text
+    if (itemDescriptions.length > 0) {
+      const itemTexts: string[] = itemDescriptions.map(item => {
+        // Process color codes in item name
+        const processedName = colorizeItemName(item.name);
+        
+        if (item.count === 1) {
+          return `a ${processedName}`;
+        } else {
+          return `${item.count} ${processedName}s`;
+        }
+      });
+      
+      if (itemTexts.length === 1) {
+        description += colorize(`You see ${itemTexts[0]}.`, 'green') + '\r\n';
       } else {
-        const lastItem = this.getItemName(this.items[this.items.length - 1]);
-        const otherItems = this.items.slice(0, -1).map(item => `a ${this.getItemName(item)}`).join(', ');
-        description += colorize(`You see ${otherItems}, and a ${lastItem}.`, 'green') + '\r\n';
+        const lastItem = itemTexts.pop();
+        description += colorize(`You see ${itemTexts.join(', ')}, and ${lastItem}.`, 'green') + '\r\n';
       }
     }
 

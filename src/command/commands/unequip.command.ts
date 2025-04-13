@@ -5,6 +5,7 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { ItemManager } from '../../utils/itemManager';
 import { UserManager } from '../../user/userManager';
+import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer';
 
 export class UnequipCommand implements Command {
   name = 'unequip';
@@ -35,7 +36,7 @@ export class UnequipCommand implements Command {
     
     // Check if they're trying to unequip by slot name
     const slotNames = Object.keys(user.equipment);
-    const searchTerm = args.toLowerCase();
+    const searchTerm = stripColorCodes(args.toLowerCase());
     
     // First try to match by slot
     const matchedSlot = slotNames.find(slot => slot.toLowerCase() === searchTerm);
@@ -46,23 +47,86 @@ export class UnequipCommand implements Command {
       return;
     }
     
-    // If not found by slot, try to match by item name
-    let foundItem = false;
+    // Pretty display version of slot names for better user feedback
+    const displaySlotNames = slotNames.map(slot => 
+      slot.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')
+    );
+    
+    // Collect all items with custom names
+    const itemsWithCustomNames = new Map<string, string>(); // slot -> custom name
     
     for (const [slot, itemId] of Object.entries(user.equipment)) {
-      const item = this.itemManager.getItem(itemId);
-      
-      if (item && item.name.toLowerCase().includes(searchTerm)) {
-        this.unequipSlot(client, slot);
-        foundItem = true;
-        break;
+      const instance = this.itemManager.getItemInstance(itemId);
+      if (instance && instance.properties?.customName) {
+        itemsWithCustomNames.set(slot, instance.properties.customName);
       }
     }
     
-    if (!foundItem) {
-      writeToClient(client, colorize(`You don't have anything called "${args}" equipped.\r\n`, 'red'));
-      writeToClient(client, colorize(`Available slots: ${slotNames.join(', ')}\r\n`, 'yellow'));
+    // First priority: Check for exact match with custom names
+    for (const [slot, customName] of itemsWithCustomNames.entries()) {
+      const strippedCustomName = stripColorCodes(customName.toLowerCase());
+      if (strippedCustomName === searchTerm) {
+        this.unequipSlot(client, slot);
+        return;
+      }
     }
+    
+    // Second priority: Check for partial match with custom names
+    for (const [slot, customName] of itemsWithCustomNames.entries()) {
+      const strippedCustomName = stripColorCodes(customName.toLowerCase());
+      if (strippedCustomName.includes(searchTerm)) {
+        this.unequipSlot(client, slot);
+        return;
+      }
+    }
+    
+    // Only if no custom named items match, try to match by template name
+    // but exclude slots with custom named items
+    const slotsWithoutCustomNames = slotNames.filter(slot => !itemsWithCustomNames.has(slot));
+    
+    // Third priority: Check exact match by template name for non-custom items
+    for (const slot of slotsWithoutCustomNames) {
+      const itemId = user.equipment[slot];
+      const instance = this.itemManager.getItemInstance(itemId);
+      
+      if (instance) {
+        const template = this.itemManager.getItem(instance.templateId);
+        if (template && stripColorCodes(template.name.toLowerCase()) === searchTerm) {
+          this.unequipSlot(client, slot);
+          return;
+        }
+      } else {
+        const item = this.itemManager.getItem(itemId);
+        if (item && stripColorCodes(item.name.toLowerCase()) === searchTerm) {
+          this.unequipSlot(client, slot);
+          return;
+        }
+      }
+    }
+    
+    // Fourth priority: Check partial match by template name for non-custom items
+    for (const slot of slotsWithoutCustomNames) {
+      const itemId = user.equipment[slot];
+      const instance = this.itemManager.getItemInstance(itemId);
+      
+      if (instance) {
+        const template = this.itemManager.getItem(instance.templateId);
+        if (template && stripColorCodes(template.name.toLowerCase()).includes(searchTerm)) {
+          this.unequipSlot(client, slot);
+          return;
+        }
+      } else {
+        const item = this.itemManager.getItem(itemId);
+        if (item && stripColorCodes(item.name.toLowerCase()).includes(searchTerm)) {
+          this.unequipSlot(client, slot);
+          return;
+        }
+      }
+    }
+    
+    // If we get here, no matching item was found
+    writeToClient(client, colorize(`You don't have anything called "${args}" equipped.\r\n`, 'red'));
+    writeToClient(client, colorize(`Available slots: ${displaySlotNames.join(', ')}\r\n`, 'yellow'));
   }
   
   /**
@@ -78,11 +142,47 @@ export class UnequipCommand implements Command {
       return;
     }
     
-    // Get the item details
-    const item = this.itemManager.getItem(itemId);
-    if (!item) {
-      writeToClient(client, colorize(`Error: Item in ${slot} slot not found in the database.\r\n`, 'red'));
-      return;
+    // Prepare pretty slot name for display
+    const displaySlotName = slot.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+    
+    // Check if it's an item instance or a legacy item
+    const instance = this.itemManager.getItemInstance(itemId);
+    let itemName = '';
+    
+    if (instance) {
+      // It's an item instance
+      const template = this.itemManager.getItem(instance.templateId);
+      
+      if (!template) {
+        writeToClient(client, colorize(`Error: Item template not found for item in ${displaySlotName} slot.\r\n`, 'red'));
+        return;
+      }
+      
+      // Use custom name if available, otherwise use template name
+      if (instance.properties?.customName) {
+        itemName = colorizeItemName(instance.properties.customName);
+      } else {
+        itemName = template.name;
+      }
+      
+      // Add to item instance history
+      this.itemManager.addItemHistory(
+        itemId,
+        'unequip',
+        `Unequipped from ${displaySlotName} slot by ${user.username}`
+      );
+    } else {
+      // It's a legacy item
+      const item = this.itemManager.getItem(itemId);
+      
+      if (!item) {
+        writeToClient(client, colorize(`Error: Item in ${displaySlotName} slot not found in the database.\r\n`, 'red'));
+        return;
+      }
+      
+      itemName = item.name;
     }
     
     // Add the item back to the inventory
@@ -110,25 +210,49 @@ export class UnequipCommand implements Command {
       defense: user.defense
     });
     
-    writeToClient(client, colorize(`You unequip ${item.name} from your ${slot} slot.\r\n`, 'green'));
+    writeToClient(client, colorize(`You unequip ${itemName} `, 'green') + colorize(`from your ${displaySlotName} slot.\r\n`, 'green'));
+    
+    // Get item stats for showing the changes
+    let itemStats: { 
+      attack?: number; 
+      defense?: number;
+      strength?: number;
+      dexterity?: number;
+      agility?: number;
+      constitution?: number;
+      wisdom?: number;
+      intelligence?: number;
+      charisma?: number;
+      [key: string]: number | undefined;
+    } = {};
+    
+    if (instance) {
+      const template = this.itemManager.getItem(instance.templateId);
+      if (template?.stats) {
+        itemStats = template.stats;
+      }
+    } else {
+      const item = this.itemManager.getItem(itemId);
+      if (item?.stats) {
+        itemStats = item.stats;
+      }
+    }
     
     // Show stat changes lost, if any
-    if (item.stats) {
-      if (item.stats.attack) {
-        writeToClient(client, colorize(`Attack: -${item.stats.attack}\r\n`, 'yellow'));
-      }
-      if (item.stats.defense) {
-        writeToClient(client, colorize(`Defense: -${item.stats.defense}\r\n`, 'yellow'));
-      }
-      
-      // Show attribute bonuses lost
-      const attributes = ['strength', 'dexterity', 'agility', 'constitution', 'wisdom', 'intelligence', 'charisma'];
-      attributes.forEach(attr => {
-        if (item.stats && item.stats[attr as keyof typeof item.stats]) {
-          const bonus = item.stats[attr as keyof typeof item.stats];
-          writeToClient(client, colorize(`${attr.charAt(0).toUpperCase() + attr.slice(1)}: -${bonus}\r\n`, 'yellow'));
-        }
-      });
+    if (itemStats.attack) {
+      writeToClient(client, colorize(`Attack: -${itemStats.attack}\r\n`, 'yellow'));
     }
+    if (itemStats.defense) {
+      writeToClient(client, colorize(`Defense: -${itemStats.defense}\r\n`, 'yellow'));
+    }
+    
+    // Show attribute bonuses lost
+    const attributes = ['strength', 'dexterity', 'agility', 'constitution', 'wisdom', 'intelligence', 'charisma'];
+    attributes.forEach(attr => {
+      if (itemStats && attr in itemStats) {
+        const bonus = itemStats[attr as keyof typeof itemStats];
+        writeToClient(client, colorize(`${attr.charAt(0).toUpperCase() + attr.slice(1)}: -${bonus}\r\n`, 'yellow'));
+      }
+    });
   }
 }

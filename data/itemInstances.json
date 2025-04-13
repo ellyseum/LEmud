@@ -1,0 +1,543 @@
+[
+  {
+    "instanceId": "a6e2d482-b9a6-456f-9699-f58502ae4a4d",
+    "templateId": "sword-001",
+    "created": "2025-04-13T00:28:18.143Z",
+    "createdBy": "asdf",
+    "properties": {
+      "durability": {
+        "current": 100,
+        "max": 100
+      },
+      "quality": "common"
+    },
+    "history": [
+      {
+        "timestamp": "2025-04-13T00:28:18.143Z",
+        "event": "created",
+        "details": "Created by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T00:28:18.145Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:28:44.048Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:28:57.106Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:44:59.921Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:45:04.305Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:48:38.546Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:48:44.027Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T00:58:34.153Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T01:10:16.610Z",
+        "event": "destroy",
+        "details": "Destroyed by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T01:56:21.266Z",
+        "event": "admin-summon",
+        "details": "Summoned to room room2 by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:18:49.582Z",
+        "event": "admin-summon",
+        "details": "Summoned to room start by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:19:38.136Z",
+        "event": "admin-summon",
+        "details": "Summoned to room room2 by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:17.517Z",
+        "event": "admin-remove",
+        "details": "Removed from room start by admin asdf (for summoning)"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:17.518Z",
+        "event": "admin-summon",
+        "details": "Summoned to room room2 by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:25.461Z",
+        "event": "admin-remove",
+        "details": "Removed from room room2 by admin asdf (for summoning)"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:25.463Z",
+        "event": "admin-summon",
+        "details": "Summoned to room start by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:30.690Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:34.272Z",
+        "event": "admin-remove",
+        "details": "Removed from asdf's inventory by admin asdf (for summoning)"
+      },
+      {
+        "timestamp": "2025-04-13T02:28:34.273Z",
+        "event": "admin-summon",
+        "details": "Summoned to room room2 by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:29:43.784Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T02:29:51.851Z",
+        "event": "admin-remove",
+        "details": "Removed from asdf's inventory by admin asdf (for summoning)"
+      },
+      {
+        "timestamp": "2025-04-13T02:29:51.852Z",
+        "event": "admin-summon",
+        "details": "Summoned to room room2 by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:29:57.129Z",
+        "event": "admin-remove",
+        "details": "Removed from room room2 by admin asdf (for summoning)"
+      },
+      {
+        "timestamp": "2025-04-13T02:29:57.130Z",
+        "event": "admin-summon",
+        "details": "Summoned to room start by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T02:30:15.525Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:44:41.094Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T04:35:54.678Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:22:03.755Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      }
+    ]
+  },
+  {
+    "instanceId": "9804feff-ffc4-437e-8fe6-6f83eb15cc85",
+    "templateId": "helmet-001",
+    "created": "2025-04-13T00:28:45.496Z",
+    "createdBy": "asdf",
+    "properties": {
+      "durability": {
+        "current": 100,
+        "max": 100
+      },
+      "quality": "common"
+    },
+    "history": [
+      {
+        "timestamp": "2025-04-13T00:28:45.496Z",
+        "event": "created",
+        "details": "Created by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T00:29:09.705Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T04:35:43.322Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T05:31:33.756Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      }
+    ]
+  },
+  {
+    "instanceId": "ec75a54b-6761-492e-a124-aa7113b54f4e",
+    "templateId": "sword-001",
+    "created": "2025-04-13T01:14:01.145Z",
+    "createdBy": "asdf",
+    "properties": {
+      "durability": {
+        "current": 100,
+        "max": 100
+      },
+      "quality": "common",
+      "customName": "$cEx$YCALIBUR"
+    },
+    "history": [
+      {
+        "timestamp": "2025-04-13T01:14:01.145Z",
+        "event": "created",
+        "details": "Created by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T01:14:01.147Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T01:14:48.696Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T01:15:05.182Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T01:15:12.239Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T03:41:13.369Z",
+        "event": "rename",
+        "details": "Renamed to \"Excalibur\" by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T03:41:19.711Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:42:39.228Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:43:03.730Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:43:45.228Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:44:36.985Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:44:44.649Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:44:46.998Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:44:50.400Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:44:52.930Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:51:12.194Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:51:17.202Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T03:54:20.845Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T04:15:02.294Z",
+        "event": "rename",
+        "details": "Renamed to \"iron sword\" by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T04:16:28.721Z",
+        "event": "rename",
+        "details": "Renamed to \"$cEx$YCALIBUR\" by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T04:16:36.582Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-04-13T04:16:45.243Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room start"
+      },
+      {
+        "timestamp": "2025-04-13T04:28:32.151Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:05:17.275Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:07:01.919Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:07:05.820Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:07:41.835Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:07:47.622Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:08:30.845Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:21:44.701Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:21:48.015Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:21:56.632Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:22:11.692Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:22:16.116Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:22:20.089Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:22:25.902Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:26:37.351Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T05:26:42.201Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T05:26:43.524Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:26:45.556Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:26:52.893Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:27:20.447Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:27:22.835Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T05:31:55.574Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:08:45.302Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:25:37.445Z",
+        "event": "admin-transfer",
+        "details": "Transferred from room (room2: A New Room)  to asdf by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T06:25:43.974Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:25:56.119Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:25:58.494Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:26:07.808Z",
+        "event": "admin-transfer",
+        "details": "Transferred from room (room2: A New Room)  to asdf by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T06:28:20.436Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:28:25.772Z",
+        "event": "admin-transfer",
+        "details": "Transferred from room (room2: A New Room)  to asdf by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T06:28:34.550Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T06:28:38.393Z",
+        "event": "admin-transfer",
+        "details": "Transferred from equipment (mainHand) (asdf) to asdf by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T06:28:49.622Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T06:29:01.550Z",
+        "event": "admin-transfer",
+        "details": "Transferred from equipment (mainHand) (asdf) to asdf by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T06:29:09.769Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:48:16.265Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:48:25.899Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T06:56:51.684Z",
+        "event": "unequip",
+        "details": "Unequipped from Mainhand slot by asdf"
+      },
+      {
+        "timestamp": "2025-04-13T06:57:01.855Z",
+        "event": "drop",
+        "details": "Dropped by asdf in room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:57:14.381Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T06:58:10.339Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      },
+      {
+        "timestamp": "2025-04-13T07:35:04.578Z",
+        "event": "admin-summon",
+        "details": "Summoned to room room2 by admin asdf"
+      },
+      {
+        "timestamp": "2025-04-13T07:35:16.331Z",
+        "event": "pickup",
+        "details": "Picked up by asdf from room room2"
+      },
+      {
+        "timestamp": "2025-04-13T07:35:18.667Z",
+        "event": "equip",
+        "details": "Equipped by asdf in slot mainHand"
+      }
+    ]
+  }
+]

@@ -4,6 +4,7 @@ import './attack.command';
 import './break.command';
 import './damage.command';
 import './debug.command'; // Import our new debug command
+import './destroy.command'; // Import our new destroy command
 import './drop.command';
 import './effect.command'; // Add our new effect command
 import './equip.command';
@@ -19,6 +20,8 @@ import './look.command';
 import './move.command';
 import './pickup.command';
 import './quit.command';
+import './rename.command'; // Import our new rename command
+import './repair.command'; // Import our new repair command
 import './restrict.command'; // Import our restrict command
 import './root.command'; // Import our new root command
 import './say.command';

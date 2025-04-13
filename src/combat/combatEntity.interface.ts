@@ -22,4 +22,8 @@ export interface CombatEntity {
   removeAggression(playerName: string): void;
   getAllAggressors(): string[];
   clearAllAggression(): void;
+  
+  // Entity type and identification methods
+  isUser(): boolean;
+  getName(): string;
 }

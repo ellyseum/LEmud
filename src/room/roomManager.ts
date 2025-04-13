@@ -81,17 +81,20 @@ export class RoomManager {
         const npcTemplateIds: string[] = [];
         
         // For each NPC in the room, store its template ID
-        // In future, we might want to store more data about each NPC instance
         room.npcs.forEach(npc => {
           npcTemplateIds.push(npc.templateId);
         });
+        
+        // Serialize item instances to a format suitable for storage
+        const serializedItemInstances = room.serializeItemInstances();
         
         return {
           id: room.id,
           name: room.name,
           description: room.description,
           exits: room.exits,
-          items: room.items,
+          items: room.items, // Keep legacy items for backward compatibility
+          itemInstances: serializedItemInstances, // Add new item instances
           npcs: npcTemplateIds,  // Use the array of template IDs
           currency: room.currency
         };
@@ -509,6 +512,10 @@ export class RoomManager {
   public lookAtEntity(client: ConnectedClient, entityName: string): boolean {
     if (!client.user) return false;
 
+    // Import the ItemManager
+    const { ItemManager } = require('../utils/itemManager');
+    const itemManager = ItemManager.getInstance();
+
     // Get current room
     const roomId = client.user.currentRoomId || this.getStartingRoomId();
     const room = this.getRoom(roomId);
@@ -544,7 +551,6 @@ export class RoomManager {
     if (matchingNPC) {
       // Display NPC description with proper formatting
       writeToClient(client, colorize(`You look at the ${matchingNPC.name}.\r\n`, 'cyan'));
-      
       if (matchingNPC.description) {
         writeToClient(client, colorize(`${matchingNPC.description}\r\n`, 'cyan'));
         
@@ -584,7 +590,93 @@ export class RoomManager {
       return true;
     }
 
-    // Then check if it's an object in the room
+    // Next, check item instances in the room - Prioritize itemInstances over legacy items
+    const itemInstances = room.getItemInstances();
+    let matchingItemInstance: string | null = null;
+    let matchingItemTemplate: string | null = null;
+    
+    // Try to find an item by instance ID or name
+    for (const [instanceId, templateId] of itemInstances.entries()) {
+      // Direct match on instance ID
+      if (instanceId === entityName) {
+        matchingItemInstance = instanceId;
+        matchingItemTemplate = templateId;
+        break;
+      }
+      
+      // Check if the template name matches
+      const template = itemManager.getItem(templateId);
+      if (template && 
+          (template.name.toLowerCase() === normalizedName || 
+           template.name.toLowerCase().includes(normalizedName))) {
+        matchingItemInstance = instanceId;
+        matchingItemTemplate = templateId;
+        break;
+      }
+      
+      // Also check for custom names in item instances
+      const instance = itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        const customName = instance.properties.customName.toLowerCase();
+        if (customName === normalizedName || customName.includes(normalizedName)) {
+          matchingItemInstance = instanceId;
+          matchingItemTemplate = templateId;
+          break;
+        }
+      }
+    }
+    
+    // If we found a matching item instance
+    if (matchingItemInstance && matchingItemTemplate) {
+      const template = itemManager.getItem(matchingItemTemplate);
+      const instance = itemManager.getItemInstance(matchingItemInstance);
+      
+      if (template) {
+        // Use custom name if available, otherwise template name
+        const displayName = instance?.properties?.customName || template.name;
+        
+        // Display item description
+        writeToClient(client, colorize(`You look at the ${displayName}.\r\n`, 'cyan'));
+        writeToClient(client, colorize(`${template.description}\r\n`, 'cyan'));
+        
+        // Show additional details based on item type
+        if (template.type === 'weapon') {
+          writeToClient(client, colorize(`It's a weapon with ${template.stats?.attack || 0} attack power.\r\n`, 'cyan'));
+        } else if (template.type === 'armor') {
+          writeToClient(client, colorize(`It's armor with ${template.stats?.defense || 0} defense.\r\n`, 'cyan'));
+        }
+        
+        // If item has requirements, show them
+        if (template.requirements) {
+          let reqText = 'Requirements: ';
+          const reqs = [];
+          if (template.requirements.level) reqs.push(`level ${template.requirements.level}`);
+          if (template.requirements.strength) reqs.push(`strength ${template.requirements.strength}`);
+          if (template.requirements.dexterity) reqs.push(`dexterity ${template.requirements.dexterity}`);
+          
+          if (reqs.length > 0) {
+            writeToClient(client, colorize(reqText + reqs.join(', ') + '.\r\n', 'yellow'));
+          }
+        }
+        
+        // If the item has a history, show it
+        if (instance && instance.history && instance.history.length > 0) {
+          const recentHistory = instance.history[instance.history.length - 1];
+          writeToClient(client, colorize(`This item was most recently ${recentHistory.event}${recentHistory.details ? ': ' + recentHistory.details : ''}.\r\n`, 'yellow'));
+        }
+        
+        // Notify other players in the room
+        this.notifyPlayersInRoom(
+          roomId,
+          `${formatUsername(client.user.username)} examines the ${displayName} closely.\r\n`,
+          client.user.username
+        );
+        
+        return true;
+      }
+    }
+
+    // Then check legacy items in the room
     const objectMatch = room.items.find((item: Item | string) => {
       const itemName = typeof item === 'string' ? item : item.name;
       return itemName.toLowerCase() === normalizedName || 
@@ -700,27 +792,85 @@ export class RoomManager {
       return true;
     }
 
-    // If nothing was found in the room, check the player's inventory
+    // If nothing was found in the room, check the player's inventory items (now using item instances)
     if (client.user.inventory && client.user.inventory.items) {
-      const inventoryMatch = client.user.inventory.items.find(item => 
-        item.toLowerCase() === normalizedName || 
-        item.toLowerCase().includes(normalizedName)
+      // Try to find an item by instance ID
+      const matchingInventoryItemId = client.user.inventory.items.find(instanceId => 
+        instanceId === entityName || instanceId.includes(entityName)
       );
-
-      if (inventoryMatch) {
-        // Display inventory item description
-        writeToClient(client, colorize(`You look at the ${inventoryMatch} in your inventory.\r\n`, 'cyan'));
-        // Here we can add more detailed description based on the item type
-        writeToClient(client, colorize(`It's a ${inventoryMatch} that you're carrying.\r\n`, 'cyan'));
-        
-        // Notify other players in the room
-        this.notifyPlayersInRoom(
-          roomId,
-          `${formatUsername(client.user.username)} examines ${inventoryMatch} from their inventory.\r\n`,
-          client.user.username
-        );
-        
-        return true;
+      
+      if (matchingInventoryItemId) {
+        const instance = itemManager.getItemInstance(matchingInventoryItemId);
+        if (instance) {
+          const template = itemManager.getItem(instance.templateId);
+          if (template) {
+            // Display inventory item description
+            writeToClient(client, colorize(`You look at the ${template.name} in your inventory.\r\n`, 'cyan'));
+            writeToClient(client, colorize(`${template.description}\r\n`, 'cyan'));
+            
+            // Show additional details based on item type
+            if (template.type === 'weapon') {
+              writeToClient(client, colorize(`It's a weapon with ${template.stats?.attack || 0} attack power.\r\n`, 'cyan'));
+            } else if (template.type === 'armor') {
+              writeToClient(client, colorize(`It's armor with ${template.stats?.defense || 0} defense.\r\n`, 'cyan'));
+            }
+            
+            // Show item history if available
+            if (instance.history && instance.history.length > 0) {
+              writeToClient(client, colorize(`This item has a history:\r\n`, 'cyan'));
+              // Only show the first and most recent history entries
+              const firstEvent = instance.history[0];
+              const lastEvent = instance.history[instance.history.length - 1];
+              
+              writeToClient(client, colorize(`- ${new Date(firstEvent.timestamp).toLocaleString()}: ${firstEvent.event} ${firstEvent.details || ''}\r\n`, 'cyan'));
+              
+              if (instance.history.length > 1) {
+                writeToClient(client, colorize(`- ${new Date(lastEvent.timestamp).toLocaleString()}: ${lastEvent.event} ${lastEvent.details || ''}\r\n`, 'cyan'));
+              }
+            }
+            
+            // Notify other players in the room
+            this.notifyPlayersInRoom(
+              roomId,
+              `${formatUsername(client.user.username)} examines ${template.name} from their inventory.\r\n`,
+              client.user.username
+            );
+            
+            return true;
+          }
+        }
+      }
+      
+      // If instance ID wasn't found, try to find by name
+      for (const instanceId of client.user.inventory.items) {
+        const instance = itemManager.getItemInstance(instanceId);
+        if (instance) {
+          const template = itemManager.getItem(instance.templateId);
+          if (template && 
+              (template.name.toLowerCase() === normalizedName || 
+               template.name.toLowerCase().includes(normalizedName))) {
+            
+            // Display inventory item description
+            writeToClient(client, colorize(`You look at the ${template.name} in your inventory.\r\n`, 'cyan'));
+            writeToClient(client, colorize(`${template.description}\r\n`, 'cyan'));
+            
+            // Show additional details based on item type
+            if (template.type === 'weapon') {
+              writeToClient(client, colorize(`It's a weapon with ${template.stats?.attack || 0} attack power.\r\n`, 'cyan'));
+            } else if (template.type === 'armor') {
+              writeToClient(client, colorize(`It's armor with ${template.stats?.defense || 0} defense.\r\n`, 'cyan'));
+            }
+            
+            // Notify other players in the room
+            this.notifyPlayersInRoom(
+              roomId,
+              `${formatUsername(client.user.username)} examines ${template.name} from their inventory.\r\n`,
+              client.user.username
+            );
+            
+            return true;
+          }
+        }
       }
 
       // Check for currency in inventory

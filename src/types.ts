@@ -73,6 +73,63 @@ export interface GameItem {
   };
 }
 
+// Define ItemTemplate interface (for item definitions)
+export interface ItemTemplate {
+  id: string;
+  name: string;
+  description: string;
+  type: 'weapon' | 'armor' | 'consumable' | 'quest' | 'misc';
+  slot?: EquipmentSlot; 
+  value: number;
+  weight?: number;
+  stats?: {
+    attack?: number;
+    defense?: number;
+    strength?: number;
+    dexterity?: number;
+    agility?: number;
+    constitution?: number;
+    wisdom?: number;
+    intelligence?: number;
+    charisma?: number;
+  };
+  requirements?: {
+    level?: number;
+    strength?: number;
+    dexterity?: number;
+  };
+}
+
+// Define ItemInstance interface (for specific item instances)
+export interface ItemInstance {
+  instanceId: string;      // Unique instance ID
+  templateId: string;      // Reference to the item template
+  created: Date;           // When this item was created
+  createdBy: string;       // Who/what created this item (player, spawn, quest, etc)
+  properties?: {           // Instance-specific properties
+    customName?: string;   // Custom name given to this item instance
+    durability?: {         // Durability system
+      current: number;     // Current durability
+      max: number;         // Maximum durability
+    };
+    quality?: 'poor' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'; // Item quality
+    soulbound?: boolean;   // Whether item is bound to a specific player
+    boundTo?: string;      // Username item is bound to (if soulbound)
+    charges?: number;      // For items with limited uses
+    enchantments?: {       // Additional enchantments
+      name: string;
+      effect: string;
+      bonuses?: { [stat: string]: number };
+    }[];
+    [key: string]: any;    // Allow for other custom properties
+  };
+  history?: {              // Optional: track item history
+    timestamp: Date;
+    event: string;
+    details?: string;
+  }[];
+}
+
 export interface User {
   username: string;
   password?: string; // Making optional for backward compatibility
@@ -95,13 +152,13 @@ export interface User {
   defense?: number; // Calculated from equipment
   // Equipment slots
   equipment?: {
-    [slot: string]: string; // Maps slot name to item ID
+    [slot: string]: string; // Maps slot name to item instanceId
   };
   joinDate: Date;
   lastLogin: Date;
   currentRoomId: string; // Add this field to track user's current room
   inventory: {
-    items: string[];
+    items: string[]; // Now stores item instanceIds instead of templateIds
     currency: Currency;
   };
   commandHistory?: string[]; // Store the user's command history (up to 30 entries)

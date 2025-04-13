@@ -40,6 +40,9 @@ import { RootCommand } from './commands/root.command'; // Import our new Root co
 import { AddFlagCommand } from './commands/addflag.command'; // Import our new AddFlag command
 import { RemoveFlagCommand } from './commands/removeflag.command'; // Import our new RemoveFlag command
 import { ListFlagsCommand } from './commands/listflags.command'; // Import our new ListFlags command
+import { DestroyCommand } from './commands/destroy.command'; // Import our new Destroy command
+import { RenameCommand } from './commands/rename.command'; // Import our new Rename command
+import { RepairCommand } from './commands/repair.command'; // Import our new Repair command
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -124,7 +127,10 @@ export class CommandRegistry {
       new RootCommand(this.userManager, this.roomManager), // Add our new Root command
       new AddFlagCommand(this.userManager), // Add our new flag management commands
       new RemoveFlagCommand(this.userManager),
-      new ListFlagsCommand(this.userManager)
+      new ListFlagsCommand(this.userManager),
+      new DestroyCommand(this.clients), // Add our new Destroy command
+      new RenameCommand(), // Updated to match the constructor definition of RenameCommand
+      new RepairCommand(), // Add our new Repair command
     ];
     
     // Register all commands
@@ -167,6 +173,7 @@ export class CommandRegistry {
     this.aliases.set('eq', {commandName: 'equip'});
     this.aliases.set('uneq', {commandName: 'unequip'});
     this.aliases.set('remove', {commandName: 'unequip'});
+    this.aliases.set('rem', {commandName: 'unequip'}); // Add 'rem' as shortcut for 'remove'/'unequip'
     this.aliases.set('gear', {commandName: 'equipment'});
     this.aliases.set('worn', {commandName: 'equipment'});
     this.aliases.set('equips', {commandName: 'equipment'});
@@ -186,6 +193,15 @@ export class CommandRegistry {
     this.aliases.set('droom', {commandName: 'debug', args: 'room'});
     this.aliases.set('dplayer', {commandName: 'debug', args: 'player'});
     this.aliases.set('dsystem', {commandName: 'debug', args: 'system'});
+    // Add alias for destroy command
+    this.aliases.set('trash', {commandName: 'destroy'});
+    this.aliases.set('delete', {commandName: 'destroy'});
+    // Add aliases for rename command
+    this.aliases.set('name', {commandName: 'rename'});
+    this.aliases.set('label', {commandName: 'rename'});
+    // Add aliases for repair command
+    this.aliases.set('fix', {commandName: 'repair'});
+    this.aliases.set('mend', {commandName: 'repair'});
   }
 
   private registerDirectionCommands(): void {

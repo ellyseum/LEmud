@@ -82,6 +82,26 @@ export function colorize(text: string, color: ColorType): string {
   return `${colorCode}${text}${colors.reset}`;
 }
 
+/**
+ * Remove all ANSI color codes from a string
+ * @param text The text to strip color codes from
+ * @returns The text without any color codes
+ */
+export function stripColorCodes(text: string): string {
+  // This regex matches all ANSI escape codes
+  return text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+/**
+ * Remove all custom color codes ($code format) from a string
+ * @param text The text to strip custom color codes from
+ * @returns The text without any custom color codes
+ */
+export function stripCustomColorCodes(text: string): string {
+  // This regex matches all custom color codes in the format $x where x is any single character
+  return text.replace(/\$[a-zA-Z0-9]/g, '');
+}
+
 export function rainbow(text: string): string {
   const colorKeys = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta'] as const;
   let result = '';

@@ -6,6 +6,7 @@ import { UserManager } from '../user/userManager';
 import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
 import { CombatSystem } from './combatSystem';
+import { ItemManager } from '../utils/itemManager';
 
 export class Combat {
   rounds: number = 0;
@@ -14,13 +15,16 @@ export class Combat {
   currentRound: number = 0; // Track the current global combat round
   // Add timestamp to track last activity
   lastActivityTime: number = Date.now();
-  
+  private itemManager: ItemManager;
+
   constructor(
     public player: ConnectedClient,
     private userManager: UserManager,
     private roomManager: RoomManager,
     private combatSystem: CombatSystem
-  ) {}
+  ) {
+    this.itemManager = ItemManager.getInstance();
+  }
 
   addTarget(target: CombatEntity): void {
     if (!this.activeCombatants.includes(target)) {
@@ -128,11 +132,74 @@ export class Combat {
     
     // Get the room for broadcasting
     const roomId = player.user.currentRoomId;
+
+    // Get the ItemManager for handling weapons and durability
+    const itemManager = require('../utils/itemManager').ItemManager.getInstance();
+    
+    // Check if player has a weapon equipped
+    const weaponId = player.user.equipment?.weapon;
+    let weaponName = "fists";
+    let weaponDamage = 0;
+    
+    if (weaponId) {
+      const displayName = itemManager.getItemDisplayName(weaponId);
+      if (displayName) {
+        weaponName = displayName;
+        
+        // Get base damage from the weapon
+        const instance = itemManager.getItemInstance(weaponId);
+        const template = instance ? itemManager.getItem(instance.templateId) : itemManager.getItem(weaponId);
+        
+        if (template && template.stats && template.stats.damage) {
+          weaponDamage = template.stats.damage;
+        }
+        
+        // Degrade weapon durability with use (only for item instances)
+        if (instance && instance.properties?.durability) {
+          // 25% chance to degrade durability on hit, 10% on miss
+          const degradeChance = hit ? 0.25 : 0.1;
+          if (Math.random() < degradeChance) {
+            // Degrade by 1 point
+            instance.properties.durability.current = Math.max(0, instance.properties.durability.current - 1);
+            
+            // Check if weapon broke
+            if (instance.properties.durability.current === 0) {
+              // Weapon broke!
+              writeFormattedMessageToClient(
+                player,
+                colorize(`Your ${weaponName} breaks from excessive use!\r\n`, 'red')
+              );
+              
+              // Broadcast to others
+              const username = formatUsername(player.user.username);
+              this.combatSystem.broadcastRoomCombatMessage(
+                roomId,
+                `${username}'s ${weaponName} breaks from excessive use!\r\n`,
+                'red' as ColorType,
+                player.user.username
+              );
+              
+              // Remove the broken weapon from equipment
+              if (player.user.equipment) {
+                player.user.equipment.weapon = undefined as unknown as string;
+              }
+              
+              // Set weapon name back to fists for this attack
+              weaponName = "fists";
+              weaponDamage = 0;
+            }
+            // Save instance changes
+            itemManager.saveItemInstances();
+          }
+        }
+      }
+    }
     
     if (hit) {
-      // Calculate damage (temporary range of 5-10)
-      const damage = Math.floor(Math.random() * 6) + 5;
-      const actualDamage = target.takeDamage(damage);
+      // Calculate damage (base damage 5-10 plus weapon damage)
+      const baseDamage = Math.floor(Math.random() * 6) + 5;
+      const totalDamage = baseDamage + weaponDamage;
+      const actualDamage = target.takeDamage(totalDamage);
       
       // Add aggression only when damage is dealt
       target.addAggression(player.user.username, actualDamage);
@@ -140,17 +207,20 @@ export class Combat {
       // Send message to the player
       writeFormattedMessageToClient(
         player,
-        colorize(`You hit the ${target.name} with your fists for ${actualDamage} damage.\r\n`, 'red')
+        colorize(`You hit the ${target.name} with your ${weaponName} for ${actualDamage} damage.\r\n`, 'red')
       );
       
       // Broadcast to ALL other players in room instead of just combat participants
       const username = formatUsername(player.user.username);
       this.combatSystem.broadcastRoomCombatMessage(
         roomId,
-        `${username} hits the ${target.name} with their fists for ${actualDamage} damage.\r\n`,
+        `${username} hits the ${target.name} with their ${weaponName} for ${actualDamage} damage.\r\n`,
         'red' as ColorType,
         player.user.username
       );
+
+      // Reduce weapon durability after a successful hit
+      this.reduceWeaponDurability(player);
     } else {
       // Add aggression for a miss (attack attempt)
       target.addAggression(player.user.username, 0);
@@ -158,16 +228,67 @@ export class Combat {
       // Send message to the player
       writeFormattedMessageToClient(
         player,
-        colorize(`You swing at the ${target.name} with your fists, and miss!\r\n`, 'cyan')
+        colorize(`You swing at the ${target.name} with your ${weaponName}, and miss!\r\n`, 'cyan')
       );
       
       // Broadcast to ALL other players in room
       const username = formatUsername(player.user.username);
       this.combatSystem.broadcastRoomCombatMessage(
         roomId,
-        `${username} swings at the ${target.name} with their fists, and misses!\r\n`,
+        `${username} swings at the ${target.name} with their ${weaponName}, and misses!\r\n`,
         'cyan' as ColorType,
         player.user.username
+      );
+    }
+
+    // Reduce armor durability after taking damage
+    this.reduceArmorDurability(target);
+  }
+
+  private reduceWeaponDurability(player: ConnectedClient): void {
+    if (!player.user || !player.user.equipment) return;
+
+    const weaponInstanceId = player.user.equipment.weapon;
+    if (!weaponInstanceId) return;
+
+    const weaponIntact = this.itemManager.updateDurability(weaponInstanceId, -1);
+
+    if (!weaponIntact) {
+      const weaponName = this.itemManager.getItemDisplayName(weaponInstanceId);
+      player.user.equipment.weapon = undefined as unknown as string;
+
+      writeFormattedMessageToClient(
+        player,
+        colorize(`Your ${weaponName} breaks from excessive use!\r\n`, 'red')
+      );
+    }
+  }
+
+  private reduceArmorDurability(target: CombatEntity): void {
+    if (!target.isUser()) return;
+
+    const user = this.userManager.getUser(target.getName());
+    if (!user || !user.equipment) return;
+
+    const armorSlots = ['head', 'chest', 'arms', 'hands', 'legs', 'feet'];
+    const equippedArmorSlots = armorSlots.filter(slot => user.equipment && user.equipment[slot]);
+
+    if (equippedArmorSlots.length === 0) return;
+
+    const randomSlot = equippedArmorSlots[Math.floor(Math.random() * equippedArmorSlots.length)];
+    const armorInstanceId = user.equipment[randomSlot];
+
+    if (!armorInstanceId) return;
+
+    const armorIntact = this.itemManager.updateDurability(armorInstanceId, -1);
+
+    if (!armorIntact) {
+      const armorName = this.itemManager.getItemDisplayName(armorInstanceId);
+      user.equipment[randomSlot] = undefined as unknown as string;
+
+      writeFormattedMessageToClient(
+        this.player,
+        colorize(`The ${target.name}'s ${armorName} breaks from taking damage!\r\n`, 'red')
       );
     }
   }

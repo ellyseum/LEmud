@@ -5,6 +5,8 @@ import { Command } from '../command.interface';
 import { RoomManager } from '../../room/roomManager';
 import { UserManager } from '../../user/userManager';
 import { ItemManager } from '../../utils/itemManager';
+import { formatUsername } from '../../utils/formatters';
+import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer';
 
 // Define a type for valid currency types
 type CurrencyType = keyof Currency;
@@ -64,8 +66,8 @@ export class DropCommand implements Command {
       }
       
       // Drop all items first
-      for (const item of [...client.user.inventory.items]) { // Copy to avoid issues with array modification during iteration
-        this.dropItem(client, room, item);
+      for (const itemId of [...client.user.inventory.items]) { // Copy to avoid issues with array modification during iteration
+        this.dropItemInstance(client, room, itemId);
       }
       
       // Then drop all currency
@@ -92,8 +94,8 @@ export class DropCommand implements Command {
       }
     }
     
-    // Handle normal item dropping
-    this.dropItem(client, room, args);
+    // Handle item dropping
+    this.tryDropItem(client, room, args);
   }
   
   /**
@@ -149,42 +151,208 @@ export class DropCommand implements Command {
     
     // Notify the player
     writeToClient(client, colorize(`You drop ${amount} ${type} piece${amount === 1 ? '' : 's'}.\r\n`, 'green'));
+    
+    // Notify others in the room
+    this.notifyOthersInRoom(
+      client, 
+      room, 
+      `${formatUsername(client.user.username)} drops ${amount} ${type} piece${amount === 1 ? '' : 's'}.\r\n`
+    );
   }
   
-  private dropItem(client: ConnectedClient, room: any, itemNameOrId: string): void {
+  /**
+   * Try to drop an item by name or instance ID
+   */
+  private tryDropItem(client: ConnectedClient, room: any, itemNameOrId: string): void {
     if (!client.user) return;
     
     // Normalize the item name/id for easier matching
-    const normalizedInput = itemNameOrId.toLowerCase();
+    const normalizedInput = stripColorCodes(itemNameOrId.toLowerCase());
     
-    // Try to find the item by ID first
-    let itemIndex = client.user.inventory.items.findIndex(id => id.toLowerCase() === normalizedInput);
-    
-    // If not found by ID, try to find by name
-    if (itemIndex === -1) {
-      itemIndex = client.user.inventory.items.findIndex(id => {
-        const item = this.itemManager.getItem(id);
-        return item && item.name.toLowerCase() === normalizedInput;
-      });
-    }
-    
-    // If still not found, try partial name matching
-    if (itemIndex === -1) {
-      itemIndex = client.user.inventory.items.findIndex(id => {
-        const item = this.itemManager.getItem(id);
-        return item && item.name.toLowerCase().includes(normalizedInput);
-      });
-    }
-    
-    if (itemIndex === -1) {
-      writeToClient(client, colorize(`You don't have a ${itemNameOrId}.\r\n`, 'yellow'));
+    // First try to find the item by exact instance ID
+    const exactInstanceId = client.user.inventory.items.find(id => id === itemNameOrId);
+    if (exactInstanceId) {
+      this.dropItemInstance(client, room, exactInstanceId);
       return;
     }
     
-    // Get the item ID from the inventory
-    const itemId = client.user.inventory.items[itemIndex];
+    // Find all items with custom names first
+    const itemsWithCustomNames: string[] = [];
+    for (const instanceId of client.user.inventory.items) {
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        itemsWithCustomNames.push(instanceId);
+      }
+    }
     
-    // Get the actual item details from ItemManager
+    // First priority: Look for exact matches with custom names
+    for (const instanceId of itemsWithCustomNames) {
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        const strippedCustomName = stripColorCodes(instance.properties.customName.toLowerCase());
+        if (strippedCustomName === normalizedInput) {
+          this.dropItemInstance(client, room, instanceId);
+          return;
+        }
+      }
+    }
+    
+    // Second priority: Look for partial matches with custom names
+    for (const instanceId of itemsWithCustomNames) {
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        const strippedCustomName = stripColorCodes(instance.properties.customName.toLowerCase());
+        if (strippedCustomName.includes(normalizedInput)) {
+          this.dropItemInstance(client, room, instanceId);
+          return;
+        }
+      }
+    }
+    
+    // Only if no items with custom names were matched, try to match by template name
+    // but exclude items that have custom names
+    const regularItems = client.user.inventory.items.filter(id => !itemsWithCustomNames.includes(id));
+    
+    // Third priority: Exact match on template names (only for items without custom names)
+    for (const instanceId of regularItems) {
+      // First try as an item instance
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance) {
+        const template = this.itemManager.getItem(instance.templateId);
+        if (template && stripColorCodes(template.name.toLowerCase()) === normalizedInput) {
+          this.dropItemInstance(client, room, instanceId);
+          return;
+        }
+      } else {
+        // Try as a legacy item
+        const item = this.itemManager.getItem(instanceId);
+        if (item && stripColorCodes(item.name.toLowerCase()) === normalizedInput) {
+          this.dropItemInstance(client, room, instanceId);
+          return;
+        }
+      }
+    }
+    
+    // Fourth priority: Partial match on template names (only for items without custom names)
+    for (const instanceId of regularItems) {
+      // First try as an item instance
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance) {
+        const template = this.itemManager.getItem(instance.templateId);
+        if (template && stripColorCodes(template.name.toLowerCase()).includes(normalizedInput)) {
+          this.dropItemInstance(client, room, instanceId);
+          return;
+        }
+      } else {
+        // Try as a legacy item
+        const item = this.itemManager.getItem(instanceId);
+        if (item && stripColorCodes(item.name.toLowerCase()).includes(normalizedInput)) {
+          this.dropItemInstance(client, room, instanceId);
+          return;
+        }
+      }
+    }
+    
+    writeToClient(client, colorize(`You don't have a ${itemNameOrId}.\r\n`, 'yellow'));
+  }
+  
+  /**
+   * Drop an item instance or legacy item
+   * Handles partial IDs with support for disambiguating between similar IDs
+   */
+  private dropItemInstance(client: ConnectedClient, room: any, itemId: string): void {
+    if (!client.user) return;
+    
+    // Check if the item is in the player's inventory by exact match
+    const itemIndex = client.user.inventory.items.indexOf(itemId);
+    
+    // If exact match, use it
+    if (itemIndex !== -1) {
+      this.processDropItem(client, room, itemId, itemIndex);
+      return;
+    }
+    
+    // If no exact match but itemId is at least 8 characters, try partial match
+    if (itemId.length >= 8) {
+      // Check for matching IDs that start with the provided partial ID
+      const matches = client.user.inventory.items.filter(id => 
+        id.toLowerCase().startsWith(itemId.toLowerCase())
+      );
+      
+      if (matches.length === 1) {
+        // Found exactly one match - use it
+        const matchIndex = client.user.inventory.items.indexOf(matches[0]);
+        this.processDropItem(client, room, matches[0], matchIndex);
+        return;
+      } else if (matches.length > 1) {
+        // Found multiple matches - ambiguous
+        writeToClient(client, colorize(`Multiple items match '${itemId}'. Please use a longer ID to be more specific.\r\n`, 'yellow'));
+        return;
+      }
+    }
+    
+    // If we get here, either the item wasn't found or the ID is too short
+    writeToClient(client, colorize(`You don't have that item.\r\n`, 'yellow'));
+  }
+  
+  /**
+   * Process the actual dropping of an item
+   * Separated from the lookup logic for cleaner code
+   */
+  private processDropItem(client: ConnectedClient, room: any, itemId: string, itemIndex: number): void {
+    if (!client.user) return;
+    
+    // Check if it's an item instance
+    const instance = this.itemManager.getItemInstance(itemId);
+    if (instance) {
+      // This is an item instance, handle it as such
+      
+      // First get the template for display purposes
+      const template = this.itemManager.getItem(instance.templateId);
+      if (!template) {
+        writeToClient(client, colorize(`That item seems to be broken and can't be dropped.\r\n`, 'red'));
+        return;
+      }
+      
+      // Remove from player's inventory
+      client.user.inventory.items.splice(itemIndex, 1);
+      
+      // Add to room's item instances
+      room.addItemInstance(itemId, instance.templateId);
+      
+      // Add event to item's history
+      this.itemManager.addItemHistory(
+        itemId, 
+        'drop', 
+        `Dropped by ${client.user.username} in room ${room.id}`
+      );
+      
+      // Save changes
+      const roomManager = RoomManager.getInstance(this.clients);
+      roomManager.updateRoom(room);
+      this.userManager.updateUserInventory(client.user.username, client.user.inventory);
+      
+      // Get display name - use custom name if available, otherwise template name
+      const rawDisplayName = instance.properties?.customName || template.name;
+      
+      // Apply color processing to the display name
+      const displayName = colorizeItemName(rawDisplayName);
+      
+      // Notify the player
+      writeToClient(client, colorize(`You drop the ${displayName}.\r\n`, 'green'));
+      
+      // Notify others in the room
+      this.notifyOthersInRoom(
+        client, 
+        room, 
+        `${formatUsername(client.user.username)} drops the ${displayName}.\r\n`
+      );
+      
+      return;
+    }
+    
+    // If not an instance, must be a legacy item
+    // Get the actual item details from ItemManager for display
     const itemDetails = this.itemManager.getItem(itemId);
     
     // The display name is either the item's proper name or fallback to the ID
@@ -193,7 +361,43 @@ export class DropCommand implements Command {
     // Remove the item from the player's inventory
     client.user.inventory.items.splice(itemIndex, 1);
     
-    // Add the item to the room
+    // If we can create an item instance from this legacy item, do so
+    if (itemDetails) {
+      // Create a new item instance
+      const instance = this.itemManager.createItemInstance(itemId, client.user.username);
+      
+      if (instance) {
+        // Add instance to the room instead of the legacy item
+        room.addItemInstance(instance.instanceId, instance.templateId);
+        
+        // Add drop event to item's history
+        this.itemManager.addItemHistory(
+          instance.instanceId, 
+          'drop', 
+          `Dropped by ${client.user.username} in room ${room.id}`
+        );
+        
+        // Save changes
+        const roomManager = RoomManager.getInstance(this.clients);
+        roomManager.updateRoom(room);
+        this.userManager.updateUserInventory(client.user.username, client.user.inventory);
+        
+        // Notify the player
+        writeToClient(client, colorize(`You drop the ${displayName}.\r\n`, 'green'));
+        
+        // Notify others in the room
+        this.notifyOthersInRoom(
+          client, 
+          room, 
+          `${formatUsername(client.user.username)} drops the ${displayName}.\r\n`
+        );
+        
+        return;
+      }
+    }
+    
+    // Fall back to legacy behavior if we couldn't create an instance
+    // Add the legacy item to the room
     room.items.push(itemId);
     
     // Save changes
@@ -203,5 +407,33 @@ export class DropCommand implements Command {
     
     // Notify the player
     writeToClient(client, colorize(`You drop the ${displayName}.\r\n`, 'green'));
+    
+    // Notify others in the room
+    this.notifyOthersInRoom(
+      client, 
+      room, 
+      `${formatUsername(client.user.username)} drops the ${displayName}.\r\n`
+    );
+  }
+  
+  /**
+   * Notify other players in the room about an action
+   */
+  private notifyOthersInRoom(client: ConnectedClient, room: any, message: string): void {
+    if (!client.user) return;
+    
+    // Look for other clients in the room
+    for (const otherUsername of room.players) {
+      // Skip the current client
+      if (otherUsername === client.user.username) continue;
+      
+      // Find the other client
+      for (const [_, otherClient] of this.clients.entries()) {
+        if (otherClient.user && otherClient.user.username === otherUsername) {
+          writeToClient(otherClient, colorize(message, 'green'));
+          break;
+        }
+      }
+    }
   }
 }

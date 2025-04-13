@@ -1,10 +1,10 @@
-// filepath: /Users/jelden/projects/game/src/command/commands/equip.command.ts
-import { ConnectedClient, GameItem, User, EquipmentSlot } from '../../types';
+import { ConnectedClient, GameItem, User } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { ItemManager } from '../../utils/itemManager';
 import { UserManager } from '../../user/userManager';
+import { colorizeItemName, stripColorCodes } from '../../utils/itemNameColorizer';
 
 export class EquipCommand implements Command {
   name = 'equip';
@@ -29,15 +29,25 @@ export class EquipCommand implements Command {
     const user = client.user;
     
     // First, we need to find the item in the user's inventory
-    const { itemId: matchingItemId, index: matchingItemIndex } = this.findItemInInventory(user, itemNameToEquip);
+    const itemId = this.findItemInInventory(client, itemNameToEquip);
     
-    if (!matchingItemId) {
+    if (!itemId) {
       writeToClient(client, colorize(`You don't have an item called "${args}" in your inventory.\r\n`, 'red'));
       return;
     }
     
-    // Get the item details
-    const item = this.itemManager.getItem(matchingItemId);
+    // Check if this is an item instance
+    const instance = this.itemManager.getItemInstance(itemId);
+    let item: GameItem | undefined;
+    
+    if (instance) {
+      // This is an item instance, get the template
+      item = this.itemManager.getItem(instance.templateId);
+    } else {
+      // This is a legacy item ID, get it directly
+      item = this.itemManager.getItem(itemId);
+    }
+    
     if (!item) {
       writeToClient(client, colorize(`Error: Item "${args}" found in inventory but not in the database.\r\n`, 'red'));
       return;
@@ -76,24 +86,51 @@ export class EquipCommand implements Command {
     // Check if something is already equipped in that slot
     const currentItemId = user.equipment[item.slot];
 
-    // Remove the specific item from inventory by its index
-    if (matchingItemIndex !== -1) {
-      user.inventory.items.splice(matchingItemIndex, 1);
+    // Remove the item being equipped from inventory
+    const itemIndex = user.inventory.items.indexOf(itemId);
+    if (itemIndex !== -1) {
+      user.inventory.items.splice(itemIndex, 1);
     }
     
     if (currentItemId) {
-      const currentItem = this.itemManager.getItem(currentItemId);
+      // First check if it's an item instance
+      const currentInstance = this.itemManager.getItemInstance(currentItemId);
+      let currentItem: GameItem | undefined;
+      
+      if (currentInstance) {
+        currentItem = this.itemManager.getItem(currentInstance.templateId);
+      } else {
+        currentItem = this.itemManager.getItem(currentItemId);
+      }
       
       // Return the current item to inventory if it exists
       if (currentItem) {
         // Add the current item back to inventory
         user.inventory.items.push(currentItemId);
         writeToClient(client, colorize(`You unequip ${currentItem.name}.\r\n`, 'yellow'));
+        
+        // Add to item instance history if applicable
+        if (currentInstance) {
+          this.itemManager.addItemHistory(
+            currentItemId,
+            'unequip',
+            `Unequipped by ${user.username}`
+          );
+        }
       }
     }
     
     // Equip the new item
-    user.equipment[item.slot] = matchingItemId;
+    user.equipment[item.slot] = itemId;
+    
+    // If it's an item instance, add to its history
+    if (instance) {
+      this.itemManager.addItemHistory(
+        itemId,
+        'equip',
+        `Equipped by ${user.username} in slot ${item.slot}`
+      );
+    }
     
     // Save user changes
     this.userManager.updateUserStats(user.username, {
@@ -105,13 +142,23 @@ export class EquipCommand implements Command {
     user.attack = this.itemManager.calculateAttack(user);
     user.defense = this.itemManager.calculateDefense(user);
     
-    // Save the updated stats
+    // Apply stat bonuses from equipment - this is handled by calculateAttack/Defense already
+    this.itemManager.calculateStatBonuses(user);
+    
+    // Update attack and defense stats
     this.userManager.updateUserStats(user.username, {
       attack: user.attack,
       defense: user.defense
     });
     
-    writeToClient(client, colorize(`You equip ${item.name}.\r\n`, 'green'));
+    // Get the display name - use custom name if available, otherwise use template name
+    let displayName = item.name;
+    if (instance && instance.properties?.customName) {
+      displayName = colorizeItemName(instance.properties.customName);
+    }
+    
+    // Display equip message with proper item name
+    writeToClient(client, colorize(`You equip ${displayName}.\r\n`, 'green'));
     
     // Show any stat changes if the item has stat bonuses
     if (item.stats) {
@@ -125,33 +172,13 @@ export class EquipCommand implements Command {
       // Show attribute bonuses
       const attributes = ['strength', 'dexterity', 'agility', 'constitution', 'wisdom', 'intelligence', 'charisma'];
       attributes.forEach(attr => {
-        if (item.stats && item.stats[attr as keyof typeof item.stats]) {
-          const bonus = item.stats[attr as keyof typeof item.stats];
+        const itemStats = item?.stats;
+        if (itemStats && attr in itemStats) {
+          const bonus = itemStats[attr as keyof typeof itemStats];
           writeToClient(client, colorize(`${attr.charAt(0).toUpperCase() + attr.slice(1)}: +${bonus}\r\n`, 'cyan'));
         }
       });
     }
-  }
-  
-  /**
-   * Find an item in the user's inventory by name (case-insensitive partial match)
-   */
-  private findItemInInventory(user: User, itemName: string): { itemId: string | undefined, index: number } {
-    // Check if the user has any items
-    if (!user.inventory || !user.inventory.items || user.inventory.items.length === 0) {
-      return { itemId: undefined, index: -1 };
-    }
-    
-    // Look for a matching item
-    for (let i = 0; i < user.inventory.items.length; i++) {
-      const itemId = user.inventory.items[i];
-      const item = this.itemManager.getItem(itemId);
-      if (item && item.name.toLowerCase().includes(itemName)) {
-        return { itemId, index: i };
-      }
-    }
-    
-    return { itemId: undefined, index: -1 };
   }
   
   /**
@@ -173,5 +200,96 @@ export class EquipCommand implements Command {
     }
     
     return true;
+  }
+  
+  /**
+   * Try to find an item in the player's inventory
+   */
+  private findItemInInventory(client: ConnectedClient, itemName: string): string | null {
+    if (!client.user || !client.user.inventory || !client.user.inventory.items) {
+      return null;
+    }
+    
+    // Normalize the item name for easier matching
+    const normalizedInput = stripColorCodes(itemName.toLowerCase());
+    
+    // First try to find the item by exact instance ID
+    const exactInstanceId = client.user.inventory.items.find(id => id === itemName);
+    if (exactInstanceId) {
+      return exactInstanceId;
+    }
+    
+    // Find all items with custom names first
+    const itemsWithCustomNames: string[] = [];
+    for (const instanceId of client.user.inventory.items) {
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        itemsWithCustomNames.push(instanceId);
+      }
+    }
+    
+    // First priority: Look for exact matches with custom names
+    for (const instanceId of itemsWithCustomNames) {
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        const strippedCustomName = stripColorCodes(instance.properties.customName.toLowerCase());
+        if (strippedCustomName === normalizedInput) {
+          return instanceId;
+        }
+      }
+    }
+    
+    // Second priority: Look for partial matches with custom names
+    for (const instanceId of itemsWithCustomNames) {
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance && instance.properties?.customName) {
+        const strippedCustomName = stripColorCodes(instance.properties.customName.toLowerCase());
+        if (strippedCustomName.includes(normalizedInput)) {
+          return instanceId;
+        }
+      }
+    }
+    
+    // Only if no items with custom names were matched, try to match by template name
+    // but exclude items that have custom names
+    const regularItems = client.user.inventory.items.filter(id => !itemsWithCustomNames.includes(id));
+    
+    // Third priority: Look for exact template name matches (only for items without custom names)
+    for (const instanceId of regularItems) {
+      // Check if it's an item instance
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance) {
+        const template = this.itemManager.getItem(instance.templateId);
+        if (template && stripColorCodes(template.name.toLowerCase()) === normalizedInput) {
+          return instanceId;
+        }
+      } else {
+        // Check if it's a legacy item
+        const item = this.itemManager.getItem(instanceId);
+        if (item && stripColorCodes(item.name.toLowerCase()) === normalizedInput) {
+          return instanceId;
+        }
+      }
+    }
+    
+    // Fourth priority: Look for partial template name matches (only for items without custom names)
+    for (const instanceId of regularItems) {
+      // Check if it's an item instance
+      const instance = this.itemManager.getItemInstance(instanceId);
+      if (instance) {
+        const template = this.itemManager.getItem(instance.templateId);
+        if (template && stripColorCodes(template.name.toLowerCase()).includes(normalizedInput)) {
+          return instanceId;
+        }
+      } else {
+        // Check if it's a legacy item
+        const item = this.itemManager.getItem(instanceId);
+        if (item && stripColorCodes(item.name.toLowerCase()).includes(normalizedInput)) {
+          return instanceId;
+        }
+      }
+    }
+    
+    return null;
   }
 }

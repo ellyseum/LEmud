@@ -4,6 +4,7 @@ import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
 import { formatUsername } from '../../utils/formatters';
 import { ItemManager } from '../../utils/itemManager';
+import { colorizeItemName } from '../../utils/itemNameColorizer';
 
 export class StatsCommand implements Command {
   name = 'stats';
@@ -52,11 +53,44 @@ export class StatsCommand implements Command {
     // Display equipment if any
     if (user.equipment && Object.keys(user.equipment).length > 0) {
       writeToClient(client, colorize('\r\n=== Equipment ===\r\n', 'magenta'));
-      const equippedItems = this.itemManager.getEquippedItems(user);
       
-      equippedItems.forEach((item, slot) => {
-        writeToClient(client, colorize(`${slot.charAt(0).toUpperCase() + slot.slice(1)}: ${item.name}\r\n`, 'cyan'));
-      });
+      for (const [slot, itemId] of Object.entries(user.equipment)) {
+        if (!itemId) continue;
+        
+        // Convert slot key to display name
+        const slotDisplayName = slot.split('_').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        ).join(' ');
+        
+        // Check if it's an item instance first
+        const instance = this.itemManager.getItemInstance(itemId);
+        
+        if (instance) {
+          // It's an item instance, get the template and check for custom name
+          const template = this.itemManager.getItem(instance.templateId);
+          
+          if (template) {
+            let displayName = template.name;
+            
+            // Use custom name if available
+            if (instance.properties?.customName) {
+              displayName = colorizeItemName(instance.properties.customName);
+            }
+            
+            writeToClient(client, colorize(`${slotDisplayName}: ${displayName}\r\n`, 'cyan'));
+          } else {
+            writeToClient(client, colorize(`${slotDisplayName}: <unknown item>\r\n`, 'red'));
+          }
+        } else {
+          // Try as a legacy item
+          const item = this.itemManager.getItem(itemId);
+          if (item) {
+            writeToClient(client, colorize(`${slotDisplayName}: ${item.name}\r\n`, 'cyan'));
+          } else {
+            writeToClient(client, colorize(`${slotDisplayName}: <unknown item>\r\n`, 'red'));
+          }
+        }
+      }
     }
     
     writeToClient(client, colorize('\r\n=== Account Info ===\r\n', 'magenta'));

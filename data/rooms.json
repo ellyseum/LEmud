@@ -9,9 +9,15 @@
         "roomId": "room2"
       }
     ],
-    "items": [
+    "items": [],
+    "itemInstances": [
       {
-        "name": "helmet-001"
+        "instanceId": "a6e2d482-b9a6-456f-9699-f58502ae4a4d",
+        "templateId": "sword-001"
+      },
+      {
+        "instanceId": "9804feff-ffc4-437e-8fe6-6f83eb15cc85",
+        "templateId": "helmet-001"
       }
     ],
     "npcs": [
@@ -21,8 +27,8 @@
     ],
     "currency": {
       "gold": 0,
-      "silver": 3,
-      "copper": 20
+      "silver": 0,
+      "copper": 0
     }
   },
   {
@@ -36,6 +42,7 @@
       }
     ],
     "items": [],
+    "itemInstances": [],
     "npcs": [],
     "currency": {
       "gold": 0,

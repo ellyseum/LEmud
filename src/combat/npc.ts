@@ -145,4 +145,16 @@ export class NPC implements CombatEntity {
   clearAllAggression(): void {
     this.aggressors.clear();
   }
+
+  // Implement the isUser method from CombatEntity interface
+  isUser(): boolean {
+    // NPCs are never users
+    return false;
+  }
+
+  // Implement the getName method from CombatEntity interface
+  getName(): string {
+    // Return the name of this NPC
+    return this.name;
+  }
 }
