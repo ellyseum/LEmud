@@ -16,6 +16,8 @@ export const colors = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
+  gray: '\x1b[90m',        // Added gray (using bright black)
+  brightgray: '\x1b[37m',  // Added brightgray (using white)
   
   bgBlack: '\x1b[40m',
   bgRed: '\x1b[41m',
@@ -64,7 +66,7 @@ export const colors = {
 export type ColorType = 'blink' | 'reset' | 'bright' | 'dim' | 'underscore' | 'reverse' | 'hidden' |
                 'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white' |
                 'boldBlack' | 'boldRed' | 'boldGreen' | 'boldYellow' | 'boldBlue' |
-                'boldMagenta' | 'boldCyan' | 'boldWhite' | 'clear' |
+                'boldMagenta' | 'boldCyan' | 'boldWhite' | 'clear' | 'gray' | 'brightgray' |
                 'brightBlack' | 'brightRed' | 'brightGreen' | 'brightYellow' |
                 'brightBlue' | 'brightMagenta' | 'brightCyan' | 'brightWhite' |
                 'bgBlack' | 'bgRed' | 'bgGreen' | 'bgYellow' | 'bgBlue' | 'bgMagenta' |

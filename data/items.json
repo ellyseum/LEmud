@@ -180,5 +180,237 @@
       "defense": 2,
       "agility": 1
     }
+  },
+  {
+    "id": "sword-poor",
+    "name": "broken rusty sword",
+    "description": "A severely damaged sword with a rusty blade. It looks like it might break with a few more hits.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 5,
+    "weight": 6,
+    "quality": "poor",
+    "stats": {
+      "attack": 2
+    },
+    "requirements": {
+      "level": 1,
+      "strength": 3
+    }
+  },
+  {
+    "id": "sword-common",
+    "name": "iron shortsword",
+    "description": "A standard-issue iron shortsword. Nothing special, but it gets the job done.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 25,
+    "weight": 4,
+    "quality": "common",
+    "stats": {
+      "attack": 5,
+      "strength": 1
+    },
+    "requirements": {
+      "level": 1,
+      "strength": 5
+    }
+  },
+  {
+    "id": "sword-uncommon",
+    "name": "fine steel longsword",
+    "description": "A well-crafted longsword made of quality steel. The edge is sharp and the balance is excellent.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 75,
+    "weight": 5,
+    "quality": "uncommon",
+    "stats": {
+      "attack": 8,
+      "strength": 2,
+      "dexterity": 1
+    },
+    "requirements": {
+      "level": 3,
+      "strength": 7
+    }
+  },
+  {
+    "id": "sword-rare",
+    "name": "enchanted elven blade",
+    "description": "A rare elven blade with faint blue runes etched along its length. The metal seems to shimmer in the light.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 250,
+    "weight": 3,
+    "quality": "rare",
+    "stats": {
+      "attack": 12,
+      "strength": 2,
+      "dexterity": 3,
+      "intelligence": 1
+    },
+    "requirements": {
+      "level": 6,
+      "strength": 8,
+      "dexterity": 5
+    }
+  },
+  {
+    "id": "sword-epic",
+    "name": "dragonfire greatsword",
+    "description": "A magnificent greatsword that radiates heat. The blade is forged from a dragon's tooth and enchanted with fire magic.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 750,
+    "weight": 7,
+    "quality": "epic",
+    "stats": {
+      "attack": 18,
+      "strength": 5,
+      "dexterity": 2,
+      "intelligence": 3
+    },
+    "requirements": {
+      "level": 12,
+      "strength": 12,
+      "intelligence": 8
+    }
+  },
+  {
+    "id": "sword-legendary",
+    "name": "worldender",
+    "description": "A legendary blade said to have been forged by the gods themselves. The very air around it seems to distort with power.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 2000,
+    "weight": 6,
+    "quality": "legendary",
+    "stats": {
+      "attack": 25,
+      "strength": 8,
+      "dexterity": 6,
+      "intelligence": 5,
+      "wisdom": 5,
+      "charisma": 3
+    },
+    "requirements": {
+      "level": 20,
+      "strength": 15,
+      "intelligence": 10
+    }
+  },
+  {
+    "id": "axe-poor",
+    "name": "chipped stone axe",
+    "description": "A primitive axe with a chipped stone head. Barely better than a rock tied to a stick.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 3,
+    "weight": 5,
+    "quality": "poor",
+    "stats": {
+      "attack": 3
+    },
+    "requirements": {
+      "level": 1,
+      "strength": 4
+    }
+  },
+  {
+    "id": "axe-common",
+    "name": "woodcutter's axe",
+    "description": "A simple axe designed for chopping wood, but it works well enough in combat.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 20,
+    "weight": 6,
+    "quality": "common",
+    "stats": {
+      "attack": 6,
+      "strength": 2
+    },
+    "requirements": {
+      "level": 1,
+      "strength": 6
+    }
+  },
+  {
+    "id": "axe-uncommon",
+    "name": "fine dwarven handaxe",
+    "description": "A well-balanced handaxe of dwarven make. The edge gleams with sharpness.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 90,
+    "weight": 4,
+    "quality": "uncommon",
+    "stats": {
+      "attack": 9,
+      "strength": 3
+    },
+    "requirements": {
+      "level": 4,
+      "strength": 8
+    }
+  },
+  {
+    "id": "axe-rare",
+    "name": "frostbite battleaxe",
+    "description": "A rare battleaxe that glistens with frost. The edge seems to freeze the air around it.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 275,
+    "weight": 7,
+    "quality": "rare",
+    "stats": {
+      "attack": 14,
+      "strength": 4,
+      "constitution": 2
+    },
+    "requirements": {
+      "level": 7,
+      "strength": 10
+    }
+  },
+  {
+    "id": "axe-epic",
+    "name": "thunderlord's cleaver",
+    "description": "A massive axe that crackles with lightning. Each swing sounds like distant thunder.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 800,
+    "weight": 9,
+    "quality": "epic",
+    "stats": {
+      "attack": 20,
+      "strength": 6,
+      "constitution": 3,
+      "wisdom": 2
+    },
+    "requirements": {
+      "level": 14,
+      "strength": 14
+    }
+  },
+  {
+    "id": "axe-legendary",
+    "name": "godcleaver",
+    "description": "A legendary axe rumored to have once cleaved a mountain in two. It pulses with divine energy.",
+    "type": "weapon",
+    "slot": "mainHand",
+    "value": 1800,
+    "weight": 10,
+    "quality": "legendary",
+    "stats": {
+      "attack": 28,
+      "strength": 10,
+      "constitution": 6,
+      "wisdom": 4,
+      "charisma": 2
+    },
+    "requirements": {
+      "level": 22,
+      "strength": 18
+    }
   }
 ]

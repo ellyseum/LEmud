@@ -1,4 +1,6 @@
 import { colorize, ColorType } from './colors';
+import { ItemInstance } from '../types';
+import { ItemManager } from './itemManager';
 
 /**
  * Color mapping for item name color codes
@@ -25,15 +27,34 @@ const COLOR_MAP: {[key: string]: string} = {
 };
 
 /**
+ * Quality-based default color mapping
+ */
+const QUALITY_COLORS: {[key: string]: ColorType} = {
+  'poor': 'gray',         // dark gray
+  'common': 'brightgray',  // gray
+  'uncommon': 'cyan',     // cyan
+  'rare': 'blue',         // blue
+  'epic': 'magenta',      // purple
+  'legendary': 'yellow'   // orange (using yellow as closest available)
+};
+
+/**
  * Processes a name with color codes and returns a colorized string
  * Supports multiple color codes anywhere in the string
+ * Now also supports quality-based default colorization
  * 
  * @param name The name with color codes (e.g., "Iron $rSword of $bFrost")
  * @param defaultColor The color to use for text without a specific color code
+ * @param instance Optional item instance to determine quality-based color
  * @returns A string with ANSI color codes applied
  */
-export function colorizeItemName(name: string, defaultColor: ColorType = 'white'): string {
+export function colorizeItemName(name: string, defaultColor: ColorType = 'white', instance?: ItemInstance): string {
   if (!name) return '';
+
+  // If instance is provided and has a quality, use quality-based default color
+  if (instance?.properties?.quality && QUALITY_COLORS[instance.properties.quality]) {
+    defaultColor = QUALITY_COLORS[instance.properties.quality];
+  }
 
   // Regular expression to find all color codes in the string
   const colorCodeRegex = /\$([krgybmcwaKRGYBMCWA])/g;

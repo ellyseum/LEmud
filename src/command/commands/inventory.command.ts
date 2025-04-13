@@ -133,9 +133,18 @@ export class InventoryCommand implements Command {
         // Add to appropriate type group
         let displayName = item.name;
         
-        // If item has a custom name, colorize it
-        if (customName) {
-          displayName = colorizeItemName(customName);
+        // Apply quality-based color if it's an item instance
+        if (instance) {
+          // If item has a custom name, colorize it with quality
+          if (customName) {
+            displayName = colorizeItemName(customName, 'white', instance);
+          } else {
+            // Use template name with quality-based color
+            displayName = colorizeItemName(item.name, 'white', instance);
+          }
+        } else {
+          // Legacy item, just use normal colorization
+          displayName = colorizeItemName(displayName);
         }
         
         itemsByType[type].push({ 

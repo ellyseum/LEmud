@@ -335,8 +335,8 @@ export class DropCommand implements Command {
       // Get display name - use custom name if available, otherwise template name
       const rawDisplayName = instance.properties?.customName || template.name;
       
-      // Apply color processing to the display name
-      const displayName = colorizeItemName(rawDisplayName);
+      // Apply color processing to the display name - pass the instance for quality-based colors
+      const displayName = colorizeItemName(rawDisplayName, 'white', instance);
       
       // Notify the player
       writeToClient(client, colorize(`You drop the ${displayName}.\r\n`, 'green'));
@@ -382,14 +382,15 @@ export class DropCommand implements Command {
         roomManager.updateRoom(room);
         this.userManager.updateUserInventory(client.user.username, client.user.inventory);
         
-        // Notify the player
-        writeToClient(client, colorize(`You drop the ${displayName}.\r\n`, 'green'));
+        // Notify the player - use quality-based colorization
+        const colorizedName = colorizeItemName(displayName, 'white', instance);
+        writeToClient(client, colorize(`You drop the ${colorizedName}.\r\n`, 'green'));
         
         // Notify others in the room
         this.notifyOthersInRoom(
           client, 
           room, 
-          `${formatUsername(client.user.username)} drops the ${displayName}.\r\n`
+          `${formatUsername(client.user.username)} drops the ${colorizedName}.\r\n`
         );
         
         return;

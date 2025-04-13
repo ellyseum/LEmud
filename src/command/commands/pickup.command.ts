@@ -248,6 +248,12 @@ export class PickupCommand implements Command {
     if (itemData) {
       displayName = itemData.name;
       
+      // Check if the item is static (cannot be picked up)
+      if ((itemData.type as ExtendedItemType) === 'static') {
+        writeToClient(client, colorize(`The ${displayName} cannot be moved.\r\n`, 'yellow'));
+        return;
+      }
+      
       // Try to migrate this legacy item to the new instance system
       const instance = this.itemManager.createItemInstance(itemId, client.user.username);
       
@@ -553,8 +559,12 @@ export class PickupCommand implements Command {
     // Get the raw display name (use custom name if it exists, otherwise template name)
     const rawDisplayName = instance?.properties?.customName || template.name;
     
-    // Colorize the display name if it has color codes
-    const displayName = colorizeItemName(rawDisplayName);
+    // Colorize the display name with quality-based colors - handle null instance case
+    const displayName = colorizeItemName(
+      rawDisplayName, 
+      'white', 
+      instance === null ? undefined : instance
+    );
     
     // Remove the item from the room
     room.removeItemInstance(instanceId);

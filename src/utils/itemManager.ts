@@ -357,8 +357,21 @@ export class ItemManager {
       };
     }
     
-    // Set default quality to common
-    defaultProperties.quality = 'common';
+    // Auto-detect quality from item ID for our test items
+    if (templateId.includes('-poor')) {
+      defaultProperties.quality = 'poor';
+    } else if (templateId.includes('-uncommon')) {
+      defaultProperties.quality = 'uncommon';
+    } else if (templateId.includes('-rare')) {
+      defaultProperties.quality = 'rare';
+    } else if (templateId.includes('-epic')) {
+      defaultProperties.quality = 'epic';
+    } else if (templateId.includes('-legendary')) {
+      defaultProperties.quality = 'legendary';
+    } else {
+      // Set default quality to common for all other items
+      defaultProperties.quality = 'common';
+    }
     
     // Create the item instance
     const instance: ItemInstance = {
@@ -376,7 +389,7 @@ export class ItemManager {
 
     // Store the instance
     this.itemInstances.set(instanceId, instance);
-    console.log(`[ItemManager] Created item instance ${instanceId} of ${templateId}`);
+    console.log(`[ItemManager] Created item instance ${instanceId} of ${templateId} (quality: ${instance.properties?.quality || 'unknown'})`);
     
     // Save to disk
     this.saveItemInstances();

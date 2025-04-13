@@ -12,12 +12,20 @@
     "items": [],
     "itemInstances": [
       {
-        "instanceId": "a6e2d482-b9a6-456f-9699-f58502ae4a4d",
-        "templateId": "sword-001"
+        "instanceId": "cfd67a90-5e7a-44d9-88d1-caa505bfd2b9",
+        "templateId": "sword-common"
       },
       {
-        "instanceId": "9804feff-ffc4-437e-8fe6-6f83eb15cc85",
-        "templateId": "helmet-001"
+        "instanceId": "c905155b-eec6-4bb1-80db-041ba16c3808",
+        "templateId": "sword-uncommon"
+      },
+      {
+        "instanceId": "464c6c66-2724-470d-a3be-e90beac53d9f",
+        "templateId": "sword-rare"
+      },
+      {
+        "instanceId": "71f498fb-ebc3-4f4b-940c-93875f80f807",
+        "templateId": "sword-epic"
       }
     ],
     "npcs": [

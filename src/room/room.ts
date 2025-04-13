@@ -424,8 +424,29 @@ export class Room {
     // Format and display all items together in a single line
     if (allItemDescriptions.length > 0) {
       const itemTexts: string[] = allItemDescriptions.map(item => {
-        // Process color codes in item name
-        const processedName = colorizeItemName(item.name);
+        // Process color codes in item name with quality-based colors
+        let processedName;
+        
+        // For item instances (with quality), get the instance and apply quality-based color
+        if (this.itemInstances.size > 0) {
+          // Look for the instance with this name
+          for (const [instanceId, templateId] of this.itemInstances.entries()) {
+            const instance = this.itemManager.getItemInstance(instanceId);
+            const displayName = instance?.properties?.customName || 
+                                (this.itemManager.getItem(templateId)?.name || "");
+                                
+            if (displayName === item.name && instance) {
+              // Found the matching instance, apply quality-based color
+              processedName = colorizeItemName(item.name, 'white', instance);
+              break;
+            }
+          }
+        }
+        
+        // If we haven't found a matching instance, use normal colorization
+        if (!processedName) {
+          processedName = colorizeItemName(item.name);
+        }
         
         if (item.count === 1) {
           return `a ${processedName}`;
@@ -438,7 +459,7 @@ export class Room {
         description += colorize(`You see ${itemTexts[0]}.`, 'green') + '\r\n';
       } else {
         const lastItem = itemTexts.pop();
-        description += colorize(`You see ${itemTexts.join(', ')}`, 'green') + colorize(`, and ${lastItem}.`, 'green') + '\r\n';
+        description += colorize(`You see ${itemTexts.join(', ')}, and ${lastItem}.`, 'green') + '\r\n';
       }
     }
 
