@@ -15,6 +15,10 @@ export interface IConnection extends EventEmitter {
   // Raw socket/connection access if needed by implementation
   getRawConnection(): any;
   remoteAddress?: string;
+  
+  // Raw session logging
+  enableRawLogging(enabled: boolean): void;
+  isRawLoggingEnabled(): boolean;
 }
 
 export interface ConnectionEvents {

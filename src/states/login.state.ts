@@ -93,11 +93,13 @@ export class LoginState implements ClientState {
       client.stateData.username = standardUsername; // Store lowercase version
       client.stateData.awaitingPassword = true;
       client.stateData.maskInput = true; // Enable password masking
+      client.connection.setMaskInput(true); // Enable masking on connection
       writeToClient(client, colorize('Enter your password: ', 'cyan'));
     } else {
       client.stateData.offerSignup = true;
       client.stateData.username = standardUsername; // Store lowercase version
       client.stateData.maskInput = false; // Ensure no masking for yes/no input
+      client.connection.setMaskInput(false); // Disable masking for yes/no input
       writeToClient(client, colorize(`User (${formatUsername(standardUsername)}) does not exist. Would you like to sign up? (y/n): `, 'red'));
     }
   }

@@ -1,6 +1,7 @@
 import { Socket } from 'net';
 import { EventEmitter } from 'events';
 import { IConnection } from './interfaces/connection.interface';
+import { getSessionLogger, closeSessionLogger } from '../utils/rawSessionLogger';
 
 // Telnet control codes
 const IAC = 255;  // Interpret As Command
@@ -25,6 +26,8 @@ export class TelnetConnection extends EventEmitter implements IConnection {
   private negotiationsComplete: boolean = false;
   private buffer: Buffer = Buffer.alloc(0);
   private processingCommand: boolean = false;
+  private rawLoggingEnabled: boolean = true;
+  private passwordMessageLogged: boolean = false;
 
   constructor(socket: Socket) {
     super();
@@ -44,11 +47,18 @@ export class TelnetConnection extends EventEmitter implements IConnection {
 
     // Forward end events
     this.socket.on('end', () => {
+      if (this.rawLoggingEnabled) {
+        closeSessionLogger(this.id);
+      }
       this.emit('end');
     });
 
     // Forward error events
     this.socket.on('error', (err) => {
+      if (this.rawLoggingEnabled) {
+        const logger = getSessionLogger(this.id);
+        logger.logOutput(`[ERROR] ${err.message}`);
+      }
       this.emit('error', err);
     });
   }
@@ -143,17 +153,37 @@ export class TelnetConnection extends EventEmitter implements IConnection {
     
     // If we have processed data, emit it
     if (processedData.length > 0) {
+      // Log input only if we're not in password input mode
+      if (this.rawLoggingEnabled && !this.maskInput) {
+        const logger = getSessionLogger(this.id);
+        logger.logInput(processedData);
+      } 
+      // For password input, log a single message indicating password entry
+      else if (this.rawLoggingEnabled && this.maskInput && !this.passwordMessageLogged) {
+        const logger = getSessionLogger(this.id);
+        logger.logInput('[PASSWORD INPUT MASKED]');
+        this.passwordMessageLogged = true;
+      }
+      
       this.emit('data', processedData);
     }
   }
 
   public write(data: string): void {
     if (this.socket.writable) {
+      // Log output if raw logging is enabled
+      if (this.rawLoggingEnabled) {
+        const logger = getSessionLogger(this.id);
+        logger.logOutput(data);
+      }
       this.socket.write(data);
     }
   }
 
   public end(): void {
+    if (this.rawLoggingEnabled) {
+      closeSessionLogger(this.id);
+    }
     this.socket.end();
   }
 
@@ -166,11 +196,35 @@ export class TelnetConnection extends EventEmitter implements IConnection {
   }
 
   public setMaskInput(mask: boolean): void {
-    this.maskInput = mask;
+    // If we're turning masking on (entering password mode)
+    if (mask && !this.maskInput) {
+      this.maskInput = true;
+      this.passwordMessageLogged = false;
+    } 
+    // If we're turning masking off (exiting password mode)
+    else if (!mask && this.maskInput) {
+      this.maskInput = false;
+      
+      // Log that password entry is complete
+      if (this.rawLoggingEnabled) {
+        const logger = getSessionLogger(this.id);
+        logger.logInput('[PASSWORD INPUT COMPLETE]');
+      }
+    }
   }
 
   public getRawConnection(): Socket {
     return this.socket;
+  }
+
+  // Enable or disable raw session logging
+  public enableRawLogging(enabled: boolean): void {
+    this.rawLoggingEnabled = enabled;
+  }
+
+  // Check if raw logging is enabled
+  public isRawLoggingEnabled(): boolean {
+    return this.rawLoggingEnabled;
   }
 
   // Expose the remote address

@@ -1,11 +1,14 @@
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { IConnection } from './interfaces/connection.interface';
+import { getSessionLogger, closeSessionLogger } from '../utils/rawSessionLogger';
 
 export class WebSocketConnection extends EventEmitter implements IConnection {
   private id: string;
   private maskInput: boolean = false;
   private buffer: string = '';
+  private rawLoggingEnabled: boolean = true;
+  private passwordMessageLogged: boolean = false;
 
   constructor(private ws: WebSocket, private clientId: string) {
     super();
@@ -13,11 +16,28 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
     
     // Set up event listeners
     ws.on('message', (message: WebSocket.Data) => this.handleMessage(message));
-    ws.on('close', () => this.emit('end'));
-    ws.on('error', (err: Error) => this.emit('error', err));
+    ws.on('close', () => {
+      if (this.rawLoggingEnabled) {
+        closeSessionLogger(this.id);
+      }
+      this.emit('end');
+    });
+    ws.on('error', (err: Error) => {
+      if (this.rawLoggingEnabled) {
+        const logger = getSessionLogger(this.id);
+        logger.logOutput(`[ERROR] ${err.message}`);
+      }
+      this.emit('error', err);
+    });
   }
 
   write(data: string): void {
+    // Log output if raw logging is enabled
+    if (this.rawLoggingEnabled) {
+      const logger = getSessionLogger(this.id);
+      logger.logOutput(data);
+    }
+    
     // Convert ANSI color codes to HTML for WebSocket clients
     const htmlData = this.convertAnsiToHtml(data);
     
@@ -39,6 +59,9 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
   }
 
   end(): void {
+    if (this.rawLoggingEnabled) {
+      closeSessionLogger(this.id);
+    }
     this.ws.close();
   }
 
@@ -46,12 +69,26 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
     return this.id;
   }
 
-  getType(): 'telnet' | 'websocket' {
+  getType(): string {
     return 'websocket';
   }
 
   setMaskInput(mask: boolean): void {
-    this.maskInput = mask;
+    // If we're turning masking on (entering password mode)
+    if (mask && !this.maskInput) {
+      this.maskInput = true;
+      this.passwordMessageLogged = false;
+    } 
+    // If we're turning masking off (exiting password mode)
+    else if (!mask && this.maskInput) {
+      this.maskInput = false;
+      
+      // Log that password entry is complete
+      if (this.rawLoggingEnabled) {
+        const logger = getSessionLogger(this.id);
+        logger.logInput('[PASSWORD INPUT COMPLETE]');
+      }
+    }
     
     // Inform client about masking state
     this.ws.send(JSON.stringify({ type: 'mask', mask }));
@@ -61,20 +98,67 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
     return this.ws;
   }
 
+  // Enable or disable raw session logging
+  public enableRawLogging(enabled: boolean): void {
+    this.rawLoggingEnabled = enabled;
+  }
+
+  // Check if raw logging is enabled
+  public isRawLoggingEnabled(): boolean {
+    return this.rawLoggingEnabled;
+  }
+
+  // Add remote address getter
+  get remoteAddress(): string {
+    // Extract client IP address from WebSocket
+    const ip = (this.ws as any)._socket?.remoteAddress || 'unknown';
+    return ip;
+  }
+
   private handleMessage(message: WebSocket.Data): void {
     try {
       // Parse incoming JSON messages
       const data = JSON.parse(message.toString());
       
       if (data.type === 'input') {
-        // Handle full input lines (backward compatibility)
+        // Handle full input lines
+        if (this.rawLoggingEnabled && !this.maskInput) {
+          // Only log if not in password mode
+          const logger = getSessionLogger(this.id);
+          logger.logInput(data.text);
+        }
+        // For password input, log a single message
+        else if (this.rawLoggingEnabled && this.maskInput && !this.passwordMessageLogged) {
+          const logger = getSessionLogger(this.id);
+          logger.logInput('[PASSWORD INPUT MASKED]');
+          this.passwordMessageLogged = true;
+        }
+        
         this.emit('data', data.text);
       } 
       else if (data.type === 'keypress') {
         // Handle individual keypresses
+        if (this.rawLoggingEnabled && !this.maskInput) {
+          // Only log if not in password mode
+          const logger = getSessionLogger(this.id);
+          logger.logInput(data.key);
+        }
+        // For password input, log a single message
+        else if (this.rawLoggingEnabled && this.maskInput && !this.passwordMessageLogged) {
+          const logger = getSessionLogger(this.id);
+          logger.logInput('[PASSWORD INPUT MASKED]');
+          this.passwordMessageLogged = true;
+        }
+        
         this.emit('data', data.key);
       }
       else if (data.type === 'special') {
+        // Skip logging special keys during password entry
+        if (this.rawLoggingEnabled && !this.maskInput) {
+          const logger = getSessionLogger(this.id);
+          logger.logInput(`[SPECIAL:${data.key}]`);
+        }
+        
         // Handle special keys
         switch(data.key) {
           case '\r\n':
@@ -97,6 +181,17 @@ export class WebSocketConnection extends EventEmitter implements IConnection {
       }
     } catch (e) {
       // If not JSON, treat as plain text input
+      if (this.rawLoggingEnabled && !this.maskInput) {
+        const logger = getSessionLogger(this.id);
+        logger.logInput(message.toString());
+      }
+      // For password input, log a single message
+      else if (this.rawLoggingEnabled && this.maskInput && !this.passwordMessageLogged) {
+        const logger = getSessionLogger(this.id);
+        logger.logInput('[PASSWORD INPUT MASKED]');
+        this.passwordMessageLogged = true;
+      }
+      
       this.emit('data', message.toString());
     }
   }
