@@ -59,10 +59,20 @@ export class RoomManager {
         
         systemLogger.info(`Loading ${roomDataArray.length} rooms...`);
         
+        // Load all NPC templates first
+        const npcData = NPC.loadNPCData();
+        
         roomDataArray.forEach(roomData => {
           const room = new Room(roomData);
           this.rooms.set(room.id, room);
+          
+          // Instantiate NPCs from templates after room is created
+          if (Array.isArray(roomData.npcs)) {
+            this.instantiateNpcsFromTemplates(room, roomData.npcs, npcData);
+          }
         });
+        
+        systemLogger.info('Rooms loaded successfully');
       } else {
         // Create initial rooms file if it doesn't exist
         this.saveRooms();
@@ -71,9 +81,45 @@ export class RoomManager {
       systemLogger.error('Error loading rooms:', error);
       this.ensureStartingRoom(); // Make sure we have at least the starting room
     }
-
-    // Add NPC initialization after loading rooms
-    // this.initializeNPCs();
+  }
+  
+  /**
+   * Instantiate NPCs from templates and add them to the room
+   * @param room The room to add NPCs to
+   * @param npcTemplateIds Array of NPC template IDs
+   * @param npcData Map of NPC template data
+   */
+  private instantiateNpcsFromTemplates(room: Room, npcTemplateIds: string[], npcData: Map<string, any>): void {
+    if (!npcTemplateIds.length) return;
+    
+    systemLogger.info(`Instantiating ${npcTemplateIds.length} NPC(s) for room ${room.id}`);
+    
+    for (const templateId of npcTemplateIds) {
+      // Check if the template exists in our NPC data
+      if (npcData.has(templateId)) {
+        // Create a new NPC instance from the template
+        const npcTemplate = npcData.get(templateId);
+        const npc = NPC.fromNPCData(npcTemplate);
+        
+        // Add the NPC to the room
+        room.addNPC(npc);
+        systemLogger.info(`Added NPC instance ${npc.instanceId} (template: ${templateId}) to room ${room.id}`);
+      } else {
+        // If template doesn't exist, log a warning and try to create a basic NPC
+        systemLogger.warn(`NPC template '${templateId}' not found in data, creating basic NPC`);
+        const defaultNpc = new NPC(
+          templateId, // Use template ID as name
+          10,        // health
+          10,        // maxHealth
+          [1, 2],    // damage range
+          false,     // isHostile
+          false,     // isPassive
+          50         // experienceValue
+        );
+        room.addNPC(defaultNpc);
+        systemLogger.info(`Added default NPC instance ${defaultNpc.instanceId} (template: ${templateId}) to room ${room.id}`);
+      }
+    }
   }
 
   private saveRooms(): void {

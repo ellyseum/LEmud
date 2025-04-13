@@ -52,13 +52,11 @@ export class Room {
     // Initialize NPCs
     this.npcs = new Map();
     if (room.npcs) {
-      if (Array.isArray(room.npcs)) {
-        // Old format: convert string[] to Map
-        // This will be handled by RoomManager when loading NPCs
-      } else if (room.npcs instanceof Map) {
-        // New format: already a Map
+      if (room.npcs instanceof Map) {
+        // If already a Map, use it directly (in-memory state)
         this.npcs = room.npcs;
-      }
+      } 
+      // NPCs will be instantiated by RoomManager when loading
     }
     
     this.itemManager = ItemManager.getInstance();
