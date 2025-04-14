@@ -3,6 +3,7 @@ data/admin/
 data/users.json
 data/admin.json
 logs
+dist
 
 # loco testing files
 u1

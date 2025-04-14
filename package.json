@@ -4,8 +4,8 @@
   "description": "A TELNET server with user authentication and command system",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "build": "tsc --build --verbose ",
+    "start": "npm run build && node dist/server.js",
     "dev": "ts-node src/server.ts",
     "watch": "npx nodemon --watch src --ext ts --exec ts-node src/server.ts"
   },
