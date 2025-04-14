@@ -28,6 +28,7 @@ import { CombatSystem } from './combat/combatSystem';
 import { AdminLevel } from './command/commands/adminmanage.command';
 import { SnakeGameState } from './states/snake-game.state';
 import { systemLogger, getPlayerLogger } from './utils/logger'; // Import loggers
+const { SudoCommand } = require('./command/commands/sudo.command');
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
@@ -259,11 +260,18 @@ io.on('connection', (socket) => {
           
           // Send the boxed message to the client
           writeMessageToClient(client, boxedMessage);
-          
-          // Echo to the admin that the message was sent
-          socket.emit('monitor-output', { 
-            data: `\r\n\x1b[36mAdmin message sent successfully\x1b[0m\r\n` 
-          });
+
+                  // Re-display the prompt
+            const promptText = getPromptText(client);
+            client.connection.write(promptText);
+            if (client.buffer.length > 0) {
+              client.connection.write(client.buffer);
+            }
+
+            // Echo to the admin that the message was sent
+            socket.emit('monitor-output', { 
+              data: `\r\n\x1b[36mAdmin message sent successfully\x1b[0m\r\n` 
+            });
         }
       });
       
@@ -427,6 +435,66 @@ function setupClient(connection: IConnection): void {
 
 // New function to handle client disconnection cleanup
 function handleClientDisconnect(client: ConnectedClient, clientId: string, broadcastMessage: boolean): void {
+  const disconnectingUsername = client.user?.username;
+
+  // Check if client was being monitored and handle properly
+  if (client.isBeingMonitored) {
+    systemLogger.info(`User ${disconnectingUsername || clientId} disconnected while being monitored - properly terminating monitoring session`);
+    
+    // For web-based monitoring (admin panel)
+    if (client.adminMonitorSocket) {
+      // Notify the admin that the user has disconnected
+      client.adminMonitorSocket.emit('monitor-ended', { 
+        message: `The user ${disconnectingUsername || 'Unknown'} has disconnected. Monitoring session ended.` 
+      });
+      
+      // Send a final output message to the admin's terminal for visual feedback
+      client.adminMonitorSocket.emit('monitor-output', { 
+        data: `\r\n\x1b[31mUser has disconnected. Monitoring session ended.\x1b[0m\r\n` 
+      });
+      
+      // Clean up monitoring state in client
+      client.isBeingMonitored = false;
+      client.isInputBlocked = false;
+      
+      // Force disconnect the admin socket from this specific monitoring session
+      if (client.adminMonitorSocket.connected) {
+        try {
+          // Emit a forced disconnect event to the admin client
+          client.adminMonitorSocket.emit('force-disconnect', {
+            message: 'User disconnected from server'
+          });
+        } catch (error) {
+          systemLogger.error(`Error notifying admin of disconnection: ${error}`);
+        }
+      }
+      
+      // Clear the admin socket reference
+      client.adminMonitorSocket = undefined;
+    } else {
+      // For console-based monitoring, we need to clean up the monitoring state
+      client.isBeingMonitored = false;
+      client.isInputBlocked = false;
+      
+      // For console monitoring, log a clear message
+      systemLogger.info(`User ${disconnectingUsername || clientId} disconnected during console monitoring session.`);
+      
+      // Output a message to the console (this will appear in the admin's console)
+      console.log(`\r\n\x1b[31mUser ${disconnectingUsername || 'Unknown'} has disconnected. Monitoring session ended.\x1b[0m\r\n`);
+      
+      // Since we're not in the monitorKeyHandler scope, we can't directly access closeMonitoring
+      // Instead, we'll emit a 'c' key to the process.stdin, which will be caught by any active monitorKeyHandler
+      try {
+        // Only attempt to simulate the keypress if we're in a TTY environment
+        if (process.stdin.isTTY) {
+          process.stdin.emit('data', 'c');
+        }
+      } catch (error) {
+        systemLogger.error(`Error attempting to end console monitoring session: ${error}`);
+      }
+    }
+  }
+  
   // Check if client was in a pending transfer
   if (client.user && client.stateData.waitingForTransfer) {
     userManager.cancelTransfer(client.user.username);
@@ -449,6 +517,37 @@ function handleClientDisconnect(client: ConnectedClient, clientId: string, broad
     const username = client.user.username;
     roomManager.removePlayerFromAllRooms(username);
     
+    // Force disconnect any other clients that might still be using this username
+    // This prevents the "two copies of character online" issue
+    const userSessionsToCleanup: ConnectedClient[] = [];
+    
+    // Find any other clients that might have the same username
+    clients.forEach((otherClient, otherClientId) => {
+      if (otherClientId !== clientId && 
+          otherClient.user && 
+          otherClient.user.username === username) {
+        // Add to our cleanup list
+        userSessionsToCleanup.push(otherClient);
+      }
+    });
+    
+    // Disconnect any orphaned sessions with the same username
+    if (userSessionsToCleanup.length > 0) {
+      systemLogger.warn(`Found ${userSessionsToCleanup.length} additional sessions for user ${username}. Cleaning up orphaned sessions.`);
+      
+      userSessionsToCleanup.forEach(orphanedClient => {
+        try {
+          // Send a message to any orphaned clients
+          orphanedClient.connection.write('\r\n\x1b[31mYour session has been terminated because you have logged in from another location.\x1b[0m\r\n');
+          
+          // End the connection
+          orphanedClient.connection.end();
+        } catch (error) {
+          systemLogger.error(`Error cleaning up orphaned session: ${error}`);
+        }
+      });
+    }
+    
     // Unregister the user session
     userManager.unregisterUserSession(username);
     
@@ -458,79 +557,28 @@ function handleClientDisconnect(client: ConnectedClient, clientId: string, broad
       broadcastSystemMessage(`${formattedUsername} has left the game.`, client);
     }
   }
+  
+  // Finally, remove this client from the clients map
   clients.delete(clientId);
 }
 
 // Unified handler for client data (both TELNET and WebSocket)
 function handleClientData(client: ConnectedClient, data: string): void {
-  // Check if input is blocked by an admin - stricter implementation
+  // Check if input is blocked by an admin - strict implementation
   if (client.isInputBlocked === true && client.authenticated) {
-    // Allow only special terminal control commands for UI responsiveness
-    // Ctrl+C, Ctrl+Z and other essential control sequences should still work
+    // Silently block ALL input when input is disabled by admin, including:
+    // - Printable characters
+    // - Control characters (backspace, enter)
+    // - Navigation keys (arrow keys)
+    // This prevents any user interaction with the terminal
     
-    // For all normal input, show message and prevent further processing
-    if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) <= 126) {
-      // Only show the message for printable characters, not for every control sequence
-      client.connection.write('\r\n\x1b[33mYour input has been disabled by an admin.\x1b[0m\r\n');
-      
-      // Re-display the prompt
-      const promptText = getPromptText(client);
-      client.connection.write(promptText);
-      if (client.buffer.length > 0) {
-        client.connection.write(client.buffer);
-      }
-      
-      return; // Block further processing
+    // Only allow Ctrl+C to work for emergency exit
+    if (data === '\u0003') { // Ctrl+C
+      return; // Let it pass through for terminal safety
     }
     
-    // For Enter key, still notify but don't process commands
-    if (data === '\r' || data === '\n' || data === '\r\n') {
-      if (client.buffer.length > 0) {
-        client.connection.write('\r\n\x1b[33mYour input has been disabled by an admin.\x1b[0m\r\n');
-        
-        // Clear the buffer
-        client.buffer = '';
-        client.cursorPos = 0;
-        
-        // Re-display prompt
-        const promptText = getPromptText(client);
-        client.connection.write(promptText);
-        
-        return; // Block further processing
-      }
-    }
-    
-    // Allow backspace to clear input buffer, but don't run commands
-    if (data === '\b' || data === '\x7F') {
-      // Let backspace work normally to provide responsive terminal feel
-      if (client.buffer.length > 0) {
-        // Initialize cursor position if not defined
-        if (client.cursorPos === undefined) {
-          client.cursorPos = client.buffer.length;
-        }
-        
-        if (client.cursorPos > 0) {
-          if (client.cursorPos === client.buffer.length) {
-            client.buffer = client.buffer.slice(0, -1);
-            client.cursorPos--;
-            client.connection.write('\b \b');
-          } else {
-            const newBuffer = client.buffer.slice(0, client.cursorPos - 1) + client.buffer.slice(client.cursorPos);
-            redrawInputLine(client, newBuffer, client.cursorPos - 1);
-          }
-        }
-      }
-      return; // Block further processing
-    }
-    
-    // Allow arrow keys and other navigation controls for better UX
-    if (data.startsWith('\u001b[') || data.startsWith('\u001bO')) {
-      // Process navigation keys normally
-      // They won't execute commands, just improve UX
-    } else {
-      // Block all other input when input is disabled
-      return;
-    }
+    // Block everything else silently, no messages, no processing
+    return;
   }
   
   // Start buffering output when user begins typing
@@ -1135,6 +1183,346 @@ function createSystemMessageBox(message: string): string {
   return result;
 }
 
+// Function to start a monitoring session for a user
+function startMonitoringSession(
+  targetClient: ConnectedClient, 
+  targetClientId: string, 
+  username: string, 
+  monitorConsoleTransport: winston.transport | null, 
+  mainKeyListener: (key: string) => void
+): void {
+  let userSudoEnabled = false; // Track if sudo access is enabled
+  
+  console.log('=== Monitoring Session Controls ===');
+  console.log('a: Send admin command');
+  console.log('s: Toggle stop user input');
+  console.log('m: Send admin message');
+  console.log('k: Kick user');
+  console.log('u: Toggle sudo access');
+  console.log('c: Cancel monitoring');
+  console.log('Ctrl+C: Cancel monitoring');
+  console.log('===============================\n');
+  
+  // Flag the client as being monitored
+  targetClient.isBeingMonitored = true;
+  
+  // Function to close the monitoring session
+  const closeMonitoring = () => {
+    // Remove monitoring status
+    targetClient.isBeingMonitored = false;
+    
+    // Ensure user input is re-enabled
+    if (targetClient.isInputBlocked) {
+      targetClient.isInputBlocked = false;
+      targetClient.connection.write('\r\n\x1b[33mYour input ability has been restored.\x1b[0m\r\n');
+      
+      // Redisplay the prompt for the user
+      const promptText = getPromptText(targetClient);
+      targetClient.connection.write(promptText);
+      if (targetClient.buffer.length > 0) {
+        targetClient.connection.write(targetClient.buffer);
+      }
+    }
+    
+    // Remove sudo access if it was granted
+    if (userSudoEnabled && targetClient.user) {
+      // Use the static activeAdmins Set directly since setUserAdminStatus doesn't exist
+      (SudoCommand as any).activeAdmins.delete(targetClient.user.username.toLowerCase());
+      systemLogger.info(`Removed temporary sudo access from user: ${username}`);
+    }
+    
+    // Clean up console and event listeners
+    console.log('\nMonitoring session ended.');
+    
+    // Restore console logging
+    if (monitorConsoleTransport) {
+      systemLogger.add(monitorConsoleTransport);
+      systemLogger.info('Console logging restored. Monitoring session ended.');
+    }
+    
+    // Restore the main key listener
+    process.stdin.removeAllListeners('data');
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+    process.stdin.on('data', mainKeyListener);
+  };
+  
+  // Create a hook to intercept and display client output for the admin
+  const originalWrite = targetClient.connection.write;
+  targetClient.connection.write = function(data) {
+    // Call the original write function
+    originalWrite.call(this, data);
+    
+    // Also write to the console
+    process.stdout.write(data);
+    
+    // Return the original result
+    return true;
+  };
+  
+  // Set up handler for monitoring session keys
+  const monitorKeyHandler = (key: string) => {
+    // Handle Ctrl+C or 'c' to cancel monitoring
+    if (key === '\u0003' || key.toLowerCase() === 'c') {
+      // Restore the original write function
+      targetClient.connection.write = originalWrite;
+      
+      // Close the monitoring session
+      closeMonitoring();
+      return;
+    }
+    
+    // Handle 's' to toggle blocking user input
+    if (key.toLowerCase() === 's') {
+      // Toggle the input blocking state
+      targetClient.isInputBlocked = !targetClient.isInputBlocked;
+      
+      // Notify admin of the change
+      console.log(`\nUser input ${targetClient.isInputBlocked ? 'disabled' : 'enabled'}.`);
+      
+      // Notify the user
+      if (targetClient.isInputBlocked) {
+        targetClient.connection.write('\r\n\x1b[33mAn admin has temporarily disabled your input ability.\x1b[0m\r\n');
+      } else {
+        targetClient.connection.write('\r\n\x1b[33mAn admin has re-enabled your input ability.\x1b[0m\r\n');
+      }
+      
+      // Re-display the prompt for the user
+      const promptText = getPromptText(targetClient);
+      targetClient.connection.write(promptText);
+      if (targetClient.buffer.length > 0) {
+        targetClient.connection.write(targetClient.buffer);
+      }
+      
+      return;
+    }
+    
+    // Handle 'a' to send admin command
+    if (key.toLowerCase() === 'a') {
+      // Temporarily remove the key handler to allow command input
+      process.stdin.removeListener('data', monitorKeyHandler);
+      
+      // Set input mode to line input
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      
+      // Create readline interface for command input
+      console.log('\n=== Admin Command ===');
+      console.log('Enter command to execute as user (Ctrl+C to cancel):');
+      
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      
+      // Get the command
+      rl.question('> ', (command) => {
+        rl.close();
+        
+        if (command.trim()) {
+          console.log(`Executing command: ${command}`);
+          
+          // Execute the command as the user
+          
+          // If the user is currently typing something, clear their input first
+          if (targetClient.buffer.length > 0) {
+            // Get the current prompt length
+            const promptText = getPromptText(targetClient);
+            const promptLength = promptText.length;
+            
+            // Clear the entire line and return to beginning
+            targetClient.connection.write('\r' + ' '.repeat(promptLength + targetClient.buffer.length) + '\r');
+            
+            // Redisplay the prompt (since we cleared it as well)
+            targetClient.connection.write(promptText);
+            
+            // Clear the buffer
+            targetClient.buffer = '';
+          }
+          
+          // Notify user of admin command
+          targetClient.connection.write(`\r\n\x1b[33mAdmin executed: ${command}\x1b[0m\r\n`);
+          
+          // Execute the command directly
+          processInput(targetClient, command);
+        } else {
+          console.log('Command was empty, not executing.');
+        }
+        
+        // Restore raw mode and the key handler
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        process.stdin.on('data', monitorKeyHandler);
+      });
+      
+      return;
+    }
+    
+    // Handle 'm' to send admin message
+    if (key.toLowerCase() === 'm') {
+      // Temporarily remove the key handler to allow message input
+      process.stdin.removeListener('data', monitorKeyHandler);
+      
+      // Set input mode to line input
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      
+      // Create readline interface for message input
+      console.log('\n=== Admin Message ===');
+      console.log('Enter message to send to user (Ctrl+C to cancel):');
+      
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      
+      // Get the message
+      rl.question('> ', (message) => {
+        rl.close();
+        
+        if (message.trim()) {
+          console.log(`Sending message to user: ${message}`);
+          
+          // Create a boxed message
+          const boxedMessage = createAdminMessageBox(message);
+          
+          // Send the message to the user
+          writeMessageToClient(targetClient, boxedMessage);
+          
+          // Log the admin message
+          systemLogger.info(`Admin sent message to user ${username}: ${message}`);
+        } else {
+          console.log('Message was empty, not sending.');
+        }
+        
+        // Restore raw mode and the key handler
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        process.stdin.on('data', monitorKeyHandler);
+      });
+      
+      return;
+    }
+    
+    // Handle 'k' to kick the user
+    if (key.toLowerCase() === 'k') {
+      // Ask for confirmation
+      // Temporarily remove the key handler to allow confirmation input
+      process.stdin.removeListener('data', monitorKeyHandler);
+      
+      // Set input mode to line input
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      
+      // Create readline interface for confirmation
+      console.log(`\n=== Kick User ===`);
+      console.log(`Are you sure you want to kick ${username}? (y/n)`);
+      
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      
+      // Get confirmation
+      rl.question('> ', (answer) => {
+        rl.close();
+        
+        if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+          console.log(`Kicking user: ${username}`);
+          
+          // Notify the user they're being kicked
+          targetClient.connection.write('\r\n\x1b[31mYou are being disconnected by an administrator.\x1b[0m\r\n');
+          
+          // Log the kick
+          systemLogger.info(`Admin kicked user: ${username}`);
+          
+          // Restore the original write function before disconnecting
+          targetClient.connection.write = originalWrite;
+          
+          // Disconnect the user (with slight delay to ensure they see the message)
+          setTimeout(() => {
+            targetClient.connection.end();
+          }, 1000);
+          
+          // Close the monitoring session
+          closeMonitoring();
+          return;
+        } else {
+          console.log('Kick cancelled.');
+          
+          // Restore raw mode and the key handler
+          if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+          }
+          process.stdin.resume();
+          process.stdin.on('data', monitorKeyHandler);
+        }
+      });
+      
+      return;
+    }
+    
+    // Handle 'u' to toggle sudo access
+    if (key.toLowerCase() === 'u') {
+      if (!targetClient.user) {
+        console.log('\nCannot grant sudo access: user not authenticated.');
+        return;
+      }
+      
+      // Toggle sudo access
+      userSudoEnabled = !userSudoEnabled;
+      
+      if (userSudoEnabled) {
+        // Grant temporary sudo access using SudoCommand system
+        (SudoCommand as any).activeAdmins.add(targetClient.user.username.toLowerCase());
+        console.log(`\nGranted temporary sudo access to ${username}.`);
+        targetClient.connection.write('\r\n\x1b[33mAn admin has granted you temporary sudo access.\x1b[0m\r\n');
+        
+        // Log the action
+        systemLogger.info(`Admin granted temporary sudo access to user: ${username}`);
+      } else {
+        // Remove sudo access using SudoCommand system
+        // Use the static activeAdmins Set directly since setUserAdminStatus doesn't exist
+        (SudoCommand as any).activeAdmins.delete(targetClient.user.username.toLowerCase());
+        console.log(`\nRemoved sudo access from ${username}.`);
+        targetClient.connection.write('\r\n\x1b[33mYour temporary sudo access has been revoked.\x1b[0m\r\n');
+        
+        // Log the action
+        systemLogger.info(`Admin removed sudo access from user: ${username}`);
+      }
+      
+      // Re-display the prompt for the user
+      const promptText = getPromptText(targetClient);
+      targetClient.connection.write(promptText);
+      if (targetClient.buffer.length > 0) {
+        targetClient.connection.write(targetClient.buffer);
+      }
+      
+      return;
+    }
+  };
+  
+  // Start listening for admin key presses
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', monitorKeyHandler);
+  
+  // Log the monitoring session
+  systemLogger.info(`Console admin started monitoring user: ${username}`);
+}
+
 // After gameTimerManager initialization, set up idle timeout checker
 const IDLE_CHECK_INTERVAL = 60000; // Check for idle clients every minute
 
@@ -1534,7 +1922,7 @@ let shutdownMinutes = 5;
 // Function to set up the initial key listener
 function setupKeyListener() {
   if (process.stdin.isTTY && !isLocalClientConnected) {
-    systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
+    systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 'm' to monitor user, 's' for system message, 'q' to shutdown.`);
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
@@ -1565,6 +1953,155 @@ function setupKeyListener() {
         }
         console.log(`Total connections: ${clients.size}`);
         console.log("======================\n");
+      } else if (lowerKey === 'm') {
+        // Monitor a user session
+        process.stdin.removeListener('data', keyListener);
+        
+        // Pause console logging
+        let monitorConsoleTransport: winston.transport | null = null;
+        const consoleTransport = systemLogger.transports.find(t => t instanceof winston.transports.Console);
+        if (consoleTransport) {
+          monitorConsoleTransport = consoleTransport;
+          systemLogger.remove(consoleTransport);
+          console.log("\nConsole logging paused. Starting user monitoring...");
+        }
+        
+        // Get authenticated users for monitoring
+        const authenticatedUsers: string[] = [];
+        clients.forEach((client => {
+          if (client.authenticated && client.user) {
+            authenticatedUsers.push(client.user.username);
+          }
+        }));
+        
+        if (authenticatedUsers.length === 0) {
+          console.log("\n=== Monitor User ===");
+          console.log("No authenticated users available to monitor.");
+          
+          // Restore console logging
+          if (monitorConsoleTransport) {
+            systemLogger.add(monitorConsoleTransport);
+            systemLogger.info('Console logging restored.');
+          }
+          
+          // Restore raw mode and key listener
+          if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+          }
+          process.stdin.resume();
+          process.stdin.on('data', keyListener);
+          return;
+        }
+        
+        console.log("\n=== Monitor User ===");
+        
+        // Set up user selection menu
+        let selectedIndex = 0;
+        
+        // Function to display the user selection menu
+        const displayUserSelectionMenu = () => {
+          // Display list of connected users with the selected one highlighted
+          for (let i = 0; i < authenticatedUsers.length; i++) {
+            process.stdout.write(`${i+1}. ${authenticatedUsers[i]}\n`);
+          }
+          
+          // Display the selection prompt with highlighted username
+          process.stdout.write(`\rWhich user will you monitor? `);
+          
+          // Add background highlight to selected user
+          process.stdout.write(`\x1b[47m\x1b[30m${authenticatedUsers[selectedIndex]}\x1b[0m`);
+        };
+        
+        // Display the initial menu
+        displayUserSelectionMenu();
+        
+        // Handle user selection
+        const userSelectionHandler = (selectionKey: string) => {
+          // Handle Ctrl+C - cancel and return to main menu
+          if (selectionKey === '\u0003') {
+            console.log('\n\nUser monitoring cancelled.');
+            
+            // Restore console logging
+            if (monitorConsoleTransport) {
+              systemLogger.add(monitorConsoleTransport);
+              systemLogger.info('Console logging restored.');
+            }
+            
+            // Restore raw mode and key listener
+            process.stdin.removeListener('data', userSelectionHandler);
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(true);
+            }
+            process.stdin.resume();
+            process.stdin.on('data', keyListener);
+            return;
+          }
+          
+          // Handle arrow keys for selection
+          if (selectionKey === '\u001b[A' || selectionKey === '[A' || selectionKey === '\u001bOA' || selectionKey === 'OA') {
+            // Up arrow - move selection up
+            selectedIndex = (selectedIndex > 0) ? selectedIndex - 1 : authenticatedUsers.length - 1;
+            
+            // Clear the line and redraw
+            process.stdout.write('\r\x1B[K'); // Clear the line
+            process.stdout.write(`Which user will you monitor? \x1b[47m\x1b[30m${authenticatedUsers[selectedIndex]}\x1b[0m`);
+          }
+          else if (selectionKey === '\u001b[B' || selectionKey === '[B' || selectionKey === '\u001bOB' || selectionKey === 'OB') {
+            // Down arrow - move selection down
+            selectedIndex = (selectedIndex < authenticatedUsers.length - 1) ? selectedIndex + 1 : 0;
+            
+            // Clear the line and redraw
+            process.stdout.write('\r\x1B[K'); // Clear the line
+            process.stdout.write(`Which user will you monitor? \x1b[47m\x1b[30m${authenticatedUsers[selectedIndex]}\x1b[0m`);
+          }
+          // Handle Enter - start monitoring selected user
+          else if (selectionKey === '\r' || selectionKey === '\n') {
+            const selectedUsername = authenticatedUsers[selectedIndex];
+            console.log(`\n\nStarting monitoring session for user: ${selectedUsername}\n`);
+            
+            // Find the client object for the selected user
+            let targetClient: ConnectedClient | undefined;
+            let targetClientId: string | undefined;
+            
+            clients.forEach((client, clientId) => {
+              if (client.authenticated && client.user && client.user.username === selectedUsername) {
+                targetClient = client;
+                targetClientId = clientId;
+              }
+            });
+            
+            if (!targetClient || !targetClientId) {
+              console.log(`\nERROR: Could not find client for user ${selectedUsername}`);
+              
+              // Restore console logging
+              if (monitorConsoleTransport) {
+                systemLogger.add(monitorConsoleTransport);
+                systemLogger.info('Console logging restored.');
+              }
+              
+              // Restore raw mode and key listener
+              process.stdin.removeListener('data', userSelectionHandler);
+              if (process.stdin.isTTY) {
+                process.stdin.setRawMode(true);
+              }
+              process.stdin.resume();
+              process.stdin.on('data', keyListener);
+              return;
+            }
+            
+            // Remove the user selection handler
+            process.stdin.removeListener('data', userSelectionHandler);
+            
+            // Start the monitoring session
+            startMonitoringSession(targetClient, targetClientId, selectedUsername, monitorConsoleTransport, keyListener);
+          }
+        };
+        
+        // Listen for user selection input
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.on('data', userSelectionHandler);
       } else if (lowerKey === 's') {
         // Remove the key listener temporarily
         process.stdin.removeListener('data', keyListener);
@@ -1640,7 +2177,7 @@ function setupKeyListener() {
           
           // Display options again
           console.log(); // Add a blank line for better readability
-          systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
+          systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 'm' to monitor user, 's' for system message, 'q' to shutdown.`);
         });
       } else if (lowerKey === 'q') {
         // Rather than immediate shutdown, show shutdown options
@@ -1867,6 +2404,7 @@ function setupKeyListener() {
           console.log("  c: Connect locally");
           console.log("  a: Admin session");
           console.log("  u: List connected users");
+          console.log("  m: Monitor user");
           console.log("  s: Send system message");
           console.log("  q: Shutdown server");
           console.log("  Ctrl+C: Shutdown server");
@@ -1962,8 +2500,6 @@ function startShutdownTimer(minutes: number): void {
   
   console.log(`Shutdown timer set for ${minutes} minutes.`);
 }
-
-// Helper function to cancel shutdown and restore normal operation
 function cancelShutdownAndRestoreLogging(consoleTransport: winston.transport | null, keyListener: (key: string) => void): void {
   // Cancel any active shutdown timer
   if (shutdownTimer) {
@@ -2001,7 +2537,7 @@ function cancelShutdownAndRestoreLogging(consoleTransport: winston.transport | n
   }
   
   // Display options again
-  systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
+  systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 'm' to monitor user, 's' for system message, 'q' to shutdown.`);
 }
 
 const startServer = async () => {
