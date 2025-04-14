@@ -498,8 +498,17 @@ export class GameServer {
     // Clear the idle check interval
     clearInterval(this.idleCheckInterval);
     
-    // Force a final save
-    this.gameTimerManager.forceSave();
+    try {
+      // Save the data directly instead of using gameTimerManager.forceSave()
+      // This avoids the error with this.roomManager.forceSave not being a function
+      this.userManager.forceSave();
+      this.roomManager.forceSave();
+      
+      // Log successful save
+      systemLogger.info('Game data saved successfully during shutdown');
+    } catch (error) {
+      systemLogger.error('Error saving data during shutdown:', error);
+    }
     
     // Stop server components
     this.telnetServer.stop();

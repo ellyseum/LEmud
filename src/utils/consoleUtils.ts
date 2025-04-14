@@ -14,6 +14,14 @@ export function readPasswordFromConsole(prompt: string): Promise<string> {
     
     // Save the current settings
     const originalStdinIsTTY = stdin.isTTY;
+    const originalRawMode = originalStdinIsTTY ? stdin.isRaw : false;
+    
+    // Define the proper type for data listeners
+    type DataListener = (chunk: Buffer) => void;
+    
+    // Store and remove existing listeners to prevent interference
+    const existingListeners = stdin.listeners('data').slice() as DataListener[];
+    stdin.removeAllListeners('data');
     
     // Write the prompt first
     stdout.write(prompt);
@@ -31,6 +39,10 @@ export function readPasswordFromConsole(prompt: string): Promise<string> {
           stdin.setRawMode(false);
         }
         stdin.removeListener('data', onData);
+        
+        // Restore original listeners
+        restoreConsoleState();
+        
         process.exit(1);
       }
       
@@ -41,6 +53,10 @@ export function readPasswordFromConsole(prompt: string): Promise<string> {
           stdin.setRawMode(false);
         }
         stdin.removeListener('data', onData);
+        
+        // Restore original listeners
+        restoreConsoleState();
+        
         resolve(password);
         return;
       }
@@ -60,6 +76,18 @@ export function readPasswordFromConsole(prompt: string): Promise<string> {
         password += keyStr;
         stdout.write('*');
       }
+    };
+    
+    // Function to restore console state
+    const restoreConsoleState = () => {
+      // Delay restoration to ensure it doesn't interfere with the current operation
+      process.nextTick(() => {
+        if (originalStdinIsTTY) {
+          stdin.setRawMode(originalRawMode);
+        }
+        // Re-attach the original listeners
+        existingListeners.forEach(listener => stdin.on('data', listener));
+      });
     };
     
     // Enable raw mode to prevent terminal echo
