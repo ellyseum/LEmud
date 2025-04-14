@@ -28,11 +28,11 @@ import { CombatSystem } from './combat/combatSystem';
 import { AdminLevel } from './command/commands/adminmanage.command';
 import { SnakeGameState } from './states/snake-game.state';
 import { systemLogger, getPlayerLogger } from './utils/logger'; // Import loggers
+import config from './config'; // Import configuration
 const { SudoCommand } = require('./command/commands/sudo.command');
 
-const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
-const WS_PORT = 8080; // WebSocket port
-let actualTelnetPort = TELNET_PORT; // Store the actual port used
+// Use values from config instead of hardcoded values
+let actualTelnetPort = config.TELNET_PORT; // Store the actual port used
 
 // --- Local Client Connection State ---
 let isLocalClientConnected = false;
@@ -53,8 +53,8 @@ const gameTimerManager = GameTimerManager.getInstance(userManager, roomManager);
 // Share the global clients map with SnakeGameState
 SnakeGameState.setGlobalClients(clients);
 
-// Secret key for JWT tokens - same as in adminApi.ts
-const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
+// Secret key for JWT tokens - from config
+const JWT_SECRET = config.JWT_SECRET;
 
 // Create server statistics
 const serverStats: ServerStats = {
@@ -72,13 +72,13 @@ const serverStats: ServerStats = {
   }
 };
 
-// Update server stats every 5 seconds
+// Update server stats every interval defined in config
 setInterval(() => {
   serverStats.uptime = Math.floor((Date.now() - serverStats.startTime.getTime()) / 1000);
   serverStats.connectedClients = clients.size;
   serverStats.authenticatedUsers = Array.from(clients.values()).filter(c => c.authenticated).length;
   serverStats.memoryUsage = process.memoryUsage();
-}, 5000);
+}, config.SERVER_STATS_UPDATE_INTERVAL);
 
 // Create the Express app for the HTTP server
 const app = express();
@@ -109,7 +109,7 @@ app.get('/api/admin/mud-config', AdminApi.validateToken, AdminApi.getMUDConfig()
 app.post('/api/admin/mud-config', AdminApi.validateToken, AdminApi.updateMUDConfig());
 
 // Serve static files from the public directory
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(config.PUBLIC_DIR));
 
 // Serve xterm.js files from node_modules
 app.use('/node_modules', express.static(path.join(__dirname, '..', 'node_modules')));
@@ -2635,15 +2635,15 @@ const startServer = async () => {
 
   telnetServer.on('error', (err: Error & {code?: string}) => {
     if (err.code === 'EADDRINUSE') {
-      systemLogger.error(`Port ${TELNET_PORT} is already in use. Is another instance running?`);
-      systemLogger.info(`Trying alternative port ${TELNET_PORT + 1}...`);
-      telnetServer.listen(TELNET_PORT + 1);
+      systemLogger.error(`Port ${config.TELNET_PORT} is already in use. Is another instance running?`);
+      systemLogger.info(`Trying alternative port ${config.TELNET_PORT + 1}...`);
+      telnetServer.listen(config.TELNET_PORT + 1);
     } else {
       systemLogger.error('TELNET server error:', err);
     }
   });
 
-  telnetServer.listen(TELNET_PORT, () => {
+  telnetServer.listen(config.TELNET_PORT, () => {
     const address = telnetServer.address();
     if (address && typeof address !== 'string') {
       systemLogger.info(`TELNET server running on port ${address.port}`);
@@ -2658,9 +2658,9 @@ const startServer = async () => {
   
   httpServer.on('error', (err: Error & {code?: string}) => {
     if (err.code === 'EADDRINUSE') {
-      systemLogger.error(`Port ${WS_PORT} is already in use. Is another instance running?`);
-      systemLogger.info(`Trying alternative port ${WS_PORT + 1}...`);
-      httpServer.listen(WS_PORT + 1);
+      systemLogger.error(`Port ${config.WS_PORT} is already in use. Is another instance running?`);
+      systemLogger.info(`Trying alternative port ${config.WS_PORT + 1}...`);
+      httpServer.listen(config.WS_PORT + 1);
     } else {
       systemLogger.error('HTTP server error:', err);
     }
@@ -2847,7 +2847,7 @@ const startServer = async () => {
     });
   });
   
-  httpServer.listen(WS_PORT, () => {
+  httpServer.listen(config.WS_PORT, () => {
     const address = httpServer.address();
     if (address && typeof address !== 'string') {
       systemLogger.info(`HTTP and Socket.IO server running on port ${address.port}`);

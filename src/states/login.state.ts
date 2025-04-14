@@ -2,7 +2,7 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
-import { config } from '../config';
+import config from '../config';
 import { formatUsername, standardizeUsername } from '../utils/formatters';
 
 export class LoginState implements ClientState {
