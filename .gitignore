@@ -4,9 +4,3 @@ data/users.json
 data/admin.json
 logs
 dist
-
-# loco testing files
-u1
-u2
-test/user1
-test/user2
