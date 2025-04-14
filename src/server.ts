@@ -1526,6 +1526,11 @@ function startLocalAdminSession(port: number) {
   });
 }
 
+// Add shutdown timer state variables
+let shutdownTimerActive = false;
+let shutdownTimer: NodeJS.Timeout | null = null;
+let shutdownMinutes = 5;
+
 // Function to set up the initial key listener
 function setupKeyListener() {
   if (process.stdin.isTTY && !isLocalClientConnected) {
@@ -1638,8 +1643,218 @@ function setupKeyListener() {
           systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
         });
       } else if (lowerKey === 'q') {
-        console.log("\nShutting down server by request...");
-        process.kill(process.pid, 'SIGINT');
+        // Rather than immediate shutdown, show shutdown options
+        process.stdin.removeListener('data', keyListener);
+        
+        // Pause console logging
+        let shutdownConsoleTransport: winston.transport | null = null;
+        const consoleTransport = systemLogger.transports.find(t => t instanceof winston.transports.Console);
+        if (consoleTransport) {
+          shutdownConsoleTransport = consoleTransport;
+          systemLogger.remove(consoleTransport);
+        }
+        
+        console.log("\n=== Shutdown Options ===");
+        console.log("  q: Shutdown immediately");
+        console.log("  m: Shutdown with message");
+        console.log("  t: Shutdown timer");
+        // Show abort option only if a shutdown timer is active
+        if (shutdownTimerActive && shutdownTimer) {
+          console.log("  a: Abort current shutdown");
+        }
+        console.log("  c: Cancel");
+        
+        // Create a special key handler for the shutdown menu
+        const shutdownMenuHandler = (shutdownKey: string) => {
+          const shutdownOption = shutdownKey.toLowerCase();
+          
+          if (shutdownOption === 'q') {
+            // Immediate shutdown - original behavior
+            console.log("\nShutting down server by request...");
+            process.kill(process.pid, 'SIGINT');
+          } 
+          else if (shutdownOption === 't') {
+            // Remove the shutdown menu handler
+            process.stdin.removeListener('data', shutdownMenuHandler);
+            
+            // Set initial timer value
+            shutdownMinutes = 5;
+            
+            // Show timer input
+            showShutdownTimerPrompt(shutdownMinutes);
+            
+            // Handle timer value changes
+            const timerInputHandler = (timerKey: string) => {
+              if (timerKey === '\u0003') {
+                // Ctrl+C cancels and returns to regular operation
+                cancelShutdownAndRestoreLogging(shutdownConsoleTransport, keyListener);
+              }
+              else if (timerKey.toLowerCase() === 'c') {
+                // Cancel timer
+                cancelShutdownAndRestoreLogging(shutdownConsoleTransport, keyListener);
+              }
+              else if (timerKey === '\r' || timerKey === '\n') {
+                // Enter confirms the timer
+                process.stdin.removeListener('data', timerInputHandler);
+                
+                // Start the shutdown timer
+                startShutdownTimer(shutdownMinutes);
+                
+                // Restore logging and main key listener
+                if (shutdownConsoleTransport) {
+                  systemLogger.add(shutdownConsoleTransport);
+                  systemLogger.info(`Console logging restored. Server will shutdown in ${shutdownMinutes} minutes.`);
+                }
+                
+                // Restore regular key listener
+                process.stdin.on('data', keyListener);
+                if (process.stdin.isTTY) {
+                  process.stdin.setRawMode(true);
+                }
+              }
+              // Handle arrow keys for adjusting the time value
+              else if (timerKey === '\u001b[A' || timerKey === '[A' || timerKey === '\u001bOA' || timerKey === 'OA') {
+                // Up arrow - increment by 1
+                shutdownMinutes = Math.max(1, shutdownMinutes + 1);
+                showShutdownTimerPrompt(shutdownMinutes);
+              }
+              else if (timerKey === '\u001b[B' || timerKey === '[B' || timerKey === '\u001bOB' || timerKey === 'OB') {
+                // Down arrow - decrement by 1
+                shutdownMinutes = Math.max(1, shutdownMinutes - 1);
+                showShutdownTimerPrompt(shutdownMinutes);
+              }
+              else if (timerKey === '\u001b[1;2A' || timerKey === '[1;2A') {
+                // Shift+Up arrow - increment by 10
+                shutdownMinutes = Math.max(1, shutdownMinutes + 10);
+                showShutdownTimerPrompt(shutdownMinutes);
+              }
+              else if (timerKey === '\u001b[1;2B' || timerKey === '[1;2B') {
+                // Shift+Down arrow - decrement by 10
+                shutdownMinutes = Math.max(1, shutdownMinutes - 10);
+                showShutdownTimerPrompt(shutdownMinutes);
+              }
+            };
+            
+            // Listen for timer input
+            process.stdin.on('data', timerInputHandler);
+          }
+          else if (shutdownOption === 'm') {
+            // Remove the shutdown menu handler
+            process.stdin.removeListener('data', shutdownMenuHandler);
+            
+            // Temporarily remove raw mode to get text input
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(false);
+            }
+            
+            console.log("\n=== Shutdown with Message ===");
+            console.log("Enter message to send to all users before shutdown:");
+            
+            // Create a readline interface for getting user input
+            const rl = readline.createInterface({
+              input: process.stdin,
+              output: process.stdout
+            });
+            
+            // Get the shutdown message
+            rl.question('> ', (message) => {
+              rl.close();
+              
+              if (message.trim()) {
+                console.log("\nSending message and shutting down server...");
+                
+                // Create the boxed system message
+                const boxedMessage = createSystemMessageBox(message);
+                
+                // Send to all connected users
+                let sentCount = 0;
+                clients.forEach(client => {
+                  if (client.authenticated) {
+                    writeMessageToClient(client, boxedMessage);
+                    sentCount++;
+                  }
+                });
+                
+                console.log(`Message sent to ${sentCount} users.`);
+                
+                // Log the message
+                systemLogger.info(`Shutdown message broadcast: "${message}"`);
+                
+                // Give users a moment to read the message, then shutdown
+                console.log("Shutting down in 5 seconds...");
+                setTimeout(() => {
+                  process.kill(process.pid, 'SIGINT');
+                }, 5000);
+              } else {
+                console.log("Message was empty. Proceeding with immediate shutdown...");
+                process.kill(process.pid, 'SIGINT');
+              }
+            });
+          }
+          else if (shutdownOption === 'a' && shutdownTimerActive && shutdownTimer) {
+            // Abort the current shutdown timer
+            console.log("\nAborting current shutdown timer...");
+            
+            // Cancel the active shutdown timer
+            if (shutdownTimer) {
+              clearTimeout(shutdownTimer);
+              shutdownTimer = null;
+            }
+            
+            // Send message to all users that shutdown has been aborted
+            const abortMessage = "The scheduled server shutdown has been aborted.";
+            const boxedMessage = createSystemMessageBox(abortMessage);
+            
+            clients.forEach(client => {
+              if (client.authenticated) {
+                writeMessageToClient(client, boxedMessage);
+              }
+            });
+            
+            // Reset shutdown state
+            shutdownTimerActive = false;
+            
+            // Restore console logging
+            if (shutdownConsoleTransport) {
+              systemLogger.add(shutdownConsoleTransport);
+              systemLogger.info('Console logging restored. Shutdown timer aborted.');
+            }
+            
+            // Clean up and restore main key listener
+            process.stdin.removeListener('data', shutdownMenuHandler);
+            process.stdin.on('data', keyListener);
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(true);
+            }
+            
+            // Log the abort action
+            systemLogger.info('Scheduled shutdown aborted by console command.');
+          }
+          else if (shutdownOption === 'c') {
+            // Cancel shutdown
+            cancelShutdownAndRestoreLogging(shutdownConsoleTransport, keyListener);
+          }
+          else if (shutdownKey === '\u0003') {
+            // Ctrl+C cancels and returns to regular operation
+            cancelShutdownAndRestoreLogging(shutdownConsoleTransport, keyListener);
+          }
+          else {
+            // Any other key - just redisplay the options
+            console.log(`\nUnrecognized option (${shutdownOption})`);
+            console.log("\n=== Shutdown Options ===");
+            console.log("  q: Shutdown immediately");
+            console.log("  m: Shutdown with message");
+            console.log("  t: Shutdown timer");
+            // Show abort option only if a shutdown timer is active
+            if (shutdownTimerActive && shutdownTimer) {
+              console.log("  a: Abort current shutdown");
+            }
+            console.log("  c: Cancel");
+          }
+        };
+        
+        // Listen for shutdown menu input
+        process.stdin.on('data', shutdownMenuHandler);
       } else if (key === '\u0003') {
         systemLogger.info('Ctrl+C detected. Shutting down server...');
         process.kill(process.pid, 'SIGINT');
@@ -1663,6 +1878,130 @@ function setupKeyListener() {
   } else if (!process.stdin.isTTY) {
     systemLogger.info('Not running in a TTY, local client connection disabled.');
   }
+}
+
+// Helper function to display the shutdown timer prompt with highlighted value
+function showShutdownTimerPrompt(minutes: number): void {
+  // Clear the line and return to the beginning using ANSI codes
+  process.stdout.write('\r\x1B[2K'); // \r: carriage return, \x1B[2K: clear entire line
+  process.stdout.write(`Shutdown when? In \x1b[47m\x1b[30m${minutes}\x1b[0m minute${minutes === 1 ? '' : 's'}. (Enter to confirm, 'c' to cancel)`);
+}
+
+// Helper function to start the shutdown timer
+function startShutdownTimer(minutes: number): void {
+  // Cancel any existing timer
+  if (shutdownTimer) {
+    clearTimeout(shutdownTimer);
+  }
+  
+  // Set the flag
+  shutdownTimerActive = true;
+  
+  // Send a system message to all users notifying them of the shutdown
+  const shutdownMessage = `The server will be shutting down in ${minutes} minute${minutes !== 1 ? 's' : ''}.`;
+  const boxedMessage = createSystemMessageBox(shutdownMessage);
+  
+  // Send to all connected users
+  clients.forEach(client => {
+    if (client.authenticated) {
+      writeMessageToClient(client, boxedMessage);
+    }
+  });
+  
+  // Log the scheduled shutdown
+  systemLogger.info(`Server shutdown scheduled in ${minutes} minutes.`);
+  
+  // Create a countdown that sends updates every minute
+  let remainingMinutes = minutes;
+  
+  const updateCountdown = () => {
+    remainingMinutes--;
+    
+    if (remainingMinutes > 0) {
+      // Send a reminder if at least one minute remains
+      if (remainingMinutes === 1 || remainingMinutes === 2 || remainingMinutes === 5 || 
+          remainingMinutes === 10 || remainingMinutes === 15 || remainingMinutes === 30) {
+        const reminderMessage = `The server will be shutting down in ${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}.`;
+        const boxedReminder = createSystemMessageBox(reminderMessage);
+        
+        clients.forEach(client => {
+          if (client.authenticated) {
+            writeMessageToClient(client, boxedReminder);
+          }
+        });
+        
+        systemLogger.info(`Shutdown reminder: ${remainingMinutes} minutes remaining.`);
+      }
+      
+      // Schedule the next update
+      shutdownTimer = setTimeout(updateCountdown, 60000); // 1 minute
+    } else {
+      // Time's up, shut down
+      const finalMessage = "The server is shutting down now. Thank you for playing!";
+      const boxedFinal = createSystemMessageBox(finalMessage);
+      
+      clients.forEach(client => {
+        if (client.authenticated) {
+          writeMessageToClient(client, boxedFinal);
+        }
+      });
+      
+      systemLogger.info("Shutdown timer completed. Shutting down server...");
+      
+      // Give users a moment to see the final message
+      setTimeout(() => {
+        process.kill(process.pid, 'SIGINT');
+      }, 2000);
+    }
+  };
+    
+  // Start the countdown updates if more than 1 minute
+  if (minutes > 0) {
+    shutdownTimer = setTimeout(updateCountdown, 60000); // Start after 1 minute
+  }
+  
+  console.log(`Shutdown timer set for ${minutes} minutes.`);
+}
+
+// Helper function to cancel shutdown and restore normal operation
+function cancelShutdownAndRestoreLogging(consoleTransport: winston.transport | null, keyListener: (key: string) => void): void {
+  // Cancel any active shutdown timer
+  if (shutdownTimer) {
+    clearTimeout(shutdownTimer);
+    shutdownTimer = null;
+  }
+  
+  shutdownTimerActive = false;
+  
+  console.log("\nShutdown cancelled.");
+  
+  // Restore console logging
+  if (consoleTransport) {
+    systemLogger.add(consoleTransport);
+    systemLogger.info('Console logging restored. Shutdown cancelled.');
+  }
+  
+  // If a shutdown was in progress, notify users
+  if (shutdownTimerActive) {
+    const cancelMessage = "The scheduled server shutdown has been cancelled.";
+    const boxedMessage = createSystemMessageBox(cancelMessage);
+    
+    clients.forEach(client => {
+      if (client.authenticated) {
+        writeMessageToClient(client, boxedMessage);
+      }
+    });
+  }
+  
+  // Clean up input handlers and restore main key listener
+  process.stdin.removeAllListeners('data');
+  process.stdin.on('data', keyListener);
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  
+  // Display options again
+  systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
 }
 
 const startServer = async () => {
