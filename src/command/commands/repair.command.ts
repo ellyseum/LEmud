@@ -4,6 +4,7 @@ import { ConnectedClient } from "../../types";
 import { colorize } from "../../utils/colors";
 import { ItemManager } from "../../utils/itemManager";
 import { writeToClient } from "../../utils/socketWriter";
+import { stripColorCodes, colorizeItemName } from "../../utils/itemNameColorizer";
 
 export class RepairCommand implements Command {
   name = "repair";
@@ -65,9 +66,17 @@ export class RepairCommand implements Command {
               this.itemManager.repairItem(itemId, repairAmount);
               
               itemsRepaired++;
-              responseMessage += colorize(`Repaired ${this.itemManager.getItemDisplayName(itemId)} for ${repairCost} gold.\r\n`, "green");
+              // Get the raw item name
+              const rawItemName = this.itemManager.getItemDisplayName(itemId);
+              // Apply color formatting using colorizeItemName
+              const colorizedName = colorizeItemName(rawItemName);
+              responseMessage += colorize("Repaired ", "green") + colorizedName + colorize(` for ${repairCost} gold.\r\n`, "green");
             } else {
-              responseMessage += colorize(`You need ${repairCost} gold to repair ${this.itemManager.getItemDisplayName(itemId)}.\r\n`, "red");
+              // Get the raw item name
+              const rawItemName = this.itemManager.getItemDisplayName(itemId);
+              // Apply color formatting using colorizeItemName
+              const colorizedName = colorizeItemName(rawItemName);
+              responseMessage += colorize("You need ", "red") + colorize(`${repairCost} gold`, "yellow") + colorize(" to repair ", "red") + colorizedName + colorize(".\r\n", "red");
             }
           }
         }
@@ -91,9 +100,11 @@ export class RepairCommand implements Command {
     // Find the specific item to repair
     let itemFound = false;
     for (const itemId of client.user.inventory.items) {
-      const displayName = this.itemManager.getItemDisplayName(itemId).toLowerCase();
+      // Get the display name and strip color codes before comparison
+      const displayName = this.itemManager.getItemDisplayName(itemId);
+      const plainDisplayName = stripColorCodes(displayName).toLowerCase();
       
-      if (displayName.includes(itemName.toLowerCase())) {
+      if (plainDisplayName.includes(itemName.toLowerCase())) {
         itemFound = true;
         const instance = this.itemManager.getItemInstance(itemId);
         
@@ -106,7 +117,10 @@ export class RepairCommand implements Command {
         const currentDurability = instance.properties.durability.current;
         
         if (currentDurability >= maxDurability) {
-          writeToClient(client, colorize(`${this.itemManager.getItemDisplayName(itemId)} is already in perfect condition.\r\n`, "green"));
+          // Get the raw item name and apply color formatting
+          const rawItemName = this.itemManager.getItemDisplayName(itemId);
+          const colorizedName = colorizeItemName(rawItemName);
+          writeToClient(client, colorize("", "green") + colorizedName + colorize(" is already in perfect condition.\r\n", "green"));
           return;
         }
         
@@ -131,7 +145,10 @@ export class RepairCommand implements Command {
         const repairAmount = maxDurability - currentDurability;
         this.itemManager.repairItem(itemId, repairAmount);
         
-        writeToClient(client, colorize(`You repaired ${this.itemManager.getItemDisplayName(itemId)} for ${repairCost} gold.\r\n`, "green"));
+        // Get the raw item name and apply color formatting
+        const rawItemName = this.itemManager.getItemDisplayName(itemId);
+        const colorizedName = colorizeItemName(rawItemName);
+        writeToClient(client, colorize("You repaired ", "green") + colorizedName + colorize(` for ${repairCost} gold.\r\n`, "green"));
         return;
       }
     }
