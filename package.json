@@ -1,7 +1,7 @@
 {
-  "name": "telnet-game-server",
-  "version": "1.0.0",
-  "description": "A TELNET server with user authentication and command system",
+  "name": "lemud",
+  "version": "0.0.1",
+  "description": "Elly Mud / LLM Engineered Multi User Dungeon",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc --build --verbose ",
