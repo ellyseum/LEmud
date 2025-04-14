@@ -1,34 +1,71 @@
 import { ConnectedClient } from '../types';
 import { Combat } from './combat';
 import { CombatEntity } from './combatEntity.interface';
-import { colorize, ColorType } from '../utils/colors';
+import { colorize } from '../utils/colors';
 import { writeFormattedMessageToClient, drawCommandPrompt, writeToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { NPC } from './npc';
 import { RoomManager } from '../room/roomManager';
 import { formatUsername } from '../utils/formatters';
-import { systemLogger, getPlayerLogger } from '../utils/logger'; // Import our loggers
+import { systemLogger, getPlayerLogger } from '../utils/logger';
 
+// Import our new components
+import { EntityTracker } from './components/EntityTracker';
+import { CombatProcessor } from './components/CombatProcessor';
+import { CombatNotifier } from './components/CombatNotifier';
+import { PlayerDeathHandler } from './components/PlayerDeathHandler';
+import { CombatEventBus } from './components/CombatEventBus';
+import { CombatCommand, CombatCommandFactory } from './components/CombatCommand';
+import { CombatState, ActiveCombatState, FleeingCombatState } from './components/CombatState';
+import { ColorType } from '../utils/colors';
+
+/**
+ * Core combat system that orchestrates combat interactions
+ */
 export class CombatSystem {
   private static instance: CombatSystem | null = null;
+  
+  // Individual combat instances per player
   private combats: Map<string, Combat> = new Map();
-  // Track entities by room ID and name to share them across players
-  private sharedEntities: Map<string, Map<string, CombatEntity>> = new Map();
-  // Track which players are targeting which entities
-  private entityTargeters: Map<string, Set<string>> = new Map();
-  // Track the last combat round each entity attacked in
-  private entityLastAttackRound: Map<string, number> = new Map();
-  // Track which entities have already attacked in the current round
-  private entitiesAttackedThisRound: Set<string> = new Set();
-  // NEW: Track entities that should be in active combat per room
-  private roomCombatEntities: Map<string, Set<string>> = new Map();
-  // Current combat round
-  private currentRound: number = 0;
+  
+  // Component instances
+  private entityTracker: EntityTracker;
+  private combatProcessor: CombatProcessor;
+  private combatNotifier: CombatNotifier;
+  private playerDeathHandler: PlayerDeathHandler;
+  private eventBus: CombatEventBus;
+  private commandFactory: CombatCommandFactory;
+  
+  // Track player combat states
+  private playerCombatStates: Map<string, CombatState> = new Map();
   
   private constructor(
     private userManager: UserManager,
     private roomManager: RoomManager
-  ) {}
+  ) {
+    // Initialize components
+    this.eventBus = new CombatEventBus();
+    this.entityTracker = new EntityTracker(roomManager);
+    this.combatNotifier = new CombatNotifier(roomManager);
+    this.combatProcessor = new CombatProcessor(
+      this.entityTracker,
+      this.combatNotifier,
+      userManager,
+      roomManager
+    );
+    this.playerDeathHandler = new PlayerDeathHandler(
+      userManager,
+      roomManager,
+      this.combatNotifier
+    );
+    this.commandFactory = new CombatCommandFactory(
+      this.combatNotifier,
+      userManager
+    );
+    
+    // Set up event listeners
+    this.setupEventListeners();
+  }
 
   /**
    * Get the singleton instance of CombatSystem
@@ -39,180 +76,31 @@ export class CombatSystem {
     }
     return CombatSystem.instance;
   }
-
+  
   /**
-   * Add an entity to the active combat entities for a room
+   * Set up event listeners for combat events
    */
-  private addEntityToCombatForRoom(roomId: string, entityName: string): void {
-    if (!this.roomCombatEntities.has(roomId)) {
-      this.roomCombatEntities.set(roomId, new Set());
-    }
-    this.roomCombatEntities.get(roomId)!.add(entityName);
-    systemLogger.info(`Added ${entityName} to active combat in room ${roomId}`);
-  }
-
-  /**
-   * Remove an entity from active combat entities for a room
-   */
-  private removeEntityFromCombatForRoom(roomId: string, entityName: string): void {
-    if (this.roomCombatEntities.has(roomId)) {
-      this.roomCombatEntities.get(roomId)!.delete(entityName);
-      systemLogger.info(`Removed ${entityName} from active combat in room ${roomId}`);
-      
-      // Clean up if no more combat entities in this room
-      if (this.roomCombatEntities.get(roomId)!.size === 0) {
-        this.roomCombatEntities.delete(roomId);
+  private setupEventListeners(): void {
+    // Listen for player death events
+    this.eventBus.on('player.damage', (data: { player: ConnectedClient, roomId: string }) => {
+      if (data.player.user && data.player.user.health <= 0) {
+        this.playerDeathHandler.handlePlayerHealth(data.player, data.roomId);
       }
-    }
+    });
+    
+    // Listen for combat end events
+    this.eventBus.on('combat.end', (username: string) => {
+      this.removeCombatForPlayer(username);
+    });
+    
+    // More event listeners can be added here
   }
-
-  /**
-   * Get all active combat entities in a room
-   */
-  private getCombatEntitiesInRoom(roomId: string): string[] {
-    if (!this.roomCombatEntities.has(roomId)) {
-      return [];
-    }
-    return Array.from(this.roomCombatEntities.get(roomId)!);
-  }
-
-  /**
-   * Check if an entity is in active combat in a room
-   */
-  private isEntityInCombat(roomId: string, entityName: string): boolean {
-    return this.roomCombatEntities.has(roomId) && 
-           this.roomCombatEntities.get(roomId)!.has(entityName);
-  }
-
-  /**
-   * Helper method to check if an NPC with a specific template ID exists in a room
-   */
-  private isNpcInRoomByTemplateId(room: any, templateId: string): boolean {
-    if (!room.npcs || !(room.npcs instanceof Map)) return false;
-    const npcs = Array.from(room.npcs.values());
-    return (npcs as NPC[]).some(npc => npc.templateId === templateId);
-  }
-
-  /**
-   * Get or create a shared entity for a room
-   */
-  private getSharedEntity(roomId: string, entityName: string): CombatEntity | null {
-    if (!this.sharedEntities.has(roomId)) {
-      this.sharedEntities.set(roomId, new Map());
-    }
-    const roomEntities = this.sharedEntities.get(roomId)!;
-    
-    // Try to find an existing entity
-    if (roomEntities.has(entityName)) {
-      const existingEntity = roomEntities.get(entityName)!;
-      if (!existingEntity.isAlive()) {
-        // Remove if dead, then recreate
-        roomEntities.delete(entityName);
-      } else {
-        return existingEntity;
-      }
-    }
-    
-    // Look up entity in the room
-    const room = this.roomManager.getRoom(roomId);
-    if (!room) return null;
-    
-    // First try to find the NPC by instance ID directly
-    let npc: NPC | null = room.npcs.get(entityName) || null;
-    
-    // If not found by instance ID, check if entityName might be a template ID
-    if (!npc && room.npcs) {
-      const matchingNPCs = Array.from(room.npcs.values()).filter((n: NPC) => n.templateId === entityName);
-      if (matchingNPCs.length > 0) {
-        npc = matchingNPCs[0];
-        
-        // Important: Create a mapping from template ID to the instance we're using
-        // but store the entity under its actual instanceId to prevent duplicates
-        if (npc.instanceId !== entityName) {
-          systemLogger.info(`Creating mapping from template ID ${entityName} to instance ID ${npc.instanceId}`);
-          
-          // Store by instance ID instead
-          if (!roomEntities.has(npc.instanceId)) {
-            roomEntities.set(npc.instanceId, npc);
-          }
-          
-          // Return the entity we found by template ID
-          return npc;
-        }
-      }
-    }
-    
-    // If we still don't have an NPC, create a new one
-    if (!npc) {
-      npc = this.createTestNPC(entityName);
-    }
-    
-    roomEntities.set(entityName, npc);
-    return npc;
-  }
-
-  /**
-   * Track which players are targeting an entity
-   */
-  private trackEntityTargeter(entityId: string, username: string): void {
-    if (!this.entityTargeters.has(entityId)) {
-      this.entityTargeters.set(entityId, new Set());
-    }
-    
-    this.entityTargeters.get(entityId)!.add(username);
-  }
-
-  /**
-   * Get all players targeting a specific entity
-   */
-  getEntityTargeters(entityId: string): string[] {
-    if (!this.entityTargeters.has(entityId)) {
-      return [];
-    }
-    
-    return Array.from(this.entityTargeters.get(entityId)!);
-  }
-
-  /**
-   * Remove a player from targeting an entity
-   */
-  removeEntityTargeter(entityId: string, username: string): void {
-    if (this.entityTargeters.has(entityId)) {
-      this.entityTargeters.get(entityId)!.delete(username);
-      
-      // Clean up if no more targeters
-      if (this.entityTargeters.get(entityId)!.size === 0) {
-        this.entityTargeters.delete(entityId);
-      }
-    }
-  }
-
-  /**
-   * Check if an entity has been killed
-   */
-  entityIsDead(entityId: string): boolean {
-    // Parse the entity ID to get room and name
-    const [roomId] = entityId.split('::');
-    
-    if (!this.sharedEntities.has(roomId)) {
-      return true;
-    }
-    
-    const roomEntities = this.sharedEntities.get(roomId)!;
-    // Extract the entity name from the ID
-    const entityName = entityId.split('::')[1];
-    if (!roomEntities.has(entityName)) {
-      return true;
-    }
-    
-    return !roomEntities.get(entityName)!.isAlive();
-  }
-
+  
   /**
    * Get a unique ID for an entity in a room
    */
   getEntityId(roomId: string, entityName: string): string {
-    return `${roomId}::${entityName}`;
+    return this.entityTracker.getEntityId(roomId, entityName);
   }
 
   /**
@@ -228,7 +116,7 @@ export class CombatSystem {
     const playerLogger = getPlayerLogger(player.user.username);
     
     // Always get or create a shared entity using the instance ID if available
-    const sharedTarget = this.getSharedEntity(roomId, entityName);
+    const sharedTarget = this.entityTracker.getSharedEntity(roomId, entityName);
     if (!sharedTarget) return false;
     
     // Check if player is already in combat with a different NPC
@@ -249,14 +137,11 @@ export class CombatSystem {
     }
     
     // Track that the player is targeting this entity - use instance ID
-    this.trackEntityTargeter(entityId, player.user.username);
+    this.entityTracker.trackEntityTargeter(entityId, player.user.username);
     
     // Add the entity to active combat entities for this room - use instance ID
-    this.addEntityToCombatForRoom(roomId, entityName);
+    this.entityTracker.addEntityToCombatForRoom(roomId, entityName);
     
-    // Note: We don't add aggression here anymore - aggression is only added when damage is dealt
-    // or an attack is attempted and misses in the processAttack method
-
     // If a combat instance exists but the player's inCombat flag is off, re-engage combat
     if (combat && !player.user.inCombat) {
       systemLogger.debug(`Re-engaging combat for ${player.user.username}`);
@@ -279,76 +164,58 @@ export class CombatSystem {
       writeToClient(player, clearLineSequence);
       writeToClient(player, colorize(`*Combat Engaged*\r\n`, 'boldYellow'));
       drawCommandPrompt(player);
-      this.broadcastCombatStart(player, sharedTarget);
+      this.combatNotifier.broadcastCombatStart(player, sharedTarget);
+      
+      // Create initial combat state for player
+      this.setPlayerCombatState(player.user.username, 'active');
     }
     
     combat.addTarget(sharedTarget);
     
     return true;
   }
-
+  
   /**
-   * Broadcast combat start to other players in the room
+   * Set the combat state for a player
    */
-  private broadcastCombatStart(player: ConnectedClient, target: CombatEntity): void {
-    if (!player.user || !player.user.currentRoomId) return;
+  private setPlayerCombatState(username: string, stateName: 'active' | 'fleeing'): void {
+    // Create appropriate state based on name
+    let state: CombatState;
     
-    const room = this.roomManager.getRoom(player.user.currentRoomId);
-    if (!room) return;
+    const handleAttack = (attacker: CombatEntity, target: CombatEntity): boolean => {
+      // Default attack handling logic
+      return Math.random() >= 0.5; // 50% hit chance
+    };
     
-    const username = formatUsername(player.user.username);
-    // Don't add extra line breaks - they will be handled by the writeMessageToClient function
-    const message = colorize(`${username} moves to attack ${target.name}!\r\n`, 'boldYellow');
+    const handleMovement = (entity: ConnectedClient): void => {
+      // Default movement handling logic
+      if (entity.user) {
+        this.handlePlayerMovedRooms(entity);
+      }
+    };
     
-    for (const playerName of room.players) {
-      // Skip the player who started combat
-      if (playerName === player.user.username) continue;
-      
-      // Find client for this player
-      const client = this.findClientByUsername(playerName);
-      if (client) {
-        writeFormattedMessageToClient(client, message);
-      }
+    const handleDisconnect = (entity: ConnectedClient): void => {
+      // Default disconnect handling logic
+      this.handlePlayerDisconnect(entity);
+    };
+    
+    if (stateName === 'fleeing') {
+      state = new FleeingCombatState(handleAttack, handleMovement, handleDisconnect);
+    } else {
+      state = new ActiveCombatState(handleAttack, handleMovement, handleDisconnect);
     }
-  }
-
-  /**
-   * Find a client by username
-   */
-  findClientByUsername(username: string): ConnectedClient | undefined {
-    for (const client of this.roomManager['clients'].values()) {
-      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
-        return client;
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Find all clients with the same username
-   * Used during session transfers to ensure we don't prematurely end combat
-   */
-  findAllClientsByUsername(username: string): ConnectedClient[] {
-    const results: ConnectedClient[] = [];
-    for (const client of this.roomManager['clients'].values()) {
-      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
-        results.push(client);
-      }
-    }
-    return results;
+    
+    this.playerCombatStates.set(username, state);
   }
 
   /**
    * Process combat rounds for all active combats
    */
   processCombatRound(): void {
-    // Increment the global combat round
-    this.currentRound++;
+    // Update the global combat round in processor
+    this.combatProcessor.processCombatRound();
     
-    systemLogger.debug(`Processing combat round ${this.currentRound} for ${this.combats.size} active combats`);
-    
-    // Clear the list of entities that have attacked this round
-    this.entitiesAttackedThisRound.clear();
+    systemLogger.debug(`Processing combat round ${this.combatProcessor.getCurrentRound()} for ${this.combats.size} active combats`);
     
     // First check for disconnected players and end their combat
     const playersToRemove: string[] = [];
@@ -382,7 +249,7 @@ export class CombatSystem {
       combat.lastActivityTime = currentTime;
       
       // Set the current round on the combat instance
-      combat.currentRound = this.currentRound;
+      combat.currentRound = this.combatProcessor.getCurrentRound();
       combat.processRound();
       
       // Check if combat is done
@@ -401,72 +268,11 @@ export class CombatSystem {
     // Clean up any combats that are done or have disconnected players
     for (const username of playersToRemove) {
       systemLogger.debug(`Removing combat for ${username}`);
-      this.combats.delete(username);
-      
-      // Clean up entity targeters for this player
-      for (const [entityId, targeters] of this.entityTargeters.entries()) {
-        targeters.delete(username);
-        if (targeters.size === 0) {
-          this.entityTargeters.delete(entityId);
-        }
-      }
+      this.removeCombatForPlayer(username);
     }
-  }
-
-  /**
-   * Check if an entity has already attacked in this round
-   */
-  hasEntityAttackedThisRound(entityId: string): boolean {
-    return this.entityLastAttackRound.get(entityId) === this.currentRound;
-  }
-
-  /**
-   * Mark that an entity has attacked in this round
-   */
-  markEntityAttacked(entityId: string): void {
-    this.entityLastAttackRound.set(entityId, this.currentRound);
-  }
-
-  /**
-   * Reset entity attack status so it can attack again immediately
-   * Used when its current target disconnects
-   */
-  resetEntityAttackStatus(entityId: string): void {
-    if (this.entityLastAttackRound.has(entityId)) {
-      this.entityLastAttackRound.delete(entityId);
-    }
-  }
-
-  /**
-   * Get the current combat round
-   */
-  getCurrentRound(): number {
-    return this.currentRound;
-  }
-
-  /**
-   * Broadcast a message to all players in a room regarding combat
-   */
-  broadcastRoomCombatMessage(
-    roomId: string, 
-    message: string, 
-    color: ColorType = 'boldYellow', 
-    excludeUsername?: string
-  ): void {
-    const room = this.roomManager.getRoom(roomId);
-    if (!room) return;
-
-    const formattedMessage = colorize(message, color as any);
     
-    for (const playerName of room.players) {
-      // Skip excluded player if specified
-      if (excludeUsername && playerName === excludeUsername) continue;
-      
-      const client = this.findClientByUsername(playerName);
-      if (client) {
-        writeFormattedMessageToClient(client, formattedMessage);
-      }
-    }
+    // Process room combat (NPCs attacking players)
+    this.combatProcessor.processRoomCombat();
   }
 
   /**
@@ -477,6 +283,9 @@ export class CombatSystem {
     
     const combat = this.combats.get(player.user.username);
     if (!combat) return false;
+    
+    // Set player's combat state to fleeing
+    this.setPlayerCombatState(player.user.username, 'fleeing');
     
     // Set player's inCombat to false, but do not end the combat.
     player.user.inCombat = false;
@@ -519,50 +328,33 @@ export class CombatSystem {
   }
 
   /**
-   * Create a test NPC for development
-   */
-  createTestNPC(name: string = 'cat'): NPC {
-    // Load NPC data from JSON file to set proper hostility values
-    const npcData = NPC.loadNPCData();
-    
-    // Check if we have data for this NPC
-    if (npcData.has(name)) {
-      systemLogger.debug(`Creating NPC ${name} from data`);
-      return NPC.fromNPCData(npcData.get(name)!);
-    }
-    
-    // Fallback to default NPC if no data found
-    systemLogger.warn(`No data found for NPC ${name}, creating default`);
-    return new NPC(
-      name,
-      20,  // health
-      20,  // maxHealth
-      [1, 3],  // damage range
-      false,  // isHostile
-      false,  // isPassive
-      100  // experienceValue
-    );
-  }
-
-  /**
    * Clean up a dead entity
    */
   cleanupDeadEntity(roomId: string, entityName: string): void {
-    if (this.sharedEntities.has(roomId)) {
-      const roomEntities = this.sharedEntities.get(roomId)!;
-      if (roomEntities.has(entityName)) {
-        roomEntities.delete(entityName);
-      }
-    }
+    this.entityTracker.cleanupDeadEntity(roomId, entityName);
   }
 
   /**
    * Manually remove combat for a player
-   * Used when an entity dies and we need to end combat for all targeting players
    */
   removeCombatForPlayer(username: string): void {
     // Remove the combat instance for this player
     this.combats.delete(username);
+    
+    // Remove the player's combat state
+    this.playerCombatStates.delete(username);
+    
+    // Clean up entity targeters for this player
+    const entitiesToCheck: string[] = [];
+    
+    // We need to find all entities this player is targeting
+    // This code would need to be updated to use the entityTracker
+    for (const [entityId, targeters] of this.entityTracker['entityTargeters'].entries()) {
+      if (targeters.has(username)) {
+        entitiesToCheck.push(entityId);
+        this.entityTracker.removeEntityTargeter(entityId, username);
+      }
+    }
   }
 
   /**
@@ -578,45 +370,17 @@ export class CombatSystem {
     const combat = this.combats.get(username);
     if (combat) {
       // Remove combat for the player
-      this.combats.delete(username);
+      this.removeCombatForPlayer(username);
       
       // Notify others in the room that the player is no longer in combat
       if (roomId) {
         const formattedUsername = formatUsername(username);
-        this.broadcastRoomCombatMessage(
+        this.combatNotifier.broadcastRoomMessage(
           roomId,
           `${formattedUsername} is no longer in combat (disconnected).\r\n`,
           'yellow',
           username
         );
-      }
-    }
-    
-    // Track which entities this player was targeting
-    const targetedEntities: string[] = [];
-    
-    // Remove player from all entity targeters and collect entities
-    for (const [entityId, targeters] of this.entityTargeters.entries()) {
-      if (targeters.has(username)) {
-        targetedEntities.push(entityId);
-        this.removeEntityTargeter(entityId, username);
-      }
-    }
-    
-    // Check each entity to see if it needs to select a new target
-    for (const entityId of targetedEntities) {
-      // Parse the entity ID to get room and name
-      const [entityRoomId, entityName] = entityId.split('::');
-      
-      if (entityRoomId !== roomId) continue;
-      
-      // Get remaining targeters for this entity
-      const remainingTargeters = this.getEntityTargeters(entityId);
-      
-      // If there are still players targeting this entity, make sure the entity
-      // targets one of them in the next combat round
-      if (remainingTargeters.length > 0) {
-        this.resetEntityAttackStatus(entityId);
       }
     }
     
@@ -627,7 +391,6 @@ export class CombatSystem {
 
   /**
    * Handle a session transfer for a player in combat
-   * Makes sure the combat continues with the new client
    */
   public handleSessionTransfer(oldClient: ConnectedClient, newClient: ConnectedClient): void {
     if (!oldClient.user || !newClient.user) return;
@@ -683,6 +446,14 @@ export class CombatSystem {
         // Store in the combats map
         this.combats.set(username, combat);
         
+        // Preserve combat state
+        const prevState = this.playerCombatStates.get(username);
+        if (prevState) {
+          this.playerCombatStates.set(username, prevState);
+        } else {
+          this.setPlayerCombatState(username, 'active');
+        }
+        
         // If in a room, add a target
         if (newClient.user.currentRoomId) {
           const room = this.roomManager.getRoom(newClient.user.currentRoomId);
@@ -691,16 +462,16 @@ export class CombatSystem {
             const npcsInRoom = Array.from(room.npcs.values());
             if (npcsInRoom.length > 0) {
               const firstNpc = npcsInRoom[0];
-              const npc = this.getSharedEntity(newClient.user.currentRoomId, firstNpc.instanceId);
+              const npc = this.entityTracker.getSharedEntity(newClient.user.currentRoomId, firstNpc.instanceId);
               if (npc) {
                 combat.addTarget(npc);
                 const entityId = this.getEntityId(newClient.user.currentRoomId, firstNpc.instanceId);
-                this.trackEntityTargeter(entityId, username);
+                this.entityTracker.trackEntityTargeter(entityId, username);
                 systemLogger.info(`Added ${firstNpc.name} as target for ${username} during transfer recreation`);
                 playerLogger.info(`Added ${firstNpc.name} as combat target during session transfer`);
                 
                 // Reset NPC attack state to prevent immediate attack
-                this.resetEntityAttackStatus(entityId);
+                this.combatProcessor.resetEntityAttackStatus(entityId);
               }
             }
           }
@@ -711,7 +482,6 @@ export class CombatSystem {
       writeToClient(newClient, colorize('\r\nCombat state transferred. You are still in combat!\r\n', 'boldYellow'));
       
       // CRITICAL FIX: Make sure the client's UI state shows they're in combat
-      // This ensures the prompt will show [COMBAT] and player can continue combat
       if (combat && combat.activeCombatants.length > 0) {
         // Force the combat prompt to appear by explicitly setting inCombat
         const clearLineSequence = '\r\x1B[K';
@@ -719,13 +489,6 @@ export class CombatSystem {
         
         // This draws the [COMBAT] prompt properly
         drawCommandPrompt(newClient);
-        
-        // Skip the next NPC attack to prevent double attacking
-        // This fixes the issue of NPC attacking right after transfer but player not getting a turn
-        for (const combatant of combat.activeCombatants) {
-          const entityId = this.getEntityId(newClient.user.currentRoomId, combatant.name);
-          this.markEntityAttacked(entityId);
-        }
         
         // Add a timestamp to track last activity
         combat.lastActivityTime = Date.now();
@@ -743,9 +506,7 @@ export class CombatSystem {
   }
 
   /**
-   * Track player movement between rooms without immediately ending combat
-   * Combat will end during the next combat tick if the player and targets
-   * are not in the same room.
+   * Track player movement between rooms
    */
   public handlePlayerMovedRooms(player: ConnectedClient): void {
     if (!player.user) return;
@@ -759,403 +520,7 @@ export class CombatSystem {
   }
 
   /**
-   * Process combat for all entities and players in a room
-   * This will handle NPCs attacking players based on aggression
-   */
-  processRoomCombat(): void {
-    // ENHANCEMENT: First scan all rooms for hostile NPCs and players
-    this.scanRoomsForHostileNPCs();
-    
-    // Process combat for each room with active combat entities
-    for (const [roomId, entities] of this.roomCombatEntities.entries()) {
-      systemLogger.debug(`Processing room combat for room ${roomId} with ${entities.size} entities`);
-      
-      // Get the room to verify it exists
-      const room = this.roomManager.getRoom(roomId);
-      if (!room) {
-        systemLogger.warn(`Room ${roomId} not found, skipping combat processing`);
-        continue;
-      }
-      
-      // Get all players in this room
-      const playersInRoom = room.players;
-      
-      // Process each entity in the room
-      for (const entityName of entities) {
-        const entityId = this.getEntityId(roomId, entityName);
-        const entity = this.getSharedEntity(roomId, entityName);
-        
-        // Skip if entity doesn't exist or is already dead
-        if (!entity || !entity.isAlive()) {
-          systemLogger.info(`Entity ${entityName} in room ${roomId} is dead or missing, removing from combat`);
-          this.removeEntityFromCombatForRoom(roomId, entityName);
-          continue;
-        }
-        
-        // Skip if entity has already attacked this round
-        if (this.hasEntityAttackedThisRound(entityId)) {
-          continue;
-        }
-        
-        // Check if entity is hostile and should initiate combat
-        if (entity.isHostile) {
-          // Get all players this entity has aggression against
-          const aggressors = entity.getAllAggressors().filter(player => 
-            playersInRoom.includes(player)
-          );
-          
-          // If there are aggressors in the room, pick one randomly to attack
-          if (aggressors.length > 0) {
-            const targetPlayerName = aggressors[Math.floor(Math.random() * aggressors.length)];
-            const targetPlayer = this.findClientByUsername(targetPlayerName);
-            
-            if (targetPlayer && targetPlayer.user) {
-              this.processNpcAttack(entity, targetPlayer, roomId);
-              
-              // Mark that this entity has attacked in this round
-              this.markEntityAttacked(entityId);
-            }
-          }
-          // New code: If no specific aggressors but entity is hostile, target any player in the room
-          else if (playersInRoom.length > 0) {
-            // Select a random player from the room to attack
-            const randomIndex = Math.floor(Math.random() * playersInRoom.length);
-            const targetPlayerName = playersInRoom[randomIndex];
-            const targetPlayer = this.findClientByUsername(targetPlayerName);
-            
-            if (targetPlayer && targetPlayer.user) {
-              systemLogger.info(`Hostile NPC ${entityName} attacking player ${targetPlayerName} without prior aggression`);
-              const playerLogger = getPlayerLogger(targetPlayerName);
-              playerLogger.info(`Hostile NPC ${entityName} initiated combat in room ${roomId}`);
-              
-              // Add aggression so future attacks prioritize this player
-              entity.addAggression(targetPlayerName, 0);
-              
-              // Process the attack
-              this.processNpcAttack(entity, targetPlayer, roomId);
-              
-              // Mark that this entity has attacked in this round
-              this.markEntityAttacked(entityId);
-              
-              // If the player isn't already in combat, engage them in combat
-              if (!targetPlayer.user.inCombat) {
-                this.engageCombat(targetPlayer, entity);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  /**
-   * Process an attack from an NPC against a player
-   */
-  private processNpcAttack(npc: CombatEntity, player: ConnectedClient, roomId: string): void {
-    if (!player.user) return;
-    
-    // 50% chance to hit
-    const hit = Math.random() >= 0.5;
-    
-    // Format the target name for messages
-    const targetNameFormatted = formatUsername(player.user.username);
-    
-    if (hit) {
-      const damage = npc.getAttackDamage();
-      player.user.health -= damage;
-      
-      // NO LONGER limit health to 0! Allow it to go negative up to -10
-      // Make sure it doesn't go below -10
-      if (player.user.health < -10) player.user.health = -10;
-      
-      // Update the player's health
-      this.userManager.updateUserStats(player.user.username, { health: player.user.health });
-      
-      // Send message to the targeted player
-      writeFormattedMessageToClient(
-        player,
-        colorize(`The ${npc.name} ${npc.getAttackText('you')} for ${damage} damage.\r\n`, 'red')
-      );
-      
-      // Broadcast to ALL players in room except the target
-      this.broadcastRoomCombatMessage(
-        roomId,
-        `The ${npc.name} ${npc.getAttackText(targetNameFormatted)} for ${damage} damage.\r\n`,
-        'red' as ColorType,
-        player.user.username
-      );
-      
-      // Check if player died or became unconscious
-      if (player.user.health <= 0) {
-        this.handlePlayerDeath(player, roomId);
-      }
-    } else {
-      // Send message to the targeted player about the miss
-      writeFormattedMessageToClient(
-        player,
-        colorize(`The ${npc.name} ${npc.getAttackText('you')} and misses!\r\n`, 'cyan')
-      );
-      
-      // Broadcast to ALL players in room except the target
-      this.broadcastRoomCombatMessage(
-        roomId,
-        `The ${npc.name} ${npc.getAttackText(targetNameFormatted)} and misses!\r\n`,
-        'cyan' as ColorType,
-        player.user.username
-      );
-    }
-  }
-  
-  /**
-   * Handle player death from an NPC attack
-   */
-  private handlePlayerDeath(player: ConnectedClient, roomId: string): void {
-    if (!player.user) return;
-    
-    // Check if player is unconscious or fully dead
-    const isFatallyDead = player.user.health <= -10;
-    
-    if (isFatallyDead) {
-      // Player is fully dead (-10 HP or below)
-      // Send death message to player
-      writeFormattedMessageToClient(
-        player,
-        colorize(`You have died! Your body will be transported to the starting area.\r\n`, 'red')
-      );
-      
-      // Drop all inventory items where the player died
-      this.dropPlayerInventory(player, roomId);
-      
-      // Broadcast to others using the default boldYellow for status messages
-      const username = formatUsername(player.user.username);
-      const message = `${username} has died!\r\n`;
-      
-      // Broadcast to all other players in the room
-      this.broadcastRoomCombatMessage(roomId, message, 'boldYellow', player.user.username);
-      
-      // Teleport to starting room (respawn)
-      this.teleportToStartingRoom(player);
-      
-      // Restore health to 50% of max 
-      player.user.health = Math.floor(player.user.maxHealth * 0.5);
-      this.userManager.updateUserStats(player.user.username, { health: player.user.health });
-    } else {
-      // Player is unconscious (0 to -9 HP)
-      // Send unconscious message to player
-      writeFormattedMessageToClient(
-        player,
-        colorize(`You collapse to the ground unconscious! You are bleeding out and will die at -10 HP.\r\n`, 'red')
-      );
-      
-      // Mark player as unconscious
-      player.user.isUnconscious = true;
-      this.userManager.updateUserStats(player.user.username, { isUnconscious: true });
-      
-      // Broadcast to others using the default boldYellow for status messages
-      const username = formatUsername(player.user.username);
-      const message = `${username} has fallen unconscious!\r\n`;
-      
-      // Broadcast to all other players in the room
-      this.broadcastRoomCombatMessage(roomId, message, 'boldYellow', player.user.username);
-    }
-    
-    // End combat for this player
-    const combat = this.combats.get(player.user.username);
-    if (combat) {
-      combat.endCombat(false);
-      this.combats.delete(player.user.username);
-    }
-    
-    // Set player's inCombat to false
-    player.user.inCombat = false;
-    this.userManager.updateUserStats(player.user.username, { inCombat: false });
-  }
-
-  /**
-   * Drop player's inventory in the current room when they die
-   */
-  private dropPlayerInventory(player: ConnectedClient, roomId: string): void {
-    if (!player.user || !player.user.inventory) return;
-    
-    const room = this.roomManager.getRoom(roomId);
-    if (!room) return;
-    
-    // Drop all items
-    if (player.user.inventory.items && player.user.inventory.items.length > 0) {
-      const username = formatUsername(player.user.username);
-      
-      // Announce dropped items to the room
-      const itemsList = player.user.inventory.items.join(', ');
-      const dropMessage = `${username}'s corpse drops: ${itemsList}.\r\n`;
-      this.broadcastRoomCombatMessage(roomId, dropMessage, 'cyan');
-      
-      // Add items to the room
-      for (const item of player.user.inventory.items) {
-        room.addItem(item);
-      }
-      
-      // Clear player's inventory
-      player.user.inventory.items = [];
-    }
-    
-    // Transfer currency to the room
-    if (player.user.inventory.currency) {
-      const currency = player.user.inventory.currency;
-      
-      // Only announce/transfer if there's actual currency
-      if (currency.gold > 0 || currency.silver > 0 || currency.copper > 0) {
-        // Add currency to room
-        room.currency.gold += currency.gold || 0;
-        room.currency.silver += currency.silver || 0;
-        room.currency.copper += currency.copper || 0;
-        
-        // Clear player's currency
-        player.user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
-        
-        // Announce currency drop to the room if there was any
-        const username = formatUsername(player.user.username);
-        const currencyText = this.formatCurrencyText(currency);
-        if (currencyText) {
-          const dropMessage = `${username}'s corpse drops ${currencyText}.\r\n`;
-          this.broadcastRoomCombatMessage(roomId, dropMessage, 'cyan');
-        }
-      }
-    }
-    
-    // Update the room
-    this.roomManager.updateRoom(room);
-    
-    // Update the player's inventory in the database
-    this.userManager.updateUserStats(player.user.username, { inventory: player.user.inventory });
-  }
-  
-  /**
-   * Format currency for display
-   */
-  private formatCurrencyText(currency: {gold?: number, silver?: number, copper?: number}): string {
-    const parts = [];
-    if (currency.gold && currency.gold > 0) parts.push(`${currency.gold} gold`);
-    if (currency.silver && currency.silver > 0) parts.push(`${currency.silver} silver`);
-    if (currency.copper && currency.copper > 0) parts.push(`${currency.copper} copper`);
-    
-    if (parts.length === 0) return '';
-    return parts.join(', ');
-  }
-  
-  /**
-   * Teleport a player to the starting room
-   */
-  private teleportToStartingRoom(player: ConnectedClient): void {
-    if (!player.user) return;
-    
-    const startingRoomId = this.roomManager.getStartingRoomId();
-    const currentRoomId = player.user.currentRoomId;
-    
-    if (currentRoomId) {
-      // Remove from current room
-      const currentRoom = this.roomManager.getRoom(currentRoomId);
-      if (currentRoom) {
-        currentRoom.removePlayer(player.user.username);
-        this.roomManager.updateRoom(currentRoom);
-      }
-    }
-    
-    // Add to starting room
-    const startingRoom = this.roomManager.getRoom(startingRoomId);
-    if (startingRoom) {
-      startingRoom.addPlayer(player.user.username);
-      this.roomManager.updateRoom(startingRoom);
-      
-      // Update player's current room
-      player.user.currentRoomId = startingRoomId;
-      
-      // Restore player to full health instead of half
-      player.user.health = player.user.maxHealth;
-      
-      // Clear the unconscious state
-      player.user.isUnconscious = false;
-      
-      // Update the user stats all at once
-      this.userManager.updateUserStats(player.user.username, { 
-        currentRoomId: startingRoomId,
-        health: player.user.maxHealth,
-        isUnconscious: false
-      });
-      
-      // Show the starting room to the player
-      writeFormattedMessageToClient(
-        player,
-        colorize(`You have been teleported to the starting area.\r\n`, 'yellow')
-      );
-      
-      // Show the room description
-      const roomDescription = startingRoom.getDescriptionExcludingPlayer(player.user.username);
-      writeToClient(player, roomDescription);
-      
-      // Announce to others in the starting room
-      const username = formatUsername(player.user.username);
-      this.broadcastRoomCombatMessage(
-        startingRoomId,
-        `${username} materializes in the room, looking disoriented.\r\n`,
-        'yellow',
-        player.user.username
-      );
-    }
-  }
-
-  /**
-   * Scan all rooms for hostile NPCs and players in the same room
-   * This ensures hostile NPCs will attack players even if the players
-   * were already in the room before the NPC spawned
-   */
-  private scanRoomsForHostileNPCs(): void {
-    systemLogger.debug(`Scanning all rooms for hostile NPCs and players`);
-    
-    // Get all rooms from the room manager
-    const rooms = this.roomManager.getAllRooms();
-    
-    for (const room of rooms) {
-      // Skip rooms with no NPCs or no players
-      if (!room.npcs || room.npcs.size === 0 || !room.players || room.players.length === 0) {
-        continue;
-      }
-      
-      // Check for hostile NPCs in this room
-      for (const [npcId, npc] of room.npcs.entries()) {
-        // Get entity to check its hostility - use the npc instance from the map
-        const entity = npc;
-        
-        if (entity && entity.isHostile) {
-          systemLogger.debug(`Found hostile NPC ${npc.name} (${npcId}) in room ${room.id} with ${room.players.length} players`);
-          
-          // Add the entity to active combat entities for this room if not already
-          if (!this.isEntityInCombat(room.id, npcId)) {
-            this.addEntityToCombatForRoom(room.id, npcId);
-          }
-          
-          // Generate an entity ID for tracking
-          const entityId = this.getEntityId(room.id, npcId);
-          
-          // For each player in the room, ensure they're on the NPC's aggression list
-          for (const playerName of room.players) {
-            if (!entity.hasAggression(playerName)) {
-              systemLogger.debug(`Adding player ${playerName} to aggression list of ${npc.name} in room ${room.id}`);
-              const playerLogger = getPlayerLogger(playerName);
-              playerLogger.info(`Hostile NPC ${npc.name} is now aware of your presence in room ${room.id}`);
-              
-              // Add aggression with 0 damage to indicate awareness rather than damage dealt
-              entity.addAggression(playerName, 0);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Get all opponents for a player in combat using their username
-   * @param playerOrUsername The player's username or client object
-   * @returns Array of opponents the player is fighting
+   * Get all opponents for a player in combat
    */
   getOpponents(playerOrUsername: string | ConnectedClient): CombatEntity[] {
     // Handle both string and ConnectedClient inputs safely
@@ -1171,16 +536,13 @@ export class CombatSystem {
     }
     
     // Find which combat this player is in
-    const combat = this.getCombatForEntity(username);
-    if (!combat) {
+    const combat = this.combats.get(username);
+    if (!combat || !combat.activeCombatants) {
       return [];
     }
     
-    // Safely access activeCombatants and ensure it's an array
-    const activeCombatants = combat.activeCombatants || [];
-    
     // Return all entities that are not this player
-    return activeCombatants.filter(entity => {
+    return combat.activeCombatants.filter(entity => {
       if (!entity) return false;
       
       // For NPCs, always include them as opponents
@@ -1189,7 +551,6 @@ export class CombatSystem {
       }
       
       // For other entities, check if it's not the current player
-      // First try to use getName() method from CombatEntity interface
       if (typeof entity.getName === 'function' && entity.getName() === username) {
         return false;
       }
@@ -1200,23 +561,120 @@ export class CombatSystem {
   }
 
   /**
-   * Get the combat instance in which an entity (player) is participating
-   * @param entityName The name of the entity (username for players)
-   * @returns The combat instance, or null if not found
+   * Find a client by username
    */
-  private getCombatForEntity(entityName: string): Combat | null {
-    // Check if this is a player and we have a direct combat instance for them
-    if (this.combats.has(entityName)) {
-      return this.combats.get(entityName) || null;
-    }
-    
-    // If not found directly, search all combats
-    for (const combat of this.combats.values()) {
-      if (combat.activeCombatants.some(entity => entity.name === entityName)) {
-        return combat;
+  findClientByUsername(username: string): ConnectedClient | undefined {
+    for (const client of this.roomManager['clients'].values()) {
+      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
+        return client;
       }
     }
-    
-    return null;
+    return undefined;
+  }
+
+  /**
+   * Find all clients with the same username
+   */
+  findAllClientsByUsername(username: string): ConnectedClient[] {
+    const results: ConnectedClient[] = [];
+    for (const client of this.roomManager['clients'].values()) {
+      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
+        results.push(client);
+      }
+    }
+    return results;
+  }
+
+  /**
+   * @deprecated Use CombatNotifier.broadcastRoomMessage instead
+   * Backward compatibility method for broadcasting combat messages
+   */
+  broadcastRoomCombatMessage(
+    roomId: string, 
+    message: string, 
+    color: ColorType = 'boldYellow', 
+    excludeUsername?: string
+  ): void {
+    this.combatNotifier.broadcastRoomMessage(roomId, message, color, excludeUsername);
+  }
+
+  /**
+   * @deprecated Use EntityTracker.getSharedEntity instead
+   * Backward compatibility method for getting a shared entity
+   */
+  getSharedEntity(roomId: string, entityName: string): CombatEntity | null {
+    return this.entityTracker.getSharedEntity(roomId, entityName);
+  }
+
+  /**
+   * @deprecated Use EntityTracker.addEntityToCombatForRoom instead
+   * Backward compatibility method for adding an entity to combat for a room
+   */
+  addEntityToCombatForRoom(roomId: string, entityName: string): void {
+    this.entityTracker.addEntityToCombatForRoom(roomId, entityName);
+  }
+
+  /**
+   * @deprecated Use EntityTracker.removeEntityFromCombatForRoom instead
+   * Backward compatibility method for removing an entity from combat for a room
+   */
+  removeEntityFromCombatForRoom(roomId: string, entityName: string): void {
+    this.entityTracker.removeEntityFromCombatForRoom(roomId, entityName);
+  }
+
+  /**
+   * @deprecated Use CombatProcessor.resetEntityAttackStatus instead
+   * Backward compatibility method for resetting entity attack status
+   */
+  resetEntityAttackStatus(entityId: string): void {
+    this.combatProcessor.resetEntityAttackStatus(entityId);
+  }
+
+  /**
+   * @deprecated Use CombatProcessor.hasEntityAttackedThisRound instead
+   * Backward compatibility method for checking if an entity has attacked this round
+   */
+  hasEntityAttackedThisRound(entityId: string): boolean {
+    return this.combatProcessor.hasEntityAttackedThisRound(entityId);
+  }
+
+  /**
+   * @deprecated Use CombatProcessor.markEntityAttacked instead
+   * Backward compatibility method for marking an entity as attacked
+   */
+  markEntityAttacked(entityId: string): void {
+    this.combatProcessor.markEntityAttacked(entityId);
+  }
+
+  /**
+   * @deprecated Use EntityTracker.getEntityTargeters instead
+   * Backward compatibility method for getting entity targeters
+   */
+  getEntityTargeters(entityId: string): string[] {
+    return this.entityTracker.getEntityTargeters(entityId);
+  }
+
+  /**
+   * @deprecated Use EntityTracker.removeEntityTargeter instead
+   * Backward compatibility method for removing an entity targeter
+   */
+  removeEntityTargeter(entityId: string, username: string): void {
+    this.entityTracker.removeEntityTargeter(entityId, username);
+  }
+
+  /**
+   * @deprecated Use CombatProcessor.processRoomCombat instead
+   * Backward compatibility method for processing room combat
+   */
+  processRoomCombat(): void {
+    this.combatProcessor.processRoomCombat();
+  }
+
+  /**
+   * @deprecated Use EntityTracker.createTestNPC instead
+   * Backward compatibility method for creating a test NPC
+   */
+  createTestNPC(name: string = 'cat'): NPC {
+    return this.entityTracker['createTestNPC'](name);
   }
 }
