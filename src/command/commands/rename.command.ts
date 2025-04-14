@@ -141,7 +141,7 @@ export class RenameCommand implements Command {
     const template = this.itemManager.getItem(instance.templateId);
     const originalName = template ? template.name : "item";
     
-    writeToClient(client, colorize(`You rename your ${originalName} to "${newName}".\r\n`, "green"));
+    writeToClient(client, colorize(`You rename your ${originalName} to ${colorizedName}.\r\n`, "green"));
     
     // Log the successful rename
     renameLogger.info(`${client.user.username} renamed item (ID: ${foundItemId}) from "${previousName}" to "${newName}"`);

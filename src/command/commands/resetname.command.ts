@@ -105,6 +105,7 @@ export class ResetNameCommand implements Command {
 
     // Store the previous custom name for the message
     const previousName = instance.properties.customName;
+    const colorizedPreviousName = colorizeItemName(previousName);
 
     // Use the removeCustomName method
     const success = this.itemManager.removeCustomName(foundItemId, client.user.username);
@@ -112,7 +113,7 @@ export class ResetNameCommand implements Command {
     if (success) {
       writeToClient(
         client, 
-        colorize(`You remove the custom name "${previousName}" from your item, restoring its original name "${template.name}".\r\n`, "green")
+        colorize(`You remove the custom name ${colorizedPreviousName} from your item, restoring its original name "${template.name}".\r\n`, "green")
       );
       resetNameLogger.info(`${client.user.username} reset item name (ID: ${foundItemId}) from "${previousName}" to original name "${template.name}"`);
     } else {
