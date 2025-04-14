@@ -528,7 +528,9 @@ export class GameServer {
   }
 
   private setupKeyListener(): void {
-    if (config.IS_TTY && !this.isLocalClientConnected) {
+    // Only set up keyboard shortcuts if we're in a TTY, not in a local session,
+    // and console mode isn't explicitly disabled via the --noConsole flag
+    if (config.CONSOLE_MODE && !this.isLocalClientConnected) {
       systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 'm' to monitor user, 's' for system message, 'q' to shutdown.`);
       
       if (process.stdin.isTTY) {
@@ -592,6 +594,22 @@ export class GameServer {
       } else {
         systemLogger.info('Not running in a TTY, local client connection disabled.');
       }
+    } else if (config.NO_CONSOLE && process.stdout.isTTY) {
+      // If console commands are explicitly disabled, set up only a minimal Ctrl+C handler
+      // for graceful shutdown, but no other keyboard shortcuts
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.setEncoding('utf8');
+      
+      const minimalKeyListener = (key: string) => {
+        // Only handle Ctrl+C
+        if (key === '\u0003') {
+          systemLogger.info('Ctrl+C detected. Shutting down server...');
+          this.shutdown();
+        }
+      };
+      
+      process.stdin.on('data', minimalKeyListener);
     }
   }
 
@@ -741,7 +759,11 @@ export class GameServer {
 
     this.isLocalClientConnected = false;
     this.telnetServer.setAdminLoginPending(false);
-    console.log("\nLocal session ended. Log output resumed.");
+    
+    // Only show the message if we're not in silent mode
+    if (!config.SILENT_MODE) {
+      console.log("\nLocal session ended. Log output resumed.");
+    }
 
     // Re-enable the listener for the keys
     this.setupKeyListener();
@@ -1571,6 +1593,58 @@ export class GameServer {
   // Helper to get prompt text function now just forwards to the imported function
   private getPromptText(client: ConnectedClient): string {
     return getPromptText(client);
+  }
+
+  public async startAutoAdminSession(): Promise<void> {
+    // Suppress normal console output for automated sessions
+    this.suppressNormalOutput();
+    
+    // Allow the server a moment to initialize
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Start an admin session
+    this.startLocalAdminSession(this.telnetServer.getActualPort());
+    
+    // Set up auto-exit when the session ends
+    this.setupAutoExit();
+  }
+
+  public async startAutoUserSession(): Promise<void> {
+    // Suppress normal console output for automated sessions
+    this.suppressNormalOutput();
+    
+    // Allow the server a moment to initialize
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Start a local client session
+    this.startLocalClientSession(this.telnetServer.getActualPort());
+    
+    // Set up auto-exit when the session ends
+    this.setupAutoExit();
+  }
+
+  private suppressNormalOutput(): void {
+    // Don't show the welcome message or keyboard instructions
+    // Need to preserve the original method structure for type compatibility
+    const originalInfo = systemLogger.info;
+    systemLogger.info = function() {
+      // No-op function that maintains the return type
+      return systemLogger;
+    };
+  }
+
+  private setupAutoExit(): void {
+    // Override the endLocalSession method to exit when session ends
+    const originalEndLocalSession = this.endLocalSession.bind(this);
+    this.endLocalSession = () => {
+      originalEndLocalSession();
+      
+      // Give time for cleanup before exit
+      setTimeout(() => {
+        systemLogger.info('Auto-session ended, shutting down server');
+        process.exit(0);
+      }, 100);
+    };
   }
 }
 

@@ -2,6 +2,7 @@ import winston from 'winston';
 import 'winston-daily-rotate-file';
 import path from 'path';
 import fs from 'fs';
+import * as config from '../config';
 
 const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
 const PLAYER_LOGS_DIR = path.join(LOGS_DIR, 'players');
@@ -30,63 +31,89 @@ const consoleFormat = winston.format.combine(
     logFormat // Reuse the base format but add color
 );
 
-// --- System Logger ---
-const systemLogger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info', // Default to 'info', can be overridden by env var
-  format: logFormat,
-  transports: [
-    // Console Transport (for development/debugging)
+// Create transports array based on configurations
+const transports: winston.transport[] = [
+  // System File Transport (Info Level)
+  new winston.transports.DailyRotateFile({
+    filename: path.join(LOGS_DIR, 'system-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true, // Compress rotated files
+    maxSize: '20m',     // Rotate when file reaches 20MB
+    maxFiles: '14d',    // Keep logs for 14 days
+    level: 'info',      // Log info, warn, error to this file
+    utc: true           // Use UTC time for file rotation
+  }),
+  // Error File Transport (Error Level Only)
+  new winston.transports.DailyRotateFile({
+    filename: path.join(LOGS_DIR, 'error-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '30d',
+    level: 'error', // Only log errors and above to this file
+    utc: true       // Use UTC time for file rotation
+  })
+];
+
+// Add console transport only if silent mode is not enabled
+if (!config.SILENT_MODE) {
+  transports.push(
     new winston.transports.Console({
       format: consoleFormat, // Use the colorful format for the console
-      level: 'debug' // Show more detailed logs in the console
-    }),
-    // System File Transport (Info Level)
-    new winston.transports.DailyRotateFile({
-      filename: path.join(LOGS_DIR, 'system-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true, // Compress rotated files
-      maxSize: '20m',     // Rotate when file reaches 20MB
-      maxFiles: '14d',    // Keep logs for 14 days
-      level: 'info',      // Log info, warn, error to this file
-      utc: true           // Use UTC time for file rotation
-    }),
-    // Error File Transport (Error Level Only)
-    new winston.transports.DailyRotateFile({
-        filename: path.join(LOGS_DIR, 'error-%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        zippedArchive: true,
-        maxSize: '20m',
-        maxFiles: '30d',
-        level: 'error', // Only log errors and above to this file
-        utc: true       // Use UTC time for file rotation
-      })
-  ],
-  exceptionHandlers: [ // Catch and log unhandled exceptions
-    new winston.transports.DailyRotateFile({
-        filename: path.join(LOGS_DIR, 'exceptions-%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        zippedArchive: true,
-        maxSize: '10m',
-        maxFiles: '30d',
-        utc: true       // Use UTC time for file rotation
-      }),
-    new winston.transports.Console({ // Also log exceptions to console
-        format: consoleFormat
+      level: config.LOG_LEVEL // Use the level from config
     })
-  ],
-  rejectionHandlers: [ // Catch and log unhandled promise rejections
-    new winston.transports.DailyRotateFile({
-        filename: path.join(LOGS_DIR, 'rejections-%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        zippedArchive: true,
-        maxSize: '10m',
-        maxFiles: '30d',
-        utc: true       // Use UTC time for file rotation
-      }),
-    new winston.transports.Console({ // Also log rejections to console
-        format: consoleFormat
+  );
+}
+
+// Create exception handlers array
+const exceptionHandlers: winston.transport[] = [
+  new winston.transports.DailyRotateFile({
+    filename: path.join(LOGS_DIR, 'exceptions-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '10m',
+    maxFiles: '30d',
+    utc: true       // Use UTC time for file rotation
+  })
+];
+
+// Add console exception handler only if silent mode is not enabled
+if (!config.SILENT_MODE) {
+  exceptionHandlers.push(
+    new winston.transports.Console({
+      format: consoleFormat
     })
-  ],
+  );
+}
+
+// Create rejection handlers array
+const rejectionHandlers: winston.transport[] = [
+  new winston.transports.DailyRotateFile({
+    filename: path.join(LOGS_DIR, 'rejections-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '10m',
+    maxFiles: '30d',
+    utc: true       // Use UTC time for file rotation
+  })
+];
+
+// Add console rejection handler only if silent mode is not enabled
+if (!config.SILENT_MODE) {
+  rejectionHandlers.push(
+    new winston.transports.Console({
+      format: consoleFormat
+    })
+  );
+}
+
+// --- System Logger ---
+const systemLogger = winston.createLogger({
+  level: config.LOG_LEVEL || 'info', // Use the level from config
+  format: logFormat,
+  transports,
+  exceptionHandlers,
+  rejectionHandlers,
   exitOnError: false // Prevent Winston from exiting on handled exceptions/rejections
 });
 
@@ -154,10 +181,6 @@ function createMechanicsLogger(mechanicName: string) {
     }
   };
 }
-
-// Example usage:
-// const combatLogger = createMechanicsLogger('Combat');
-// combatLogger.playerAction('player1', 'Attacked goblin for 5 damage');
 
 export { 
   systemLogger, 

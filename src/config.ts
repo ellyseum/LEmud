@@ -1,10 +1,14 @@
 // Configuration file for the MUD game server
 import path from 'path';
 import os from 'os';
+import { parseCommandLineArgs } from './config/cliConfig';
+
+// Parse command line arguments
+const cliConfig = parseCommandLineArgs();
 
 // Server ports
-export const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
-export const WS_PORT = 8080; // WebSocket port for the web client and admin interface
+export const TELNET_PORT = cliConfig.port;
+export const WS_PORT = cliConfig.wsPort;
 
 // Authentication
 export const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
@@ -12,16 +16,33 @@ export const MIN_PASSWORD_LENGTH = 6;
 export const maxPasswordAttempts = 3; // Max failed password attempts before disconnection
 
 // File paths
-export const DATA_DIR = path.join(__dirname, '..', 'data');
+export const DATA_DIR = cliConfig.dataDir;
 export const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 export const ADMIN_DIR = path.join(DATA_DIR, 'admin');
 
+// File locations
+export const ROOMS_FILE = cliConfig.roomsFile;
+export const USERS_FILE = cliConfig.usersFile;
+export const ITEMS_FILE = cliConfig.itemsFile;
+export const NPCS_FILE = cliConfig.npcsFile;
+export const MUD_CONFIG_FILE = cliConfig.mudConfigFile;
+
+// Session flags
+export const AUTO_ADMIN_SESSION = cliConfig.adminSession;
+export const AUTO_USER_SESSION = cliConfig.userSession;
+
+// Direct data
+export const DIRECT_ROOMS_DATA = cliConfig.rooms;
+export const DIRECT_USERS_DATA = cliConfig.users;
+export const DIRECT_ITEMS_DATA = cliConfig.items;
+export const DIRECT_NPCS_DATA = cliConfig.npcs;
+
 // Message formatting
-export const MAX_MESSAGE_LINE_LENGTH = 50; // For admin and system messages
+export const MAX_MESSAGE_LINE_LENGTH = 50;
 
 // Timeouts and intervals
-export const SERVER_STATS_UPDATE_INTERVAL = 5000; // Update server statistics every 5 seconds
-export const IDLE_CHECK_INTERVAL = 60000; // Check for idle clients every minute
+export const SERVER_STATS_UPDATE_INTERVAL = 5000;
+export const IDLE_CHECK_INTERVAL = 60000;
 export const COMMAND_DELAY_MS = 50; // Delay for processing commands
 
 // System defaults
@@ -30,8 +51,29 @@ export const USERNAME_MAX_LENGTH = 12;
 export const USERNAME_MIN_LENGTH = 3;
 
 // Environment detection
-export const IS_TTY = process.stdin.isTTY;
-export const HOST_NAME = os.hostname();
+export const IS_WINDOWS = os.platform() === 'win32';
+
+// Check for console mode - should be true if we're in a TTY, not running with auto-session,
+// and not running with noConsole flag
+export const CONSOLE_MODE = process.stdout.isTTY && 
+                         !cliConfig.adminSession && 
+                         !cliConfig.userSession &&
+                         !cliConfig.noConsole;
+
+// Use previous IS_TTY value for backward compatibility
+export const IS_TTY = CONSOLE_MODE;
+
+// Disable colors if requested
+export const USE_COLORS = !cliConfig.noColor;
+
+// Set log level from CLI
+export const LOG_LEVEL = cliConfig.logLevel;
+
+// Silence console output if requested
+export const SILENT_MODE = cliConfig.silent;
+
+// Disable console commands if requested
+export const NO_CONSOLE = cliConfig.noConsole;
 
 // Export all configuration as a single object for convenience
 export default {
@@ -43,6 +85,17 @@ export default {
   DATA_DIR,
   PUBLIC_DIR,
   ADMIN_DIR,
+  ROOMS_FILE,
+  USERS_FILE,
+  ITEMS_FILE,
+  NPCS_FILE,
+  MUD_CONFIG_FILE,
+  AUTO_ADMIN_SESSION,
+  AUTO_USER_SESSION,
+  DIRECT_ROOMS_DATA,
+  DIRECT_USERS_DATA,
+  DIRECT_ITEMS_DATA,
+  DIRECT_NPCS_DATA,
   MAX_MESSAGE_LINE_LENGTH,
   SERVER_STATS_UPDATE_INTERVAL,
   IDLE_CHECK_INTERVAL,
@@ -50,6 +103,12 @@ export default {
   DEFAULT_SHUTDOWN_MINUTES,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
+  IS_WINDOWS,
   IS_TTY,
-  HOST_NAME
+  CONSOLE_MODE,
+  USE_COLORS,
+  LOG_LEVEL,
+  SILENT_MODE,
+  NO_CONSOLE,
+  HOST_NAME: os.hostname()
 };
