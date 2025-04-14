@@ -8,6 +8,8 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import readline from 'readline';
 import fs from 'fs';
+import * as crypto from 'crypto';
+import winston from 'winston'; // Add winston import
 import { ConnectedClient, ClientStateType, ServerStats } from './types';
 import { UserManager } from './user/userManager';
 import { CommandHandler } from './command/commandHandler';
@@ -29,6 +31,13 @@ import { systemLogger, getPlayerLogger } from './utils/logger'; // Import logger
 
 const TELNET_PORT = 8023; // Standard TELNET port is 23, using 8023 to avoid requiring root privileges
 const WS_PORT = 8080; // WebSocket port
+let actualTelnetPort = TELNET_PORT; // Store the actual port used
+
+// --- Local Client Connection State ---
+let isLocalClientConnected = false;
+let localClientSocket: net.Socket | null = null;
+let originalConsoleTransport: winston.transport | null = null;
+let isAdminLoginPending = false; // Flag for direct admin login
 
 // Initialize server components
 const userManager = UserManager.getInstance();
@@ -285,17 +294,86 @@ io.on('connection', (socket) => {
 });
 
 // Create TELNET server
-const telnetServer = net.createServer(socket => {
-  systemLogger.info(`TELNET client connected: ${socket.remoteAddress}`);
-  
-  // Create our custom connection wrapper
-  const connection = new TelnetConnection(socket);
-  
-  // TelnetConnection class now handles all the TELNET negotiation
-  setupClient(connection);
-  
-  // Track total connections
-  serverStats.totalConnections++;
+const telnetServer = net.createServer((socket) => {
+  // Check if this connection is the pending admin login
+  if (isAdminLoginPending) {
+    isAdminLoginPending = false; // Reset flag immediately
+    systemLogger.info(`Incoming connection flagged as direct admin login.`);
+    
+    // Create the connection wrapper
+    const connection = new TelnetConnection(socket);
+    
+    // Setup client normally first
+    setupClient(connection);
+    
+    // Get the client ID
+    const clientId = connection.getId();
+    const client = clients.get(clientId);
+    
+    if (client) {
+      // Set a special flag in stateData for the state machine to handle
+      client.stateData.directAdminLogin = true;
+      
+      // Have the state machine transition immediately to CONNECTING first
+      // to ensure everything is initialized properly
+      stateMachine.transitionTo(client, ClientStateType.CONNECTING);
+      
+      systemLogger.info(`Direct admin login initialized for connection: ${clientId}`);
+      
+      // Send welcome banner
+      connection.write('========================================\r\n');
+      connection.write('       DIRECT ADMIN LOGIN\r\n');
+      connection.write('========================================\r\n\r\n');
+      
+      // Delay slightly to allow telnet negotiation to complete
+      setTimeout(() => {
+        // Login as admin user bypassing normal flow
+        // This simulates the user typing "admin" at the login prompt
+        processInput(client, 'admin');
+        
+        // Force authentication immediately, bypassing password check
+        client.authenticated = true;
+        
+        // Set up admin user data
+        const adminData = userManager.getUser('admin');
+        if (adminData) {
+          client.user = adminData;
+          userManager.registerUserSession('admin', client);
+          
+          // Transition to authenticated state
+          stateMachine.transitionTo(client, ClientStateType.AUTHENTICATED);
+          
+          // Log the direct admin login
+          systemLogger.info(`Admin user directly logged in via console shortcut.`);
+          
+          // Notify admin of successful login
+          connection.write('\r\nDirectly logged in as admin. Welcome!\r\n\r\n');
+          
+          // Execute the "look" command to help admin orient
+          setTimeout(() => {
+            processInput(client, 'look');
+          }, 500);
+        } else {
+          // This should never happen as we check for admin at startup
+          systemLogger.error('Failed to load admin user data for direct login.');
+          connection.write('Error loading admin user data. Disconnecting.\r\n');
+          connection.end();
+        }
+      }, 1000);
+    }
+  } else {
+    // Normal connection flow
+    systemLogger.info(`TELNET client connected: ${socket.remoteAddress}`);
+    
+    // Create our custom connection wrapper
+    const connection = new TelnetConnection(socket);
+    
+    // TelnetConnection class now handles all the TELNET negotiation
+    setupClient(connection);
+    
+    // Track total connections
+    serverStats.totalConnections++;
+  }
 });
 
 // Shared client setup function
@@ -992,6 +1070,71 @@ function createAdminMessageBox(message: string): string {
   return result;
 }
 
+// Function to create a 3D boxed message for system messages
+function createSystemMessageBox(message: string): string {
+  // Create an array of lines from the message, breaking at proper word boundaries
+  const lines = [];
+  const words = message.split(' ');
+  let currentLine = '';
+  
+  // Max length for each line inside the box (adjust for box padding)
+  const maxLineLength = 50;
+  
+  for (const word of words) {
+    // Check if adding this word would exceed the max line length
+    if ((currentLine + ' ' + word).length <= maxLineLength) {
+      currentLine += (currentLine ? ' ' : '') + word;
+    } else {
+      // Add the current line to our lines array and start a new line
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  
+  // Don't forget to add the last line
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  
+  // ANSI color for a bright cyan
+  const color = '\x1b[96m';
+  const reset = '\x1b[0m';
+  
+  // Unicode box drawing characters for a 3D effect
+  const topLeft = '╔';
+  const topRight = '╗';
+  const bottomLeft = '╚';
+  const bottomRight = '╝';
+  const horizontal = '═';
+  const vertical = '║';
+  
+  // Calculate box width based on the longest line
+  const boxWidth = Math.max(...lines.map(line => line.length), 'SYSTEM MESSAGE:'.length) + 4; // Add padding
+  
+  // Build the box
+  let result = '\r\n'; // Start with a new line
+  
+  // Top border with 3D effect
+  result += color + topLeft + horizontal.repeat(boxWidth - 2) + topRight + reset + '\r\n';
+  
+  // Add the "SYSTEM MESSAGE:" header
+  result += color + vertical + reset + ' ' + color + 'SYSTEM MESSAGE:' + reset + ' '.repeat(boxWidth - 'SYSTEM MESSAGE:'.length - 3) + color + vertical + reset + '\r\n';
+  
+  // Add a separator line
+  result += color + vertical + reset + ' ' + horizontal.repeat(boxWidth - 4) + ' ' + color + vertical + reset + '\r\n';
+  
+  // Content lines
+  for (const line of lines) {
+    const padding = ' '.repeat(boxWidth - line.length - 4);
+    result += color + vertical + reset + ' ' + line + padding + ' ' + color + vertical + reset + '\r\n';
+  }
+  
+  // Bottom border with 3D effect
+  result += color + bottomLeft + horizontal.repeat(boxWidth - 2) + bottomRight + reset + '\r\n';
+  
+  return result;
+}
+
 // After gameTimerManager initialization, set up idle timeout checker
 const IDLE_CHECK_INTERVAL = 60000; // Check for idle clients every minute
 
@@ -1229,6 +1372,299 @@ function readPasswordFromConsole(prompt: string): Promise<string> {
 // Define the path to the data directory
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
+// Function to end the local client/admin session and restore logging
+function endLocalSession() {
+  if (!isLocalClientConnected) return;
+
+  systemLogger.info('Ending local session...');
+
+  // Clean up socket
+  if (localClientSocket) {
+    localClientSocket.removeAllListeners();
+    localClientSocket.destroy();
+    localClientSocket = null;
+  }
+
+  // Restore console logging
+  if (originalConsoleTransport && !systemLogger.transports.includes(originalConsoleTransport)) {
+    systemLogger.add(originalConsoleTransport);
+    systemLogger.info('Console logging restored.');
+    originalConsoleTransport = null; // Clear stored transport
+  }
+
+  // Remove the specific listener for the session
+  process.stdin.removeAllListeners('data');
+
+  // Set stdin back to normal mode (important!)
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(false);
+    process.stdin.pause(); // Allow node to exit if this was the only thing keeping it alive
+  }
+
+  isLocalClientConnected = false;
+  isAdminLoginPending = false; // Ensure flag is reset
+  console.log("\nLocal session ended. Log output resumed.");
+
+  // Re-enable the listener for the keys
+  setupKeyListener();
+}
+
+// Function to pause logging and prepare for local connection
+function prepareLocalSessionStart() {
+  if (isLocalClientConnected || !process.stdin.isTTY) return false;
+
+  isLocalClientConnected = true;
+  systemLogger.info("Attempting to start local session...");
+
+  // Pause the main key listener
+  process.stdin.removeAllListeners('data');
+
+  // Find and remove the console transport
+  const consoleTransport = systemLogger.transports.find(t => t instanceof winston.transports.Console);
+  if (consoleTransport) {
+    originalConsoleTransport = consoleTransport;
+    systemLogger.remove(consoleTransport);
+    console.log("\nConsole logging paused. Connecting to local server...");
+    console.log("Press Ctrl+C to disconnect the local client and resume logging.");
+    console.log('========================================');
+    console.log('       CONNECTING LOCALLY...');
+    console.log('========================================');
+  } else {
+    console.log("\nCould not find console transport to pause logging.");
+  }
+  return true;
+}
+
+// Function to start the standard local client session
+function startLocalClientSession(port: number) {
+  if (!prepareLocalSessionStart()) return;
+
+  localClientSocket = new net.Socket();
+
+  // Set up listeners for the new socket
+  localClientSocket.on('data', (data) => {
+    process.stdout.write(data); // Write server output directly to console
+  });
+
+  localClientSocket.on('close', () => {
+    console.log('\nConnection to local server closed.');
+    endLocalSession();
+  });
+
+  localClientSocket.on('error', (err) => {
+    console.error(`\nLocal connection error: ${err.message}`);
+    endLocalSession();
+  });
+
+  // Connect to the server
+  localClientSocket.connect(port, 'localhost', () => {
+    systemLogger.info(`Local client connected to localhost:${port}`);
+    console.log(`\nConnected to MUD server on port ${port}.`);
+
+    // Set up stdin for the session AFTER connection
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true); // Need raw mode for direct key capture
+      process.stdin.resume();
+      process.stdin.setEncoding('utf8');
+
+      process.stdin.on('data', (key) => {
+        // Ctrl+C check specifically for the local client session
+        if (key.toString() === '\u0003') {
+          console.log('\nCtrl+C detected. Disconnecting local client...');
+          endLocalSession();
+        } else if (localClientSocket && localClientSocket.writable) {
+          localClientSocket.write(key); // Send other keys to the server
+        }
+      });
+    }
+  });
+}
+
+// Function to start the direct admin session
+function startLocalAdminSession(port: number) {
+  if (!prepareLocalSessionStart()) return;
+
+  isAdminLoginPending = true; // Set the flag BEFORE connecting
+  localClientSocket = new net.Socket();
+
+  // Set up listeners (same as standard local client)
+  localClientSocket.on('data', (data) => {
+    process.stdout.write(data);
+  });
+
+  localClientSocket.on('close', () => {
+    console.log('\nAdmin session connection closed.');
+    endLocalSession();
+  });
+
+  localClientSocket.on('error', (err) => {
+    console.error(`\nLocal admin connection error: ${err.message}`);
+    isAdminLoginPending = false; // Reset flag on error too
+    endLocalSession();
+  });
+
+  // Connect to the server
+  localClientSocket.connect(port, 'localhost', () => {
+    systemLogger.info(`Local admin client connected to localhost:${port}`);
+    console.log(`\nConnected directly as admin on port ${port}.`);
+
+    // Set up stdin (same as standard local client)
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.setEncoding('utf8');
+
+      process.stdin.on('data', (key) => {
+        if (key.toString() === '\u0003') {
+          console.log('\nCtrl+C detected. Disconnecting admin session...');
+          endLocalSession();
+        } else if (localClientSocket && localClientSocket.writable) {
+          localClientSocket.write(key);
+        }
+      });
+    }
+  });
+}
+
+// Function to set up the initial key listener
+function setupKeyListener() {
+  if (process.stdin.isTTY && !isLocalClientConnected) {
+    systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+
+    const keyListener = (key: string) => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === 'c') {
+        process.stdin.removeListener('data', keyListener);
+        startLocalClientSession(actualTelnetPort);
+      } else if (lowerKey === 'a') {
+        process.stdin.removeListener('data', keyListener);
+        startLocalAdminSession(actualTelnetPort);
+      } else if (lowerKey === 'u') {
+        // List all connected users
+        console.log("\n=== Connected Users ===");
+        let userCount = 0;
+        
+        clients.forEach(client => {
+          if (client.authenticated && client.user) {
+            const idleTime = Math.floor((Date.now() - client.lastActivity) / 1000);
+            console.log(`${client.user.username}: connected for ${Math.floor((Date.now() - client.connectedAt) / 1000)}s, idle for ${idleTime}s`);
+            userCount++;
+          }
+        });
+        
+        if (userCount === 0) {
+          console.log("No authenticated users currently connected.");
+        }
+        console.log(`Total connections: ${clients.size}`);
+        console.log("======================\n");
+      } else if (lowerKey === 's') {
+        // Remove the key listener temporarily
+        process.stdin.removeListener('data', keyListener);
+        
+        // Pause console logging temporarily like we do for local client sessions
+        let messageConsoleTransport: winston.transport | null = null;
+        const consoleTransport = systemLogger.transports.find(t => t instanceof winston.transports.Console);
+        if (consoleTransport) {
+          messageConsoleTransport = consoleTransport;
+          systemLogger.remove(consoleTransport);
+          console.log("\nConsole logging paused. Enter your system message:");
+        }
+        
+        // Temporarily remove raw mode to get text input
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        
+        console.log("\n=== System Message ===");
+        console.log("Enter message to broadcast to all users (press Enter when done):");
+        
+        // Create a readline interface for getting user input
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout
+        });
+        
+        // Get the system message
+        rl.question('> ', (message) => {
+          rl.close();
+          
+          if (message.trim()) {
+            console.log("\nSending system message to all users...");
+            
+            // Create the boxed system message
+            const boxedMessage = createSystemMessageBox(message);
+            
+            // Send to all connected users
+            let sentCount = 0;
+            clients.forEach(client => {
+              if (client.authenticated) {
+                writeMessageToClient(client, boxedMessage);
+                sentCount++;
+              }
+            });
+            
+            console.log(`Message sent to ${sentCount} users.`);
+            
+            // Log after we restore the transport so it will appear in the log file
+            if (messageConsoleTransport) {
+              systemLogger.add(messageConsoleTransport);
+              systemLogger.info('Console logging restored.');
+              systemLogger.info(`System message broadcast: "${message}"`);
+            } else {
+              systemLogger.info(`System message broadcast: "${message}"`);
+            }
+          } else {
+            console.log("Message was empty, not sending.");
+            
+            // Restore console logging
+            if (messageConsoleTransport) {
+              systemLogger.add(messageConsoleTransport);
+              systemLogger.info('Console logging restored.');
+            }
+          }
+          
+          // Restore raw mode and key listener
+          if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+          }
+          process.stdin.resume();
+          process.stdin.on('data', keyListener);
+          
+          // Display options again
+          console.log(); // Add a blank line for better readability
+          systemLogger.info(`Press 'c' to connect locally, 'a' for admin session, 'u' to list users, 's' for system message, 'q' to shutdown.`);
+        });
+      } else if (lowerKey === 'q') {
+        console.log("\nShutting down server by request...");
+        process.kill(process.pid, 'SIGINT');
+      } else if (key === '\u0003') {
+        systemLogger.info('Ctrl+C detected. Shutting down server...');
+        process.kill(process.pid, 'SIGINT');
+      } else {
+        // Show menu options again for unrecognized keys
+        // Only show for printable characters, not control sequences
+        if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) <= 126) {
+          console.log(`\nUnrecognized option: '${key}'`);
+          console.log("Available options:");
+          console.log("  c: Connect locally");
+          console.log("  a: Admin session");
+          console.log("  u: List connected users");
+          console.log("  s: Send system message");
+          console.log("  q: Shutdown server");
+          console.log("  Ctrl+C: Shutdown server");
+        }
+      }
+    };
+
+    process.stdin.on('data', keyListener);
+  } else if (!process.stdin.isTTY) {
+    systemLogger.info('Not running in a TTY, local client connection disabled.');
+  }
+}
+
 const startServer = async () => {
   // First check and create admin user if needed
   const adminSetupSuccess = await checkAndCreateAdminUser();
@@ -1241,14 +1677,85 @@ const startServer = async () => {
   
   // Try to create the TELNET server with error handling
   const telnetServer = net.createServer((socket) => {
-    // Create our custom connection wrapper
-    const connection = new TelnetConnection(socket);
-  
-    // TelnetConnection class now handles all the TELNET negotiation
-    setupClient(connection);
-  
-    // Track total connections
-    serverStats.totalConnections++;
+    // Check if this connection is the pending admin login
+    if (isAdminLoginPending) {
+      isAdminLoginPending = false; // Reset flag immediately
+      systemLogger.info(`Incoming connection flagged as direct admin login.`);
+      
+      // Create the connection wrapper
+      const connection = new TelnetConnection(socket);
+      
+      // Setup client normally first
+      setupClient(connection);
+      
+      // Get the client ID
+      const clientId = connection.getId();
+      const client = clients.get(clientId);
+      
+      if (client) {
+        // Set a special flag in stateData for the state machine to handle
+        client.stateData.directAdminLogin = true;
+        
+        // Have the state machine transition immediately to CONNECTING first
+        // to ensure everything is initialized properly
+        stateMachine.transitionTo(client, ClientStateType.CONNECTING);
+        
+        systemLogger.info(`Direct admin login initialized for connection: ${clientId}`);
+        
+        // Send welcome banner
+        connection.write('========================================\r\n');
+        connection.write('       DIRECT ADMIN LOGIN\r\n');
+        connection.write('========================================\r\n\r\n');
+        
+        // Delay slightly to allow telnet negotiation to complete
+        setTimeout(() => {
+          // Login as admin user bypassing normal flow
+          // This simulates the user typing "admin" at the login prompt
+          processInput(client, 'admin');
+          
+          // Force authentication immediately, bypassing password check
+          client.authenticated = true;
+          
+          // Set up admin user data
+          const adminData = userManager.getUser('admin');
+          if (adminData) {
+            client.user = adminData;
+            userManager.registerUserSession('admin', client);
+            
+            // Transition to authenticated state
+            stateMachine.transitionTo(client, ClientStateType.AUTHENTICATED);
+            
+            // Log the direct admin login
+            systemLogger.info(`Admin user directly logged in via console shortcut.`);
+            
+            // Notify admin of successful login
+            connection.write('\r\nDirectly logged in as admin. Welcome!\r\n\r\n');
+            
+            // Execute the "look" command to help admin orient
+            setTimeout(() => {
+              processInput(client, 'look');
+            }, 500);
+          } else {
+            // This should never happen as we check for admin at startup
+            systemLogger.error('Failed to load admin user data for direct login.');
+            connection.write('Error loading admin user data. Disconnecting.\r\n');
+            connection.end();
+          }
+        }, 1000);
+      }
+    } else {
+      // Normal connection flow
+      systemLogger.info(`TELNET client connected: ${socket.remoteAddress}`);
+      
+      // Create our custom connection wrapper
+      const connection = new TelnetConnection(socket);
+      
+      // TelnetConnection class now handles all the TELNET negotiation
+      setupClient(connection);
+      
+      // Track total connections
+      serverStats.totalConnections++;
+    }
   });
 
   telnetServer.on('error', (err: Error & {code?: string}) => {
@@ -1486,9 +1993,15 @@ async function init() {
   systemLogger.info('Starting game timer system...');
   gameTimerManager.start();
   
+  // Setup the key listener after server starts and ports are confirmed
+  setupKeyListener();
+  
   // Setup graceful shutdown to save data and properly clean up
   process.on('SIGINT', () => {
     systemLogger.info('Shutting down server...');
+    
+    // End any local session if active
+    endLocalSession();
     
     // Stop the game timer system
     gameTimerManager.stop();

@@ -51,6 +51,10 @@ export class AuthenticatedState implements ClientState {
 
     // Reset state data for fresh state
     client.stateData = client.stateData || {};
+    
+    // Disable password masking (fixes the direct admin login bug)
+    client.stateData.maskInput = false;
+    client.connection.setMaskInput(false);
 
     // Initialize ItemManager for equipment calculations
     const itemManager = ItemManager.getInstance();
