@@ -48,6 +48,7 @@ import { DestroyCommand } from './commands/destroy.command'; // Import our new D
 import { RenameCommand } from './commands/rename.command'; // Updated to match the constructor definition of RenameCommand
 import { ResetNameCommand } from './commands/resetname.command'; // Import our new Reset Name command
 import { RepairCommand } from './commands/repair.command'; // Import our new Repair command
+import { BugReportCommand } from './commands/bugreport.command';
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -137,6 +138,7 @@ export class CommandRegistry {
       new RenameCommand(), // Updated to match the constructor definition of RenameCommand
       new ResetNameCommand(), // Add our new ResetName command
       new RepairCommand(), // Add our new Repair command
+      new BugReportCommand(this.userManager), // Add our new Bug Report command
     ];
     
     // Register all commands
@@ -147,11 +149,17 @@ export class CommandRegistry {
     // Connect SudoCommand and AdminManageCommand
     const sudoCommand = commands.find(cmd => cmd.name === 'sudo') as SudoCommand;
     const adminManageCommand = commands.find(cmd => cmd.name === 'adminmanage') as AdminManageCommand;
+    const bugReportCommand = commands.find(cmd => cmd.name === 'bugreport') as BugReportCommand;
     
     if (sudoCommand && adminManageCommand) {
       adminManageCommand.setSudoCommand(sudoCommand);
       // Provide the command registry to SudoCommand so it can execute other commands
       sudoCommand.setCommandRegistry(this);
+    }
+    
+    // Connect BugReportCommand to SudoCommand for admin permission checking
+    if (sudoCommand && bugReportCommand) {
+      bugReportCommand.setSudoCommand(sudoCommand);
     }
     
     // Register aliases
@@ -212,6 +220,11 @@ export class CommandRegistry {
     // Add aliases for repair command
     this.aliases.set('fix', {commandName: 'repair'});
     this.aliases.set('mend', {commandName: 'repair'});
+    // Add aliases for bug report command
+    this.aliases.set('bug', {commandName: 'bugreport'});
+    this.aliases.set('brp', {commandName: 'bugreport'});
+    this.aliases.set('bugs', {commandName: 'bugreport', args: 'list'});
+    this.aliases.set('report', {commandName: 'bugreport'});
   }
 
   private registerDirectionCommands(): void {

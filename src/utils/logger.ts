@@ -47,7 +47,8 @@ const systemLogger = winston.createLogger({
       zippedArchive: true, // Compress rotated files
       maxSize: '20m',     // Rotate when file reaches 20MB
       maxFiles: '14d',    // Keep logs for 14 days
-      level: 'info'       // Log info, warn, error to this file
+      level: 'info',      // Log info, warn, error to this file
+      utc: true           // Use UTC time for file rotation
     }),
     // Error File Transport (Error Level Only)
     new winston.transports.DailyRotateFile({
@@ -56,7 +57,8 @@ const systemLogger = winston.createLogger({
         zippedArchive: true,
         maxSize: '20m',
         maxFiles: '30d',
-        level: 'error' // Only log errors and above to this file
+        level: 'error', // Only log errors and above to this file
+        utc: true       // Use UTC time for file rotation
       })
   ],
   exceptionHandlers: [ // Catch and log unhandled exceptions
@@ -65,7 +67,8 @@ const systemLogger = winston.createLogger({
         datePattern: 'YYYY-MM-DD',
         zippedArchive: true,
         maxSize: '10m',
-        maxFiles: '30d'
+        maxFiles: '30d',
+        utc: true       // Use UTC time for file rotation
       }),
     new winston.transports.Console({ // Also log exceptions to console
         format: consoleFormat
@@ -77,7 +80,8 @@ const systemLogger = winston.createLogger({
         datePattern: 'YYYY-MM-DD',
         zippedArchive: true,
         maxSize: '10m',
-        maxFiles: '30d'
+        maxFiles: '30d',
+        utc: true       // Use UTC time for file rotation
       }),
     new winston.transports.Console({ // Also log rejections to console
         format: consoleFormat
@@ -103,7 +107,8 @@ function getPlayerLogger(username: string): winston.Logger {
           zippedArchive: true,
           maxSize: '5m', // Smaller size for individual player logs
           maxFiles: '7d', // Keep player logs for 7 days
-          level: 'info'
+          level: 'info',
+          utc: true     // Use UTC time for file rotation
         })
       ]
     });
