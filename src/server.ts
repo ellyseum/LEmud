@@ -29,6 +29,8 @@ import { AdminLevel } from './command/commands/adminmanage.command';
 import { SnakeGameState } from './states/snake-game.state';
 import { systemLogger, getPlayerLogger } from './utils/logger'; // Import loggers
 import config from './config'; // Import configuration
+import { createAdminMessageBox, createSystemMessageBox } from './utils/messageFormatter'; // Import message formatters
+import { readPasswordFromConsole } from './utils/consoleUtils'; // Import console utilities
 const { SudoCommand } = require('./command/commands/sudo.command');
 
 // Use values from config instead of hardcoded values
@@ -1053,136 +1055,6 @@ function writeToClientWithMonitoring(client: ConnectedClient, data: string): voi
   }
 }
 
-// Function to create a 3D boxed message for admin messages
-function createAdminMessageBox(message: string): string {
-  // Create an array of lines from the message, breaking at proper word boundaries
-  const lines = [];
-  const words = message.split(' ');
-  let currentLine = '';
-  
-  // Max length for each line inside the box (adjust for box padding)
-  const maxLineLength = 50;
-  
-  for (const word of words) {
-    // Check if adding this word would exceed the max line length
-    if ((currentLine + ' ' + word).length <= maxLineLength) {
-      currentLine += (currentLine ? ' ' : '') + word;
-    } else {
-      // Add the current line to our lines array and start a new line
-      lines.push(currentLine);
-      currentLine = word;
-    }
-  }
-  
-  // Don't forget to add the last line
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-  
-  // ANSI color for a bright magenta
-  const color = '\x1b[95m';
-  const reset = '\x1b[0m';
-  
-  // Unicode box drawing characters for a 3D effect
-  const topLeft = '╔';
-  const topRight = '╗';
-  const bottomLeft = '╚';
-  const bottomRight = '╝';
-  const horizontal = '═';
-  const vertical = '║';
-  
-  // Calculate box width based on the longest line
-  const boxWidth = Math.max(...lines.map(line => line.length), 'MESSAGE FROM ADMIN:'.length) + 4; // Add padding
-  
-  // Build the box
-  let result = '\r\n'; // Start with a new line
-  
-  // Top border with 3D effect
-  result += color + topLeft + horizontal.repeat(boxWidth - 2) + topRight + reset + '\r\n';
-  
-  // Add the "MESSAGE FROM ADMIN:" header
-  result += color + vertical + reset + ' ' + color + 'MESSAGE FROM ADMIN:' + reset + ' '.repeat(boxWidth - 'MESSAGE FROM ADMIN:'.length - 3) + color + vertical + reset + '\r\n';
-  
-  // Add a separator line
-  result += color + vertical + reset + ' ' + horizontal.repeat(boxWidth - 4) + ' ' + color + vertical + reset + '\r\n';
-  
-  // Content lines
-  for (const line of lines) {
-    const padding = ' '.repeat(boxWidth - line.length - 4);
-    result += color + vertical + reset + ' ' + line + padding + ' ' + color + vertical + reset + '\r\n';
-  }
-  
-  // Bottom border with 3D effect
-  result += color + bottomLeft + horizontal.repeat(boxWidth - 2) + bottomRight + reset + '\r\n';
-  
-  return result;
-}
-
-// Function to create a 3D boxed message for system messages
-function createSystemMessageBox(message: string): string {
-  // Create an array of lines from the message, breaking at proper word boundaries
-  const lines = [];
-  const words = message.split(' ');
-  let currentLine = '';
-  
-  // Max length for each line inside the box (adjust for box padding)
-  const maxLineLength = 50;
-  
-  for (const word of words) {
-    // Check if adding this word would exceed the max line length
-    if ((currentLine + ' ' + word).length <= maxLineLength) {
-      currentLine += (currentLine ? ' ' : '') + word;
-    } else {
-      // Add the current line to our lines array and start a new line
-      lines.push(currentLine);
-      currentLine = word;
-    }
-  }
-  
-  // Don't forget to add the last line
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-  
-  // ANSI color for a bright cyan
-  const color = '\x1b[96m';
-  const reset = '\x1b[0m';
-  
-  // Unicode box drawing characters for a 3D effect
-  const topLeft = '╔';
-  const topRight = '╗';
-  const bottomLeft = '╚';
-  const bottomRight = '╝';
-  const horizontal = '═';
-  const vertical = '║';
-  
-  // Calculate box width based on the longest line
-  const boxWidth = Math.max(...lines.map(line => line.length), 'SYSTEM MESSAGE:'.length) + 4; // Add padding
-  
-  // Build the box
-  let result = '\r\n'; // Start with a new line
-  
-  // Top border with 3D effect
-  result += color + topLeft + horizontal.repeat(boxWidth - 2) + topRight + reset + '\r\n';
-  
-  // Add the "SYSTEM MESSAGE:" header
-  result += color + vertical + reset + ' ' + color + 'SYSTEM MESSAGE:' + reset + ' '.repeat(boxWidth - 'SYSTEM MESSAGE:'.length - 3) + color + vertical + reset + '\r\n';
-  
-  // Add a separator line
-  result += color + vertical + reset + ' ' + horizontal.repeat(boxWidth - 4) + ' ' + color + vertical + reset + '\r\n';
-  
-  // Content lines
-  for (const line of lines) {
-    const padding = ' '.repeat(boxWidth - line.length - 4);
-    result += color + vertical + reset + ' ' + line + padding + ' ' + color + vertical + reset + '\r\n';
-  }
-  
-  // Bottom border with 3D effect
-  result += color + bottomLeft + horizontal.repeat(boxWidth - 2) + bottomRight + reset + '\r\n';
-  
-  return result;
-}
-
 // Function to start a monitoring session for a user
 function startMonitoringSession(
   targetClient: ConnectedClient, 
@@ -1689,72 +1561,6 @@ async function checkAndCreateAdminUser(): Promise<boolean> {
     }
     return true;
   }
-}
-
-// Function to read password with masking characters
-function readPasswordFromConsole(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    const stdin = process.stdin;
-    const stdout = process.stdout;
-    
-    // Save the current settings
-    const originalStdinIsTTY = stdin.isTTY;
-    
-    // Write the prompt first
-    stdout.write(colorize(prompt, 'green'));
-    
-    let password = '';
-    
-    // Create a raw mode handler function
-    const onData = (key: Buffer) => {
-      const keyStr = key.toString();
-      
-      // Handle Ctrl+C
-      if (keyStr === '\u0003') {
-        stdout.write('\n');
-        if (originalStdinIsTTY) {
-          stdin.setRawMode(false);
-        }
-        stdin.removeListener('data', onData);
-        process.exit(1);
-      }
-      
-      // Handle Enter key
-      if (keyStr === '\r' || keyStr === '\n') {
-        stdout.write('\n');
-        if (originalStdinIsTTY) {
-          stdin.setRawMode(false);
-        }
-        stdin.removeListener('data', onData);
-        resolve(password);
-        return;
-      }
-      
-      // Handle backspace
-      if (keyStr === '\b' || keyStr === '\x7F') {
-        if (password.length > 0) {
-          password = password.slice(0, -1);
-          stdout.write('\b \b'); // erase the last character
-        }
-        return;
-      }
-      
-      // Ignore non-printable characters
-      if (keyStr.length === 1 && keyStr.charCodeAt(0) >= 32 && keyStr.charCodeAt(0) <= 126) {
-        // Add to password and show asterisk
-        password += keyStr;
-        stdout.write('*');
-      }
-    };
-    
-    // Enable raw mode to prevent terminal echo
-    if (stdin.isTTY) {
-      stdin.setRawMode(true);
-    }
-    
-    // Listen for keypress events
-    stdin.on('data', onData);
-  });
 }
 
 // Define the path to the data directory
