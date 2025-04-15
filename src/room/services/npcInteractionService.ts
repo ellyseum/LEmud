@@ -54,9 +54,6 @@ export class NPCInteractionService implements INPCInteractionService {
         systemLogger.info(`Added default NPC instance ${defaultNpc.instanceId} (template: ${templateId}) to room ${room.id}`);
       }
     }
-    
-    // Update the room to persist NPC changes
-    this.roomManager.updateRoom(room);
   }
 
   /**

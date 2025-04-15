@@ -10,19 +10,33 @@ import { getPromptText } from '../utils/promptFormatter';
 import { stopBuffering } from '../utils/socketWriter';
 
 export class ClientManager {
+  private static instance: ClientManager;
   private clients: Map<string, ConnectedClient>;
   private userManager: UserManager;
   private roomManager: RoomManager;
   private stateMachine: any; // Will be set later to avoid circular dependency
   private processInputFn: (client: ConnectedClient, input: string) => void = () => {}; // Initialize with no-op
 
-  constructor(
+  private constructor(
     userManager: UserManager,
     roomManager: RoomManager
   ) {
     this.clients = new Map<string, ConnectedClient>();
     this.userManager = userManager;
     this.roomManager = roomManager;
+  }
+
+  public static getInstance(
+    userManager?: UserManager,
+    roomManager?: RoomManager
+  ): ClientManager {
+    if (!ClientManager.instance) {
+      if (!userManager || !roomManager) {
+        throw new Error('UserManager and RoomManager must be provided when creating ClientManager instance');
+      }
+      ClientManager.instance = new ClientManager(userManager, roomManager);
+    }
+    return ClientManager.instance;
   }
 
   public setStateMachine(stateMachine: any): void {

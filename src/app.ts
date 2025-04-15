@@ -69,7 +69,7 @@ export class GameServer {
       this.userManager = UserManager.getInstance();
       
       // Create client manager with empty clients map first
-      this.clientManager = new ClientManager(this.userManager, RoomManager.getInstance(new Map<string, ConnectedClient>()));
+      this.clientManager = ClientManager.getInstance(this.userManager, RoomManager.getInstance(new Map<string, ConnectedClient>()));
       
       // Now that clientManager exists, get roomManager with client map from it
       this.roomManager = RoomManager.getInstance(this.clientManager.getClients());
