@@ -674,6 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Open the terminal in the container element
             monitorTerm.open(terminalContainer);
+            monitorTerm.focus();
             
             // Make the terminal fit its container
             fitAddon.fit();

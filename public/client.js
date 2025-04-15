@@ -29,7 +29,8 @@
     function initTerminal() {
         // Open the terminal in the container element
         term.open(document.getElementById('terminal'));
-        
+        term.focus();
+                
         // Make the terminal fit its container
         fitAddon.fit();
         
