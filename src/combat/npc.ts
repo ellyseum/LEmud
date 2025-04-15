@@ -3,6 +3,9 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { CombatEntity } from './combatEntity.interface';
 import { systemLogger } from '../utils/logger';
+import { parseAndValidateJson } from '../utils/jsonUtils';
+import { loadAndValidateJsonFile } from '../utils/fileUtils';
+import config from '../config';
 
 // Interface for NPC data loaded from JSON
 export interface NPCData {
@@ -64,6 +67,26 @@ export class NPC implements CombatEntity {
     this.instanceId = instanceId || uuidv4();
   }
 
+  /**
+   * Load pre-validated NPC data
+   * @param npcData Array of validated NPC data objects
+   * @returns Map of NPC data indexed by ID
+   */
+  static loadPrevalidatedNPCData(npcData: NPCData[]): Map<string, NPCData> {
+    const npcMap = new Map<string, NPCData>();
+    
+    npcData.forEach(npc => {
+      npcMap.set(npc.id, npc);
+    });
+    
+    // Update the cache
+    NPC.npcDataCache = npcMap;
+    NPC.cacheTimestamp = Date.now();
+    
+    systemLogger.info(`Loaded ${npcMap.size} pre-validated NPCs`);
+    return npcMap;
+  }
+
   // Static method to load NPC data from JSON with caching
   static loadNPCData(): Map<string, NPCData> {
     const currentTime = Date.now();
@@ -74,31 +97,54 @@ export class NPC implements CombatEntity {
       return NPC.npcDataCache;
     }
     
-    // Otherwise load from file and cache the result
-    const npcMap = new Map<string, NPCData>();
+    // Try to load NPCs from command line argument if provided
+    if (config.DIRECT_NPCS_DATA) {
+      try {
+        const npcArray = parseAndValidateJson<NPCData[]>(config.DIRECT_NPCS_DATA, 'npcs');
+        if (npcArray && Array.isArray(npcArray)) {
+          return NPC.loadPrevalidatedNPCData(npcArray);
+        }
+      } catch (error) {
+        systemLogger.error('Failed to load NPCs from command line:', error);
+        systemLogger.info('Falling back to loading NPCs from file');
+      }
+    }
+    
+    // Otherwise load from file with validation
+    return NPC.loadNPCDataFromFile();
+  }
+  
+  /**
+   * Load NPC data from file with validation
+   */
+  static loadNPCDataFromFile(): Map<string, NPCData> {
     const npcFilePath = path.join(__dirname, '..', '..', 'data', 'npcs.json');
     
     try {
-      if (fs.existsSync(npcFilePath)) {
-        const data = fs.readFileSync(npcFilePath, 'utf8');
-        const npcArray: NPCData[] = JSON.parse(data);
-        
-        npcArray.forEach(npc => {
-          npcMap.set(npc.id, npc);
-        });
-      } else {
-        // Use a single string parameter rather than two parameters to ensure proper formatting
+      if (!fs.existsSync(npcFilePath)) {
         systemLogger.warn(`NPCs file not found: ${npcFilePath}`);
+        return new Map<string, NPCData>(); // Return empty map
       }
-    } catch (error) {
-      systemLogger.error(`Error loading NPCs: ${error}`);
+      
+      // Try to validate the file
+      const npcArray = loadAndValidateJsonFile<NPCData[]>(npcFilePath, 'npcs');
+      
+      if (npcArray && Array.isArray(npcArray)) {
+        return NPC.loadPrevalidatedNPCData(npcArray);
+      } else {
+        // Instead of falling back to legacy loading, throw an error
+        throw new Error('NPC data validation failed - data must conform to the schema');
+      }
+    } catch (error: unknown) {
+      systemLogger.error(`Error loading NPCs: ${error instanceof Error ? error.message : String(error)}`);
+      if (!fs.existsSync(npcFilePath)) {
+        // Only return empty map if file doesn't exist
+        return new Map<string, NPCData>();
+      } else {
+        // Re-throw the error to prevent startup with invalid data
+        throw new Error(`Failed to load NPCs data: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    
-    // Store in cache for future calls
-    NPC.npcDataCache = npcMap;
-    NPC.cacheTimestamp = currentTime;
-    
-    return npcMap;
   }
 
   // Add a method to clear the cache if needed (e.g., for reloading data)

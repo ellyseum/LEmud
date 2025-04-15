@@ -5,6 +5,9 @@ import { ConnectedClient, Currency, Exit, Item } from '../types';
 import { systemLogger } from '../utils/logger';
 import { NPC } from '../combat/npc';
 import { IRoomManager } from './interfaces';
+import { parseAndValidateJson } from '../utils/jsonUtils';
+import { loadAndValidateJsonFile } from '../utils/fileUtils';
+import config from '../config';
 
 // Import our service classes
 import { DirectionHelper } from './services/directionHelper';
@@ -125,35 +128,82 @@ export class RoomManager implements IRoomManager {
     );
   }
 
+  /**
+   * Load prevalidated room data
+   * @param roomDataArray An array of validated room data objects
+   */
+  public loadPrevalidatedRooms(roomDataArray: any[]): void {
+    systemLogger.info(`Loading ${roomDataArray.length} pre-validated rooms...`);
+    
+    // Clear existing rooms to prevent duplicates
+    this.rooms.clear();
+    
+    // Load all NPC templates first
+    const npcData = NPC.loadNPCData();
+    
+    roomDataArray.forEach(roomData => {
+      const room = new Room(roomData);
+      this.rooms.set(room.id, room);
+      
+      // Instantiate NPCs from templates after room is created
+      if (Array.isArray(roomData.npcs)) {
+        this.npcInteractionService.instantiateNpcsFromTemplates(room, roomData.npcs, npcData);
+      }
+    });
+    
+    systemLogger.info('Pre-validated rooms loaded successfully');
+  }
+
   private loadRooms(): void {
     try {
-      if (fs.existsSync(ROOMS_FILE)) {
-        const data = fs.readFileSync(ROOMS_FILE, 'utf8');
-        const roomDataArray: RoomData[] = JSON.parse(data);
-        
-        systemLogger.info(`Loading ${roomDataArray.length} rooms...`);
-        
-        // Load all NPC templates first
-        const npcData = NPC.loadNPCData();
-        
-        roomDataArray.forEach(roomData => {
-          const room = new Room(roomData);
-          this.rooms.set(room.id, room);
+      // First try to load rooms from command line argument if provided
+      if (config.DIRECT_ROOMS_DATA) {
+        try {
+          const roomDataArray = parseAndValidateJson<any[]>(config.DIRECT_ROOMS_DATA, 'rooms');
           
-          // Instantiate NPCs from templates after room is created
-          if (Array.isArray(roomData.npcs)) {
-            this.npcInteractionService.instantiateNpcsFromTemplates(room, roomData.npcs, npcData);
+          if (roomDataArray && Array.isArray(roomDataArray)) {
+            this.loadPrevalidatedRooms(roomDataArray);
+            return; // Successfully loaded from command line
           }
-        });
+        } catch (error) {
+          systemLogger.error('Failed to load rooms from command line:', error);
+          systemLogger.info('Falling back to loading rooms from file');
+        }
+      }
+      
+      // If no rooms from command line, try loading from file
+      this.loadRoomsFromFile();
+    } catch (error) {
+      systemLogger.error('Error loading rooms:', error);
+      this.ensureStartingRoom(); // Make sure we have at least the starting room
+    }
+  }
+  
+  private loadRoomsFromFile(): void {
+    try {
+      // Validate file data using our validation system
+      if (fs.existsSync(ROOMS_FILE)) {
+        const roomDataArray = loadAndValidateJsonFile<any[]>(ROOMS_FILE, 'rooms');
         
-        systemLogger.info('Rooms loaded successfully');
+        if (roomDataArray && Array.isArray(roomDataArray)) {
+          this.loadPrevalidatedRooms(roomDataArray);
+        } else {
+          // Instead of falling back to legacy loading, throw an error
+          throw new Error('Room data validation failed - data must conform to the schema');
+        }
       } else {
         // Create initial rooms file if it doesn't exist
         this.saveRooms();
       }
-    } catch (error) {
-      systemLogger.error('Error loading rooms:', error);
-      this.ensureStartingRoom(); // Make sure we have at least the starting room
+    } catch (error: unknown) {
+      systemLogger.error('Error loading rooms from file:', error instanceof Error ? error.message : String(error));
+      // Create default rooms only if the file doesn't exist, not if validation fails
+      if (!fs.existsSync(ROOMS_FILE)) {
+        this.ensureStartingRoom();
+      } else {
+        // Re-throw the error to prevent startup with invalid data
+        throw new Error(`Failed to load rooms data: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 

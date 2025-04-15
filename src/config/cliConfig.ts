@@ -2,6 +2,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import fs from 'fs';
 import path from 'path';
+import { parseAndValidateJson, parseJsonArg } from '../utils/jsonUtils';
 
 // Define the configuration interface
 export interface CLIConfig {
@@ -185,4 +186,41 @@ export function parseCommandLineArgs(): CLIConfig {
   }
   
   return config;
+}
+
+// Add helper methods to the module to fetch parsed and validated JSON
+export function getParsedRooms<T>(): T | undefined {
+  const cliConfig = parseCommandLineArgs();
+  try {
+    return parseAndValidateJson<T>(cliConfig.rooms, 'rooms');
+  } catch (error) {
+    return undefined;
+  }
+}
+
+export function getParsedUsers<T>(): T | undefined {
+  const cliConfig = parseCommandLineArgs();
+  try {
+    return parseAndValidateJson<T>(cliConfig.users, 'users');
+  } catch (error) {
+    return undefined;
+  }
+}
+
+export function getParsedItems<T>(): T | undefined {
+  const cliConfig = parseCommandLineArgs();
+  try {
+    return parseAndValidateJson<T>(cliConfig.items, 'items');
+  } catch (error) {
+    return undefined;
+  }
+}
+
+export function getParsedNpcs<T>(): T | undefined {
+  const cliConfig = parseCommandLineArgs();
+  try {
+    return parseAndValidateJson<T>(cliConfig.npcs, 'npcs');
+  } catch (error) {
+    return undefined;
+  }
 }

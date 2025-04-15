@@ -4,6 +4,9 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GameItem, User, EquipmentSlot, ItemTemplate, ItemInstance } from '../types';
 import { createContextLogger } from './logger';
+import { parseAndValidateJson } from './jsonUtils';
+import { loadAndValidateJsonFile } from './fileUtils';
+import config from '../config';
 
 // Create a context-specific logger for ItemManager
 const itemLogger = createContextLogger('ItemManager');
@@ -29,7 +32,76 @@ export class ItemManager {
     this.loadItemInstances();
   }
 
+  /**
+   * Load prevalidated items data
+   * @param itemData An array of validated item data objects
+   */
+  public loadPrevalidatedItems(itemData: GameItem[]): void {
+    itemLogger.info(`Loading ${itemData.length} pre-validated items...`);
+    
+    // Clear existing items to prevent duplicates
+    this.items.clear();
+    
+    // Process each validated item 
+    itemData.forEach(item => {
+      this.items.set(item.id, item);
+    });
+    
+    itemLogger.info('Pre-validated items loaded successfully');
+  }
+
+  /**
+   * Load prevalidated item instances data
+   * @param instanceData An array of validated item instance data objects
+   */
+  public loadPrevalidatedItemInstances(instanceData: ItemInstance[]): void {
+    itemLogger.info(`Loading ${instanceData.length} pre-validated item instances...`);
+    
+    // Clear existing instances to prevent duplicates
+    this.itemInstances.clear();
+    
+    // Process each validated instance
+    instanceData.forEach(instance => {
+      // Convert string dates back to Date objects
+      instance.created = new Date(instance.created);
+      if (instance.history) {
+        instance.history.forEach(entry => {
+          entry.timestamp = new Date(entry.timestamp);
+        });
+      }
+      
+      this.itemInstances.set(instance.instanceId, instance);
+    });
+    
+    itemLogger.info('Pre-validated item instances loaded successfully');
+  }
+
   private loadItems(): void {
+    try {
+      // First try to load items from command line argument if provided
+      if (config.DIRECT_ITEMS_DATA) {
+        try {
+          const itemData = parseAndValidateJson<GameItem[]>(config.DIRECT_ITEMS_DATA, 'items');
+          
+          if (itemData && Array.isArray(itemData)) {
+            this.loadPrevalidatedItems(itemData);
+            return; // Successfully loaded from command line
+          }
+        } catch (error) {
+          itemLogger.error('Failed to load items from command line:', error);
+          itemLogger.info('Falling back to loading items from file');
+        }
+      }
+      
+      // If no items from command line, try loading from file
+      this.loadItemsFromFile();
+    } catch (error) {
+      itemLogger.error('Error loading items:', error);
+      this.createDefaultItems();
+    }
+  }
+  
+  private loadItemsFromFile(): void {
     try {
       // Create data directory if it doesn't exist
       if (!fs.existsSync(DATA_DIR)) {
@@ -38,212 +110,206 @@ export class ItemManager {
 
       // Create items file if it doesn't exist
       if (!fs.existsSync(ITEMS_FILE)) {
-        // Initialize with some default items
-        const defaultItems: GameItem[] = [
-          // Weapons
-          {
-            id: 'sword-001',
-            name: 'Iron Sword',
-            description: 'A sturdy iron sword with a sharp edge.',
-            type: 'weapon',
-            slot: EquipmentSlot.MAIN_HAND,
-            value: 50,
-            weight: 5,
-            stats: {
-              attack: 5,
-              strength: 2
-            },
-            requirements: {
-              level: 1,
-              strength: 5
-            }
-          },
-          {
-            id: 'shield-001',
-            name: 'Wooden Shield',
-            description: 'A basic wooden shield that provides some protection.',
-            type: 'armor',
-            slot: EquipmentSlot.OFF_HAND,
-            value: 30,
-            weight: 4,
-            stats: {
-              defense: 3,
-              constitution: 1
-            }
-          },
-          
-          // Head slot
-          {
-            id: 'helmet-001',
-            name: 'Leather Cap',
-            description: 'A simple leather cap that offers minimal protection.',
-            type: 'armor',
-            slot: EquipmentSlot.HEAD,
-            value: 25,
-            weight: 2,
-            stats: {
-              defense: 2
-            }
-          },
-          
-          // Neck slot
-          {
-            id: 'amulet-001',
-            name: 'Copper Amulet',
-            description: 'A simple amulet made of copper.',
-            type: 'armor',
-            slot: EquipmentSlot.NECK,
-            value: 35,
-            weight: 1,
-            stats: {
-              wisdom: 1,
-              intelligence: 1
-            }
-          },
-          
-          // Chest slot
-          {
-            id: 'chest-001',
-            name: 'Padded Tunic',
-            description: 'A padded tunic that offers some protection.',
-            type: 'armor',
-            slot: EquipmentSlot.CHEST,
-            value: 45,
-            weight: 6,
-            stats: {
-              defense: 4,
-              constitution: 1
-            }
-          },
-          
-          // Back slot
-          {
-            id: 'cloak-001',
-            name: 'Traveler\'s Cloak',
-            description: 'A warm cloak that keeps you dry in the rain.',
-            type: 'armor',
-            slot: EquipmentSlot.BACK,
-            value: 20,
-            weight: 3,
-            stats: {
-              defense: 1,
-              constitution: 1
-            }
-          },
-          
-          // Arms slot
-          {
-            id: 'arms-001',
-            name: 'Leather Bracers',
-            description: 'Protective bracers made of hardened leather.',
-            type: 'armor',
-            slot: EquipmentSlot.ARMS,
-            value: 30,
-            weight: 2,
-            stats: {
-              defense: 2,
-              dexterity: 1
-            }
-          },
-          
-          // Hands slot
-          {
-            id: 'gloves-001',
-            name: 'Leather Gloves',
-            description: 'Simple gloves that protect your hands.',
-            type: 'armor',
-            slot: EquipmentSlot.HANDS,
-            value: 15,
-            weight: 1,
-            stats: {
-              defense: 1,
-              dexterity: 1
-            }
-          },
-          
-          // Finger slot
-          {
-            id: 'ring-001',
-            name: 'Silver Ring',
-            description: 'A simple silver ring.',
-            type: 'armor',
-            slot: EquipmentSlot.FINGER,
-            value: 50,
-            weight: 0.1,
-            stats: {
-              intelligence: 2
-            }
-          },
-          
-          // Waist slot
-          {
-            id: 'belt-001',
-            name: 'Leather Belt',
-            description: 'A sturdy leather belt with a brass buckle.',
-            type: 'armor',
-            slot: EquipmentSlot.WAIST,
-            value: 25,
-            weight: 1,
-            stats: {
-              defense: 1,
-              strength: 1
-            }
-          },
-          
-          // Legs slot
-          {
-            id: 'legs-001',
-            name: 'Leather Leggings',
-            description: 'Protective leggings made of leather.',
-            type: 'armor',
-            slot: EquipmentSlot.LEGS,
-            value: 35,
-            weight: 3,
-            stats: {
-              defense: 3,
-              agility: 1
-            }
-          },
-          
-          // Feet slot
-          {
-            id: 'boots-001',
-            name: 'Leather Boots',
-            description: 'Sturdy boots for long travels.',
-            type: 'armor',
-            slot: EquipmentSlot.FEET,
-            value: 30,
-            weight: 2,
-            stats: {
-              defense: 2,
-              agility: 1
-            }
-          }
-        ];
-        
-        fs.writeFileSync(ITEMS_FILE, JSON.stringify(defaultItems, null, 2));
-        
-        // Load the default items into memory
-        defaultItems.forEach(item => {
-          this.items.set(item.id, item);
-        });
-        
+        this.createDefaultItems();
         return;
       }
 
-      // Load items from file
-      const data = fs.readFileSync(ITEMS_FILE, 'utf8');
-      const itemArray: GameItem[] = JSON.parse(data);
+      // Validate file data using our validation system
+      const itemData = loadAndValidateJsonFile<GameItem[]>(ITEMS_FILE, 'items');
       
-      // Store items in memory map for fast lookups
-      itemArray.forEach(item => {
-        this.items.set(item.id, item);
-      });
-      
-    } catch (error) {
-      itemLogger.error('Error loading items:', error);
-      this.items = new Map();
+      if (itemData && Array.isArray(itemData)) {
+        this.loadPrevalidatedItems(itemData);
+      } else {
+        // Instead of falling back to legacy loading, throw an error
+        throw new Error('Item data validation failed - data must conform to the schema');
+      }
+    } catch (error: unknown) {
+      itemLogger.error('Error loading items from file:', error instanceof Error ? error.message : String(error));
+      if (!fs.existsSync(ITEMS_FILE)) {
+        // Only create default items if file doesn't exist
+        this.createDefaultItems();
+      } else {
+        // Re-throw the error to prevent startup with invalid data
+        throw new Error(`Failed to load items data: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+  }
+  
+  /**
+   * Creates default items when no items are found
+   */
+  private createDefaultItems(): void {
+    // Initialize with some default items
+    const defaultItems: GameItem[] = [
+      // Weapons
+      {
+        id: 'sword-001',
+        name: 'Iron Sword',
+        description: 'A sturdy iron sword with a sharp edge.',
+        type: 'weapon',
+        slot: EquipmentSlot.MAIN_HAND,
+        value: 50,
+        weight: 5,
+        stats: {
+          attack: 5,
+          strength: 2
+        },
+        requirements: {
+          level: 1,
+          strength: 5
+        }
+      },
+      {
+        id: 'shield-001',
+        name: 'Wooden Shield',
+        description: 'A basic wooden shield that provides some protection.',
+        type: 'armor',
+        slot: EquipmentSlot.OFF_HAND,
+        value: 30,
+        weight: 4,
+        stats: {
+          defense: 3,
+          constitution: 1
+        }
+      },
+      {
+        id: 'helmet-001',
+        name: 'Leather Cap',
+        description: 'A simple leather cap that offers minimal protection.',
+        type: 'armor',
+        slot: EquipmentSlot.HEAD,
+        value: 25,
+        weight: 2,
+        stats: {
+          defense: 2
+        }
+      },
+      {
+        id: 'amulet-001',
+        name: 'Copper Amulet',
+        description: 'A simple amulet made of copper.',
+        type: 'armor',
+        slot: EquipmentSlot.NECK,
+        value: 35,
+        weight: 1,
+        stats: {
+          wisdom: 1,
+          intelligence: 1
+        }
+      },
+      {
+        id: 'chest-001',
+        name: 'Padded Tunic',
+        description: 'A padded tunic that offers some protection.',
+        type: 'armor',
+        slot: EquipmentSlot.CHEST,
+        value: 45,
+        weight: 6,
+        stats: {
+          defense: 4,
+          constitution: 1
+        }
+      },
+      {
+        id: 'cloak-001',
+        name: 'Traveler\'s Cloak',
+        description: 'A warm cloak that keeps you dry in the rain.',
+        type: 'armor',
+        slot: EquipmentSlot.BACK,
+        value: 20,
+        weight: 3,
+        stats: {
+          defense: 1,
+          constitution: 1
+        }
+      },
+      {
+        id: 'arms-001',
+        name: 'Leather Bracers',
+        description: 'Protective bracers made of hardened leather.',
+        type: 'armor',
+        slot: EquipmentSlot.ARMS,
+        value: 30,
+        weight: 2,
+        stats: {
+          defense: 2,
+          dexterity: 1
+        }
+      },
+      {
+        id: 'gloves-001',
+        name: 'Leather Gloves',
+        description: 'Simple gloves that protect your hands.',
+        type: 'armor',
+        slot: EquipmentSlot.HANDS,
+        value: 15,
+        weight: 1,
+        stats: {
+          defense: 1,
+          dexterity: 1
+        }
+      },
+      {
+        id: 'ring-001',
+        name: 'Silver Ring',
+        description: 'A simple silver ring.',
+        type: 'armor',
+        slot: EquipmentSlot.FINGER,
+        value: 50,
+        weight: 0.1,
+        stats: {
+          intelligence: 2
+        }
+      },
+      {
+        id: 'belt-001',
+        name: 'Leather Belt',
+        description: 'A sturdy leather belt with a brass buckle.',
+        type: 'armor',
+        slot: EquipmentSlot.WAIST,
+        value: 25,
+        weight: 1,
+        stats: {
+          defense: 1,
+          strength: 1
+        }
+      },
+      {
+        id: 'legs-001',
+        name: 'Leather Leggings',
+        description: 'Protective leggings made of leather.',
+        type: 'armor',
+        slot: EquipmentSlot.LEGS,
+        value: 35,
+        weight: 3,
+        stats: {
+          defense: 3,
+          agility: 1
+        }
+      },
+      {
+        id: 'boots-001',
+        name: 'Leather Boots',
+        description: 'Sturdy boots for long travels.',
+        type: 'armor',
+        slot: EquipmentSlot.FEET,
+        value: 30,
+        weight: 2,
+        stats: {
+          defense: 2,
+          agility: 1
+        }
+      }
+    ];
+    
+    fs.writeFileSync(ITEMS_FILE, JSON.stringify(defaultItems, null, 2));
+    
+    // Load the default items into memory
+    defaultItems.forEach(item => {
+      this.items.set(item.id, item);
+    });
+    
+    itemLogger.info('Created and loaded default items');
   }
 
   /**
@@ -251,31 +317,55 @@ export class ItemManager {
    */
   private loadItemInstances(): void {
     try {
+      // First try to load item instances from command line argument if provided
+      if (config.DIRECT_ITEMS_DATA) { // We can reuse the same command line arg
+        try {
+          // Item instances might be provided in a different format, so we handle it separately
+          const instanceData = parseAndValidateJson<ItemInstance[]>(config.DIRECT_ITEMS_DATA, 'items');
+          
+          if (instanceData && Array.isArray(instanceData)) {
+            this.loadPrevalidatedItemInstances(instanceData);
+            return; // Successfully loaded from command line
+          }
+        } catch (error) {
+          // This might fail if the item data doesn't include instances, which is fine
+          itemLogger.debug('No item instances found in command line data');
+        }
+      }
+      
+      // If no item instances from command line, try loading from file
+      this.loadItemInstancesFromFile();
+    } catch (error) {
+      itemLogger.error('Error loading item instances:', error);
+      this.itemInstances = new Map();
+    }
+  }
+  
+  private loadItemInstancesFromFile(): void {
+    try {
       if (!fs.existsSync(ITEM_INSTANCES_FILE)) {
         // No instances file yet, will be created when saving
         return;
       }
 
-      const data = fs.readFileSync(ITEM_INSTANCES_FILE, 'utf8');
-      const instances: ItemInstance[] = JSON.parse(data);
+      // Try to validate the file first
+      const instanceData = loadAndValidateJsonFile<ItemInstance[]>(ITEM_INSTANCES_FILE, 'items');
       
-      // Store instances in memory map and convert string dates to Date objects
-      instances.forEach(instance => {
-        // Convert string dates back to Date objects
-        instance.created = new Date(instance.created);
-        if (instance.history) {
-          instance.history.forEach(entry => {
-            entry.timestamp = new Date(entry.timestamp);
-          });
-        }
-        
-        this.itemInstances.set(instance.instanceId, instance);
-      });
-      
-      itemLogger.info(`Loaded ${instances.length} item instances.`);
-    } catch (error) {
-      itemLogger.error('Error loading item instances:', error);
-      this.itemInstances = new Map();
+      if (instanceData && Array.isArray(instanceData)) {
+        this.loadPrevalidatedItemInstances(instanceData);
+      } else {
+        // Instead of falling back to legacy loading, throw an error
+        throw new Error('Item instance data validation failed - data must conform to the schema');
+      }
+    } catch (error: unknown) {
+      itemLogger.error('Error loading item instances from file:', error instanceof Error ? error.message : String(error));
+      if (!fs.existsSync(ITEM_INSTANCES_FILE)) {
+        // Only initialize empty instances if file doesn't exist
+        this.itemInstances = new Map();
+      } else {
+        // Re-throw the error to prevent startup with invalid data
+        throw new Error(`Failed to load item instances data: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 

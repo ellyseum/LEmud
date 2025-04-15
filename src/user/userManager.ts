@@ -8,6 +8,9 @@ import { standardizeUsername } from '../utils/formatters';
 import { CombatSystem } from '../combat/combatSystem';
 import { RoomManager } from '../room/roomManager';
 import { systemLogger, getPlayerLogger } from '../utils/logger';
+import { parseAndValidateJson } from '../utils/jsonUtils';
+import { loadAndValidateJsonFile } from '../utils/fileUtils';
+import config from '../config';
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -82,7 +85,81 @@ export class UserManager {
     }
   }
 
+  /**
+   * Load prevalidated user data
+   * @param userData An array of validated user data objects
+   */
+  public loadPrevalidatedUsers(userData: any[]): void {
+    systemLogger.info(`Loading ${userData.length} pre-validated users...`);
+    
+    // Clear existing users to prevent duplicates
+    this.users = [];
+    
+    // Process each validated user 
+    userData.forEach(user => {
+      // Ensure dates are properly parsed
+      if (typeof user.joinDate === 'string') {
+        user.joinDate = new Date(user.joinDate);
+      }
+      if (typeof user.lastLogin === 'string') {
+        user.lastLogin = new Date(user.lastLogin);
+      }
+      
+      // Ensure inventory structure exists
+      if (!user.inventory) {
+        user.inventory = {
+          items: [],
+          currency: { gold: 0, silver: 0, copper: 0 }
+        };
+      }
+
+      if (!user.inventory.items) {
+        user.inventory.items = [];
+      }
+
+      if (!user.inventory.currency) {
+        user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
+      }
+      
+      // Add user to collection
+      this.users.push(user);
+    });
+    
+    // Migrate any users with plain text passwords
+    this.migrateUsersToHashedPasswords();
+    
+    // Save to ensure all users have the correct structure
+    this.saveUsers();
+    
+    systemLogger.info('Pre-validated users loaded successfully');
+  }
+
   private loadUsers(): void {
+    try {
+      // First try to load users from command line argument if provided
+      if (config.DIRECT_USERS_DATA) {
+        try {
+          const userData = parseAndValidateJson<any[]>(config.DIRECT_USERS_DATA, 'users');
+          
+          if (userData && Array.isArray(userData)) {
+            this.loadPrevalidatedUsers(userData);
+            return; // Successfully loaded from command line
+          }
+        } catch (error) {
+          systemLogger.error('Failed to load users from command line:', error);
+          systemLogger.info('Falling back to loading users from file');
+        }
+      }
+      
+      // If no users from command line, try loading from file
+      this.loadUsersFromFile();
+    } catch (error) {
+      systemLogger.error('Error loading users:', error);
+      this.users = [];
+    }
+  }
+  
+  private loadUsersFromFile(): void {
     try {
       // Create data directory if it doesn't exist
       if (!fs.existsSync(DATA_DIR)) {
@@ -95,50 +172,24 @@ export class UserManager {
         return;
       }
 
-      const data = fs.readFileSync(USERS_FILE, 'utf8');
-      this.users = JSON.parse(data);
-
-      // Ensure dates are properly parsed and inventory structures exist
-      this.users.forEach(user => {
-        if (typeof user.joinDate === 'string') {
-          user.joinDate = new Date(user.joinDate);
-        }
-        if (typeof user.lastLogin === 'string') {
-          user.lastLogin = new Date(user.lastLogin);
-        }
-
-        // Ensure inventory structure exists
-        if (!user.inventory) {
-          user.inventory = {
-            items: [],
-            currency: { gold: 0, silver: 0, copper: 0 }
-          };
-        }
-
-        if (!user.inventory.items) {
-          user.inventory.items = [];
-        }
-
-        if (!user.inventory.currency) {
-          user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
-        }
-      });
-
-      // Ensure snakeHighScore is initialized if missing
-      this.users.forEach(user => {
-        if (user.snakeHighScore === undefined) {
-          user.snakeHighScore = 0;
-        }
-      });
-
-      // Migrate any users with plain text passwords
-      this.migrateUsersToHashedPasswords();
-
-      // Save after migration to ensure all users have the correct structure
-      this.saveUsers();
-    } catch (error) {
-      systemLogger.error('Error loading users:', error);
-      this.users = [];
+      // Validate file data using our validation system
+      const userData = loadAndValidateJsonFile<any[]>(USERS_FILE, 'users');
+      
+      if (userData && Array.isArray(userData)) {
+        this.loadPrevalidatedUsers(userData);
+      } else {
+        // Instead of falling back to legacy loading, throw an error
+        throw new Error('User data validation failed - data must conform to the schema');
+      }
+    } catch (error: unknown) {
+      systemLogger.error('Error loading users from file:', error instanceof Error ? error.message : String(error));
+      if (!fs.existsSync(USERS_FILE)) {
+        // Only initialize with empty users if file doesn't exist
+        this.users = [];
+      } else {
+        // Re-throw the error to prevent startup with invalid data
+        throw new Error(`Failed to load users data: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
