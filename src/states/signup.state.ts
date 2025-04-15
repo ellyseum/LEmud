@@ -3,6 +3,8 @@ import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
 import { formatUsername, validateUsername, standardizeUsername } from '../utils/formatters';
+import { RESTRICTED_USERNAMES } from '../config';
+import { systemLogger } from '../utils/logger';
 
 export class SignupState implements ClientState {
   name = ClientStateType.SIGNUP;
@@ -38,6 +40,13 @@ export class SignupState implements ClientState {
 
       // Standardize to lowercase for storage and checks
       const standardUsername = standardizeUsername(input);
+      
+      // Check if the username is in the restricted list
+      if (RESTRICTED_USERNAMES.includes(standardUsername)) {
+        systemLogger.warn(`Blocked signup attempt with restricted username: ${standardUsername} from ${client.ipAddress || 'unknown IP'}`);
+        writeToClient(client, colorize('This username is reserved. Please choose another: ', 'red'));
+        return;
+      }
       
       if (this.userManager.userExists(standardUsername)) {
         writeToClient(client, colorize('Username already exists. Choose another one: ', 'red'));

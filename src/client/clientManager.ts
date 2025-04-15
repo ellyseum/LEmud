@@ -52,7 +52,12 @@ export class ClientManager {
       connectedAt: Date.now(),
       lastActivity: Date.now(),
       isBeingMonitored: false,
-      isInputBlocked: false
+      isInputBlocked: false,
+      // Set connection type and origin information
+      isConsoleClient: connection.getType() === 'console', // True if this is a local console connection
+      ipAddress: connection.getType() === 'telnet' ? 
+        (connection as any).remoteAddress || 'unknown' : 
+        'web-client' // Get IP for telnet connections
     };
     
     const clientId = connection.getId();

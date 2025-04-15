@@ -2,8 +2,9 @@ import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
 import { writeToClient } from '../utils/socketWriter';
-import config from '../config';
+import config, { DISABLE_REMOTE_ADMIN, RESTRICTED_USERNAMES } from '../config';
 import { formatUsername, standardizeUsername } from '../utils/formatters';
+import { systemLogger } from '../utils/logger';
 
 export class LoginState implements ClientState {
   name = ClientStateType.LOGIN;
@@ -88,6 +89,23 @@ export class LoginState implements ClientState {
     
     // Standardize username for storage and checks
     const standardUsername = standardizeUsername(username);
+
+    // Check if this is a restricted username trying to login remotely
+    if (RESTRICTED_USERNAMES.includes(standardUsername) && !client.isConsoleClient) {
+      // Check if remote admin login is disabled
+      if (DISABLE_REMOTE_ADMIN) {
+        systemLogger.warn(`Blocked remote login attempt for restricted username: ${standardUsername} from ${client.ipAddress || 'unknown IP'}`);
+        writeToClient(client, colorize(`Invalid username. Please try again: `, 'red'));
+        return;
+      }
+      
+      // If specifically trying to login as 'admin' remotely
+      if (standardUsername === 'admin' && DISABLE_REMOTE_ADMIN) {
+        systemLogger.warn(`Blocked remote admin login attempt from ${client.ipAddress || 'unknown IP'}`);
+        writeToClient(client, colorize(`Invalid username. Please try again: `, 'red'));
+        return;
+      }
+    }
     
     if (this.userManager.userExists(standardUsername)) {
       client.stateData.username = standardUsername; // Store lowercase version

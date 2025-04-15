@@ -207,8 +207,9 @@ export class GameServer {
     
     // Check if admin user exists
     if (!this.userManager.userExists('admin')) {
-      systemLogger.warn('No admin user found. Creating admin account...');
-      systemLogger.warn('Server startup will halt until admin setup is complete.');
+      // These messages should be shown even in silent mode
+      console.log('No admin user found. Creating admin account...');
+      console.log('Server startup will halt until admin setup is complete.');
       
       let adminCreated = false;
       
@@ -218,18 +219,18 @@ export class GameServer {
           // Use custom password input that masks the password
           const password = await readPasswordFromConsole('Enter password for new admin user: ');
           
-          // Validate password
+          // Validate password - show this message even in silent mode
           if (password.length < config.MIN_PASSWORD_LENGTH) {
-            systemLogger.warn(`Password must be at least ${config.MIN_PASSWORD_LENGTH} characters long. Please try again.`);
+            console.log(`Password must be at least ${config.MIN_PASSWORD_LENGTH} characters long. Please try again.`);
             continue; // Skip the rest of this iteration and try again
           }
           
           // Confirm password with masking
           const confirmPassword = await readPasswordFromConsole('Confirm password: ');
           
-          // Check if passwords match
+          // Check if passwords match - show this message even in silent mode
           if (password !== confirmPassword) {
-            systemLogger.warn('Passwords do not match. Please try again.');
+            console.log('Passwords do not match. Please try again.');
             continue; // Skip the rest of this iteration and try again
           }
           
@@ -237,7 +238,7 @@ export class GameServer {
           const success = this.userManager.createUser('admin', password);
           
           if (success) {
-            systemLogger.info('Admin user created successfully!');
+            console.log('Admin user created successfully!');
             
             // Create admin directory if it doesn't exist
             const adminDir = path.join(config.DATA_DIR, 'admin');
@@ -260,18 +261,24 @@ export class GameServer {
             
             try {
               fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
+              console.log('Admin privileges configured.');
               systemLogger.info('Admin privileges configured.');
               adminCreated = true; // Mark as successfully created so we exit the loop
             } catch (error) {
+              console.log('Error creating admin.json file:', error);
+              console.log('Failed to create admin configuration. Please try again.');
               systemLogger.error('Error creating admin.json file:', error);
               systemLogger.warn('Failed to create admin configuration. Please try again.');
               // Continue the loop to try again
             }
           } else {
+            console.log('Error creating admin user. Please try again.');
             systemLogger.warn('Error creating admin user. Please try again.');
             // Continue the loop to try again
           }
         } catch (error) {
+          console.log('Error during admin setup:', error);
+          console.log('An error occurred during setup. Please try again.');
           systemLogger.error('Error during admin setup:', error);
           systemLogger.warn('An error occurred during setup. Please try again.');
           // Continue the loop to try again

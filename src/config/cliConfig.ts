@@ -9,6 +9,9 @@ export interface CLIConfig {
   adminSession: boolean;
   userSession: boolean;
   
+  // Security flags
+  disableRemoteAdmin: boolean;
+  
   // Data directory flags
   dataDir: string;
   roomsFile: string;
@@ -26,6 +29,7 @@ export interface CLIConfig {
   // Additional server options
   port: number;
   wsPort: number;
+  httpPort: number | null; // New option for HTTP server port
   logLevel: string;
   noColor: boolean;
   silent: boolean;
@@ -49,6 +53,14 @@ export function parseCommandLineArgs(): CLIConfig {
       description: 'Start and immediately connect to a user session',
       default: false,
       alias: 'u'
+    })
+    
+    // Security flags
+    .option('disableRemoteAdmin', {
+      type: 'boolean',
+      description: 'Disable remote admin access',
+      default: false,
+      alias: 'r'
     })
     
     // Data directory flags
@@ -110,6 +122,10 @@ export function parseCommandLineArgs(): CLIConfig {
       default: 8080,
       alias: 'w'
     })
+    .option('httpPort', {
+      type: 'number',
+      description: 'HTTP server port'
+    })
     .option('logLevel', {
       type: 'string',
       description: 'Log level (debug, info, warn, error)',
@@ -142,6 +158,7 @@ export function parseCommandLineArgs(): CLIConfig {
   const config: CLIConfig = {
     adminSession: argv.adminSession,
     userSession: argv.userSession,
+    disableRemoteAdmin: argv.disableRemoteAdmin,
     dataDir: argv.dataDir,
     roomsFile: argv.roomsFile || path.join(argv.dataDir, 'rooms.json'),
     usersFile: argv.usersFile || path.join(argv.dataDir, 'users.json'),
@@ -154,6 +171,7 @@ export function parseCommandLineArgs(): CLIConfig {
     npcs: argv.npcs || null,
     port: argv.port,
     wsPort: argv.wsPort,
+    httpPort: argv.httpPort || null,
     logLevel: argv.logLevel,
     noColor: argv.noColor,
     // Auto-enable silent and noConsole if an auto-session is requested

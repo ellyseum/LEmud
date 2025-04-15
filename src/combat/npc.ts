@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { CombatEntity } from './combatEntity.interface';
+import { systemLogger } from '../utils/logger';
 
 // Interface for NPC data loaded from JSON
 export interface NPCData {
@@ -19,6 +20,13 @@ export interface NPCData {
 }
 
 export class NPC implements CombatEntity {
+  // Static cache to store loaded NPC data
+  private static npcDataCache: Map<string, NPCData> | null = null;
+  // Timestamp when the cache was last updated
+  private static cacheTimestamp: number = 0;
+  // Cache expiration time in milliseconds (default: 5 minutes)
+  private static readonly CACHE_EXPIRY_MS: number = 5 * 60 * 1000;
+
   public description: string;
   public attackTexts: string[];
   public deathMessages: string[];
@@ -56,8 +64,17 @@ export class NPC implements CombatEntity {
     this.instanceId = instanceId || uuidv4();
   }
 
-  // Static method to load NPC data from JSON
+  // Static method to load NPC data from JSON with caching
   static loadNPCData(): Map<string, NPCData> {
+    const currentTime = Date.now();
+    
+    // Return cached data if available and not expired
+    if (NPC.npcDataCache && 
+        (currentTime - NPC.cacheTimestamp) < NPC.CACHE_EXPIRY_MS) {
+      return NPC.npcDataCache;
+    }
+    
+    // Otherwise load from file and cache the result
     const npcMap = new Map<string, NPCData>();
     const npcFilePath = path.join(__dirname, '..', '..', 'data', 'npcs.json');
     
@@ -70,15 +87,36 @@ export class NPC implements CombatEntity {
           npcMap.set(npc.id, npc);
         });
       } else {
-        console.error('NPCs file not found:', npcFilePath);
+        // Use a single string parameter rather than two parameters to ensure proper formatting
+        systemLogger.warn(`NPCs file not found: ${npcFilePath}`);
       }
     } catch (error) {
-      console.error('Error loading NPCs:', error);
+      systemLogger.error(`Error loading NPCs: ${error}`);
     }
+    
+    // Store in cache for future calls
+    NPC.npcDataCache = npcMap;
+    NPC.cacheTimestamp = currentTime;
     
     return npcMap;
   }
-  
+
+  // Add a method to clear the cache if needed (e.g., for reloading data)
+  static clearNpcDataCache(): void {
+    NPC.npcDataCache = null;
+    NPC.cacheTimestamp = 0;
+  }
+
+  // Add a method to set cache expiry time if needed
+  static setCacheExpiryTime(expiryTimeMs: number): void {
+    // Prevent setting invalid values
+    if (expiryTimeMs > 0) {
+      Object.defineProperty(NPC, 'CACHE_EXPIRY_MS', {
+        value: expiryTimeMs
+      });
+    }
+  }
+
   // Factory method to create NPC from NPC data
   static fromNPCData(npcData: NPCData): NPC {
     return new NPC(

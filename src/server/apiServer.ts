@@ -19,7 +19,7 @@ export class APIServer {
   private roomManager: RoomManager;
   private gameTimerManager: GameTimerManager;
   private serverStats: ServerStats;
-  private actualPort: number = config.WS_PORT;
+  private actualPort: number = config.HTTP_PORT;
 
   constructor(
     clients: Map<string, ConnectedClient>,
@@ -51,9 +51,9 @@ export class APIServer {
     // Add error handler
     this.httpServer.on('error', (err: Error & {code?: string}) => {
       if (err.code === 'EADDRINUSE') {
-        systemLogger.error(`Port ${config.WS_PORT} is already in use. Is another instance running?`);
-        systemLogger.info(`Trying alternative port ${config.WS_PORT + 1}...`);
-        this.actualPort = config.WS_PORT + 1;
+        systemLogger.error(`Port ${config.HTTP_PORT} is already in use. Is another instance running?`);
+        systemLogger.info(`Trying alternative port ${config.HTTP_PORT + 1}...`);
+        this.actualPort = config.HTTP_PORT + 1;
         this.httpServer.listen(this.actualPort);
       } else {
         systemLogger.error('HTTP server error:', err);
@@ -96,7 +96,7 @@ export class APIServer {
 
   public start(): Promise<void> {
     return new Promise((resolve) => {
-      this.httpServer.listen(config.WS_PORT, () => {
+      this.httpServer.listen(config.HTTP_PORT, () => {
         const address = this.httpServer.address();
         if (address && typeof address !== 'string') {
           this.actualPort = address.port;

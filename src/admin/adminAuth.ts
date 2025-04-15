@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { UserManager } from '../user/userManager';
+import { systemLogger } from '../utils/logger';
 
 // Path to the main admin.json file that contains user admin privileges
 const ADMIN_FILE = path.join(__dirname, '..', '..', 'data', 'admin.json');
@@ -21,6 +22,12 @@ interface AdminUser {
 export class AdminAuth {
   private admins: AdminUser[] = [];
   private userManager: UserManager;
+  // Flag to track if we've already logged the missing file warning
+  private static fileWarningLogged: boolean = false;
+  // Timestamp when the warning was last logged
+  private static warningTimestamp: number = 0;
+  // Warning cooldown period in milliseconds (default: 5 minutes)
+  private static readonly WARNING_COOLDOWN_MS: number = 5 * 60 * 1000;
 
   constructor() {
     this.userManager = UserManager.getInstance();
@@ -31,7 +38,15 @@ export class AdminAuth {
     try {
       // Check if the admin.json file exists
       if (!fs.existsSync(ADMIN_FILE)) {
-        console.error('Admin file not found:', ADMIN_FILE);
+        const currentTime = Date.now();
+        
+        // Only log the warning if the cooldown period has passed
+        if (!AdminAuth.fileWarningLogged || 
+            (currentTime - AdminAuth.warningTimestamp) > AdminAuth.WARNING_COOLDOWN_MS) {
+          systemLogger.warn(`Admin file not found: ${ADMIN_FILE}`);
+          AdminAuth.fileWarningLogged = true;
+          AdminAuth.warningTimestamp = currentTime;
+        }
         this.admins = [];
         return;
       }
@@ -40,8 +55,24 @@ export class AdminAuth {
       const adminData: AdminData = JSON.parse(data);
       this.admins = adminData.admins || [];
     } catch (error) {
-      console.error('Error loading admins:', error);
+      systemLogger.error(`Error loading admins: ${error}`);
       this.admins = [];
+    }
+  }
+
+  // Method to clear the warning flag if needed
+  static resetWarningFlag(): void {
+    AdminAuth.fileWarningLogged = false;
+    AdminAuth.warningTimestamp = 0;
+  }
+
+  // Method to set warning cooldown period if needed
+  static setWarningCooldown(cooldownTimeMs: number): void {
+    // Prevent setting invalid values
+    if (cooldownTimeMs > 0) {
+      Object.defineProperty(AdminAuth, 'WARNING_COOLDOWN_MS', {
+        value: cooldownTimeMs
+      });
     }
   }
 

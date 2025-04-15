@@ -196,6 +196,10 @@ export interface ConnectedClient {
   tempUsername?: string;
 
   cursorPos?: number; // Track cursor position within the buffer
+  
+  // Connection type and origin information
+  isConsoleClient?: boolean; // Indicates if connection is from local console
+  ipAddress?: string; // IP address of the client connection
 }
 
 export type StateHandler = (client: ConnectedClient, input: string) => void;

@@ -8,12 +8,22 @@ const cliConfig = parseCommandLineArgs();
 
 // Server ports
 export const TELNET_PORT = cliConfig.port;
+
+// Port synchronization logic:
+// 1. If httpPort is explicitly provided, use it for HTTP_PORT
+// 2. If httpPort is not provided but wsPort is, use wsPort for HTTP_PORT
+// 3. If neither is provided, use the default wsPort
+export const HTTP_PORT = cliConfig.httpPort || cliConfig.wsPort;
 export const WS_PORT = cliConfig.wsPort;
 
 // Authentication
 export const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
 export const MIN_PASSWORD_LENGTH = 6;
 export const maxPasswordAttempts = 3; // Max failed password attempts before disconnection
+
+// Security settings
+export const DISABLE_REMOTE_ADMIN = cliConfig.disableRemoteAdmin;
+export const RESTRICTED_USERNAMES = ['admin', 'administrator', 'mod', 'moderator', 'root', 'system', 'console', 'server'];
 
 // File paths
 export const DATA_DIR = cliConfig.dataDir;
@@ -79,6 +89,7 @@ export const NO_CONSOLE = cliConfig.noConsole;
 export default {
   TELNET_PORT,
   WS_PORT,
+  HTTP_PORT,
   JWT_SECRET,
   MIN_PASSWORD_LENGTH,
   maxPasswordAttempts,
@@ -110,5 +121,6 @@ export default {
   LOG_LEVEL,
   SILENT_MODE,
   NO_CONSOLE,
+  DISABLE_REMOTE_ADMIN,
   HOST_NAME: os.hostname()
 };
