@@ -22,8 +22,7 @@ export class JsonValidationError extends Error {
  * 
  * @param jsonString The JSON string to parse and validate
  * @param dataType The type of data to validate ('rooms', 'users', 'items', 'npcs')
- * @returns The parsed and validated data
- * @throws {JsonValidationError} If validation fails
+ * @returns The parsed and validated data or undefined if validation fails
  */
 export function parseAndValidateJson<T>(
   jsonString: string | null | undefined, 
@@ -67,14 +66,31 @@ export function parseAndValidateJson<T>(
     }
     
     if (!isValid) {
-      throw new JsonValidationError(
-        `Invalid ${dataType} data structure`,
-        validator.errors
-      );
+      systemLogger.error(`Invalid ${dataType} data structure`);
+      if (validator.errors) {
+        validator.errors.forEach((err: any) => {
+          systemLogger.error(`- ${err.instancePath} ${err.message}`);
+        });
+      }
+      return undefined;
     }
     
     // Additional business logic validation
-    validateBusinessRules(data, dataType);
+    try {
+      validateBusinessRules(data, dataType);
+    } catch (error) {
+      if (error instanceof JsonValidationError) {
+        systemLogger.error(`Business rule validation error: ${error.message}`);
+        if (error.errors) {
+          error.errors.forEach((err: any) => {
+            systemLogger.error(`- ${err.instancePath} ${err.message}`);
+          });
+        }
+      } else {
+        systemLogger.error(`Business rule validation error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return undefined;
+    }
     
     return data as T;
   } catch (error) {
@@ -85,14 +101,12 @@ export function parseAndValidateJson<T>(
           systemLogger.error(`- ${err.instancePath} ${err.message}`);
         });
       }
-      throw error;
     } else if (error instanceof SyntaxError) {
       systemLogger.error(`JSON parse error: ${error.message}`);
-      throw new JsonValidationError(`Failed to parse ${dataType} JSON: ${error.message}`);
     } else {
       systemLogger.error(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
-      throw new JsonValidationError(`Error processing ${dataType} data: ${error instanceof Error ? error.message : String(error)}`);
     }
+    return undefined;
   }
 }
 

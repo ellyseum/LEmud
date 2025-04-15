@@ -58,7 +58,6 @@ export class RoomManager implements IRoomManager {
     
     // Load rooms
     this.loadRooms();
-    this.ensureStartingRoom();
   }
   
   // Static method to get the singleton instance
@@ -155,55 +154,37 @@ export class RoomManager implements IRoomManager {
   }
 
   private loadRooms(): void {
-    try {
-      // First try to load rooms from command line argument if provided
-      if (config.DIRECT_ROOMS_DATA) {
-        try {
-          const roomDataArray = parseAndValidateJson<any[]>(config.DIRECT_ROOMS_DATA, 'rooms');
-          
-          if (roomDataArray && Array.isArray(roomDataArray)) {
-            this.loadPrevalidatedRooms(roomDataArray);
-            return; // Successfully loaded from command line
-          }
-        } catch (error) {
-          systemLogger.error('Failed to load rooms from command line:', error);
-          systemLogger.info('Falling back to loading rooms from file');
-        }
-      }
-      
-      // If no rooms from command line, try loading from file
-      this.loadRoomsFromFile();
-    } catch (error) {
-      systemLogger.error('Error loading rooms:', error);
-      this.ensureStartingRoom(); // Make sure we have at least the starting room
-    }
-  }
-  
-  private loadRoomsFromFile(): void {
-    try {
-      // Validate file data using our validation system
-      if (fs.existsSync(ROOMS_FILE)) {
-        const roomDataArray = loadAndValidateJsonFile<any[]>(ROOMS_FILE, 'rooms');
+    // First try to load rooms from command line argument if provided
+    if (config.DIRECT_ROOMS_DATA) {
+      try {
+        const roomDataArray = parseAndValidateJson<any[]>(config.DIRECT_ROOMS_DATA, 'rooms');
         
         if (roomDataArray && Array.isArray(roomDataArray)) {
           this.loadPrevalidatedRooms(roomDataArray);
-        } else {
-          // Instead of falling back to legacy loading, throw an error
-          throw new Error('Room data validation failed - data must conform to the schema');
+          return; // Successfully loaded from command line
         }
-      } else {
-        // Create initial rooms file if it doesn't exist
-        this.saveRooms();
+      } catch (error) {
+        systemLogger.error('Failed to load rooms from command line:', error);
       }
-    } catch (error: unknown) {
-      systemLogger.error('Error loading rooms from file:', error instanceof Error ? error.message : String(error));
-      // Create default rooms only if the file doesn't exist, not if validation fails
-      if (!fs.existsSync(ROOMS_FILE)) {
-        this.ensureStartingRoom();
+    }
+    
+    // If no rooms from command line, try loading from file
+    this.loadRoomsFromFile();
+  }
+  
+  private loadRoomsFromFile(): void {
+    // Validate file data using our validation system
+    if (fs.existsSync(ROOMS_FILE)) {
+      const roomDataArray = loadAndValidateJsonFile<any[]>(ROOMS_FILE, 'rooms');
+      
+      if (roomDataArray && Array.isArray(roomDataArray)) {
+        this.loadPrevalidatedRooms(roomDataArray);
       } else {
-        // Re-throw the error to prevent startup with invalid data
-        throw new Error(`Failed to load rooms data: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(1); // Exit if rooms data is invalid
       }
+    } else {
+      // Create initial rooms file if it doesn't exist
+      this.saveRooms();
     }
   }
 
@@ -237,35 +218,6 @@ export class RoomManager implements IRoomManager {
       fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsData, null, 2));
     } catch (error) {
       systemLogger.error('Error saving rooms:', error);
-    }
-  }
-
-  private ensureStartingRoom(): void {
-    if (!this.rooms.has(DEFAULT_ROOM_ID)) {
-      // Create a default starting room if none exists
-      const startingRoom = new Room({
-        id: DEFAULT_ROOM_ID,
-        name: 'The Starting Room',
-        description: 'You are in the starting room. It is small and musty and smells like old clothes and cheese.',
-        exits: [{ direction: 'north', roomId: 'room2' }],
-        items: ['sword', 'shield'],
-        npcs: [],
-        currency: { gold: 5, silver: 3, copper: 10 }
-      });
-      
-      // Create a second room to demonstrate movement
-      const secondRoom = new Room({
-        id: 'room2',
-        name: 'A New Room',
-        description: 'You are in a new room.',
-        exits: [{ direction: 'south', roomId: DEFAULT_ROOM_ID }],
-        items: [],
-        npcs: []
-      });
-      
-      this.rooms.set(startingRoom.id, startingRoom);
-      this.rooms.set(secondRoom.id, secondRoom);
-      this.saveRooms();
     }
   }
 
@@ -372,26 +324,5 @@ export class RoomManager implements IRoomManager {
    */
   public forceSave(): void {
     this.saveRooms();
-  }
-
-  /**
-   * Get the CombatSystem instance (to avoid circular dependencies)
-   */
-  private getCombatSystem(): any {
-    try {
-      // Access the CombatSystem directly
-      const { CombatSystem } = require('../combat/combatSystem');
-      if (CombatSystem && CombatSystem.getInstance) {
-        const { UserManager } = require('../user/userManager');
-        return CombatSystem.getInstance(
-          UserManager.getInstance(),
-          this
-        );
-      }
-      return null;
-    } catch (err) {
-      systemLogger.error('[RoomManager] Error getting CombatSystem instance:', err);
-      return null;
-    }
   }
 }

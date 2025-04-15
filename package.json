@@ -4,10 +4,10 @@
   "description": "Elly Mud / LLM Engineered Multi User Dungeon",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc --build --verbose ",
-    "start": "tsc && node dist/server.js",
-    "dev": "ts-node src/server.ts",
-    "watch": "npx nodemon --watch src --ext ts --exec ts-node src/server.ts",
+    "build": "tsc --build --verbose --sourceMap",
+    "start": "tsc --sourceMap && node --enable-source-maps dist/server.js",
+    "dev": "ts-node --source-map src/server.ts",
+    "watch": "npx nodemon --watch src --ext ts --exec ts-node --source-map src/server.ts",
     "validate": "ts-node src/utils/validateFiles.ts"
   },
   "dependencies": {

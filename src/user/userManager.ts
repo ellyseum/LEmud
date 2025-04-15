@@ -135,28 +135,22 @@ export class UserManager {
   }
 
   private loadUsers(): void {
-    try {
-      // First try to load users from command line argument if provided
-      if (config.DIRECT_USERS_DATA) {
-        try {
-          const userData = parseAndValidateJson<any[]>(config.DIRECT_USERS_DATA, 'users');
-          
-          if (userData && Array.isArray(userData)) {
-            this.loadPrevalidatedUsers(userData);
-            return; // Successfully loaded from command line
-          }
-        } catch (error) {
-          systemLogger.error('Failed to load users from command line:', error);
-          systemLogger.info('Falling back to loading users from file');
+    // First try to load users from command line argument if provided
+    if (config.DIRECT_USERS_DATA) {
+      try {
+        const userData = parseAndValidateJson<any[]>(config.DIRECT_USERS_DATA, 'users');
+        
+        if (userData && Array.isArray(userData)) {
+          this.loadPrevalidatedUsers(userData);
+          return; // Successfully loaded from command line
         }
+      } catch (error) {
+        systemLogger.error('Failed to load users from command line:', error);
       }
-      
-      // If no users from command line, try loading from file
-      this.loadUsersFromFile();
-    } catch (error) {
-      systemLogger.error('Error loading users:', error);
-      this.users = [];
     }
+    
+    // If no users from command line, try loading from file
+    this.loadUsersFromFile();
   }
   
   private loadUsersFromFile(): void {
@@ -178,17 +172,14 @@ export class UserManager {
       if (userData && Array.isArray(userData)) {
         this.loadPrevalidatedUsers(userData);
       } else {
-        // Instead of falling back to legacy loading, throw an error
+        // Throw error instead of handling silently
         throw new Error('User data validation failed - data must conform to the schema');
       }
     } catch (error: unknown) {
-      systemLogger.error('Error loading users from file:', error instanceof Error ? error.message : String(error));
+      // Only initialize with empty users if file doesn't exist
       if (!fs.existsSync(USERS_FILE)) {
-        // Only initialize with empty users if file doesn't exist
         this.users = [];
-      } else {
-        // Re-throw the error to prevent startup with invalid data
-        throw new Error(`Failed to load users data: ${error instanceof Error ? error.message : String(error)}`);
+        return;
       }
     }
   }

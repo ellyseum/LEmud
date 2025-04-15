@@ -40,97 +40,106 @@ export class GameServer {
   private originalConsoleTransport: any = null;
 
   constructor() {
-    // Initialize server stats
-    this.serverStats = {
-      startTime: new Date(),
-      uptime: 0,
-      connectedClients: 0,
-      authenticatedUsers: 0,
-      totalConnections: 0,
-      totalCommands: 0,
-      memoryUsage: {
-        rss: 0,
-        heapTotal: 0,
-        heapUsed: 0,
-        external: 0
-      }
-    };
+    try {
+      // Initialize server stats
+      this.serverStats = {
+        startTime: new Date(),
+        uptime: 0,
+        connectedClients: 0,
+        authenticatedUsers: 0,
+        totalConnections: 0,
+        totalCommands: 0,
+        memoryUsage: {
+          rss: 0,
+          heapTotal: 0,
+          heapUsed: 0,
+          external: 0
+        }
+      };
 
-    // Set up update interval for server stats
-    setInterval(() => {
-      this.serverStats.uptime = Math.floor((Date.now() - this.serverStats.startTime.getTime()) / 1000);
-      this.serverStats.connectedClients = this.clientManager.getClients().size;
-      this.serverStats.authenticatedUsers = Array.from(this.clientManager.getClients().values()).filter(c => c.authenticated).length;
-      this.serverStats.memoryUsage = process.memoryUsage();
-    }, config.SERVER_STATS_UPDATE_INTERVAL);
+      // Set up update interval for server stats
+      setInterval(() => {
+        this.serverStats.uptime = Math.floor((Date.now() - this.serverStats.startTime.getTime()) / 1000);
+        this.serverStats.connectedClients = this.clientManager?.getClients().size || 0;
+        this.serverStats.authenticatedUsers = Array.from(this.clientManager?.getClients().values() || []).filter(c => c.authenticated).length;
+        this.serverStats.memoryUsage = process.memoryUsage();
+      }, config.SERVER_STATS_UPDATE_INTERVAL);
 
-    // Initialize core components
-    this.userManager = UserManager.getInstance();
-    
-    // Create client manager with empty clients map first
-    this.clientManager = new ClientManager(this.userManager, RoomManager.getInstance(new Map<string, ConnectedClient>()));
-    
-    // Now that clientManager exists, get roomManager with client map from it
-    this.roomManager = RoomManager.getInstance(this.clientManager.getClients());
-    
-    this.stateMachine = new StateMachine(this.userManager, this.clientManager.getClients());
-    this.commandHandler = new CommandHandler(
-      this.clientManager.getClients(),
-      this.userManager,
-      this.roomManager,
-      undefined,
-      this.stateMachine
-    );
-    
-    // Set up the state machine and process input function in client manager
-    this.clientManager.setStateMachine(this.stateMachine);
-    this.clientManager.setProcessInputFunction(this.processInput.bind(this));
+      // Initialize core components
+      this.userManager = UserManager.getInstance();
+      
+      // Create client manager with empty clients map first
+      this.clientManager = new ClientManager(this.userManager, RoomManager.getInstance(new Map<string, ConnectedClient>()));
+      
+      // Now that clientManager exists, get roomManager with client map from it
+      this.roomManager = RoomManager.getInstance(this.clientManager.getClients());
+      
+      this.stateMachine = new StateMachine(this.userManager, this.clientManager.getClients());
+      this.commandHandler = new CommandHandler(
+        this.clientManager.getClients(),
+        this.userManager,
+        this.roomManager,
+        undefined,
+        this.stateMachine
+      );
+      
+      // Set up the state machine and process input function in client manager
+      this.clientManager.setStateMachine(this.stateMachine);
+      this.clientManager.setProcessInputFunction(this.processInput.bind(this));
 
-    // Initialize game timer manager
-    this.gameTimerManager = GameTimerManager.getInstance(this.userManager, this.roomManager);
+      // Initialize game timer manager
+      this.gameTimerManager = GameTimerManager.getInstance(this.userManager, this.roomManager);
 
-    // Share the global clients map with SnakeGameState
-    SnakeGameState.setGlobalClients(this.clientManager.getClients());
+      // Share the global clients map with SnakeGameState
+      SnakeGameState.setGlobalClients(this.clientManager.getClients());
 
-    // Create the API server first (since WebSocket server needs its HTTP server)
-    this.apiServer = new APIServer(
-      this.clientManager.getClients(),
-      this.userManager,
-      this.roomManager,
-      this.gameTimerManager,
-      this.serverStats
-    );
+      // Create the API server first (since WebSocket server needs its HTTP server)
+      this.apiServer = new APIServer(
+        this.clientManager.getClients(),
+        this.userManager,
+        this.roomManager,
+        this.gameTimerManager,
+        this.serverStats
+      );
 
-    // Create the WebSocket server using the HTTP server from API server
-    this.webSocketServer = new WebSocketServer(
-      this.apiServer.getHttpServer(),
-      this.clientManager.getClients(),
-      this.serverStats,
-      this.setupClient.bind(this),
-      this.clientManager.handleClientData.bind(this.clientManager),
-      this.processInput.bind(this)
-    );
+      // Create the WebSocket server using the HTTP server from API server
+      this.webSocketServer = new WebSocketServer(
+        this.apiServer.getHttpServer(),
+        this.clientManager.getClients(),
+        this.serverStats,
+        this.setupClient.bind(this),
+        this.clientManager.handleClientData.bind(this.clientManager),
+        this.processInput.bind(this)
+      );
 
-    // Create the Telnet server
-    this.telnetServer = new TelnetServer(
-      this.clientManager.getClients(),
-      this.userManager,
-      this.stateMachine,
-      this.commandHandler,
-      this.serverStats,
-      this.setupClient.bind(this),
-      this.processInput.bind(this)
-    );
+      // Create the Telnet server
+      this.telnetServer = new TelnetServer(
+        this.clientManager.getClients(),
+        this.userManager,
+        this.stateMachine,
+        this.commandHandler,
+        this.serverStats,
+        this.setupClient.bind(this),
+        this.processInput.bind(this)
+      );
 
-    // Set up idle client check interval
-    this.idleCheckInterval = setInterval(() => {
-      const config = this.loadMUDConfig();
-      const idleTimeoutMinutes = config.game.idleTimeout;
-      this.clientManager.checkForIdleClients(idleTimeoutMinutes);
-    }, config.IDLE_CHECK_INTERVAL);
+      // Set up idle client check interval
+      this.idleCheckInterval = setInterval(() => {
+        const config = this.loadMUDConfig();
+        const idleTimeoutMinutes = config.game.idleTimeout;
+        this.clientManager.checkForIdleClients(idleTimeoutMinutes);
+      }, config.IDLE_CHECK_INTERVAL);
 
-    // Setup keyboard listeners for console commands after server is started
-    this.setupKeyListener();
+      // Setup keyboard listeners for console commands after server is started
+      this.setupKeyListener();
+    } catch (error) {
+      // Log the full error details to system log but not to console
+      systemLogger.error('Fatal error during GameServer initialization:', error);
+      
+      // Re-throw the error to be handled by the main function's catch block
+      // This ensures we have a centralized place for user-friendly error messages
+      throw error;
+    }
   }
 
   private setupClient(connection: any): void {

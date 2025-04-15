@@ -106,7 +106,8 @@ export class NPC implements CombatEntity {
         }
       } catch (error) {
         systemLogger.error('Failed to load NPCs from command line:', error);
-        systemLogger.info('Falling back to loading NPCs from file');
+        // Don't fall back to file loading, propagate the error
+        throw error;
       }
     }
     
@@ -120,30 +121,19 @@ export class NPC implements CombatEntity {
   static loadNPCDataFromFile(): Map<string, NPCData> {
     const npcFilePath = path.join(__dirname, '..', '..', 'data', 'npcs.json');
     
-    try {
-      if (!fs.existsSync(npcFilePath)) {
-        systemLogger.warn(`NPCs file not found: ${npcFilePath}`);
-        return new Map<string, NPCData>(); // Return empty map
-      }
-      
-      // Try to validate the file
-      const npcArray = loadAndValidateJsonFile<NPCData[]>(npcFilePath, 'npcs');
-      
-      if (npcArray && Array.isArray(npcArray)) {
-        return NPC.loadPrevalidatedNPCData(npcArray);
-      } else {
-        // Instead of falling back to legacy loading, throw an error
-        throw new Error('NPC data validation failed - data must conform to the schema');
-      }
-    } catch (error: unknown) {
-      systemLogger.error(`Error loading NPCs: ${error instanceof Error ? error.message : String(error)}`);
-      if (!fs.existsSync(npcFilePath)) {
-        // Only return empty map if file doesn't exist
-        return new Map<string, NPCData>();
-      } else {
-        // Re-throw the error to prevent startup with invalid data
-        throw new Error(`Failed to load NPCs data: ${error instanceof Error ? error.message : String(error)}`);
-      }
+    // Check if file exists
+    if (!fs.existsSync(npcFilePath)) {
+      systemLogger.warn(`NPCs file not found: ${npcFilePath}`);
+      return new Map<string, NPCData>(); // Return empty map only if file doesn't exist
+    }
+    
+    // Validate the file
+    const npcArray = loadAndValidateJsonFile<NPCData[]>(npcFilePath, 'npcs');
+    
+    if (npcArray && Array.isArray(npcArray)) {
+      return NPC.loadPrevalidatedNPCData(npcArray);
+    } else {
+      process.exit(1); // Exit if the file is not valid
     }
   }
 
