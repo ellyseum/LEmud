@@ -40,6 +40,7 @@ export const MUD_CONFIG_FILE = cliConfig.mudConfigFile;
 // Session flags
 export const AUTO_ADMIN_SESSION = cliConfig.adminSession;
 export const AUTO_USER_SESSION = cliConfig.userSession;
+export const FORCE_SESSION_USERNAME = cliConfig.forceSession;
 
 // Direct data
 export const DIRECT_ROOMS_DATA = cliConfig.rooms;
@@ -103,6 +104,7 @@ export default {
   MUD_CONFIG_FILE,
   AUTO_ADMIN_SESSION,
   AUTO_USER_SESSION,
+  FORCE_SESSION_USERNAME,
   DIRECT_ROOMS_DATA,
   DIRECT_USERS_DATA,
   DIRECT_ITEMS_DATA,

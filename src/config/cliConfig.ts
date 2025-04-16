@@ -9,6 +9,7 @@ export interface CLIConfig {
   // Session flags
   adminSession: boolean;
   userSession: boolean;
+  forceSession: string | null; // Add forced user session option
   
   // Security flags
   disableRemoteAdmin: boolean;
@@ -54,6 +55,11 @@ export function parseCommandLineArgs(): CLIConfig {
       description: 'Start and immediately connect to a user session',
       default: false,
       alias: 'u'
+    })
+    .option('forceSession', {
+      type: 'string',
+      description: 'Start and immediately connect as a specific user (e.g. --forceSession=asdf)',
+      default: null
     })
     
     // Security flags
@@ -159,6 +165,7 @@ export function parseCommandLineArgs(): CLIConfig {
   const config: CLIConfig = {
     adminSession: argv.adminSession,
     userSession: argv.userSession,
+    forceSession: argv.forceSession || null, // Add forced user session option
     disableRemoteAdmin: argv.disableRemoteAdmin,
     dataDir: argv.dataDir,
     roomsFile: argv.roomsFile || path.join(argv.dataDir, 'rooms.json'),
@@ -176,8 +183,8 @@ export function parseCommandLineArgs(): CLIConfig {
     logLevel: argv.logLevel,
     noColor: argv.noColor,
     // Auto-enable silent and noConsole if an auto-session is requested
-    silent: argv.silent || argv.adminSession || argv.userSession,
-    noConsole: argv.noConsole || argv.adminSession || argv.userSession
+    silent: argv.silent || argv.adminSession || argv.userSession || Boolean(argv.forceSession),
+    noConsole: argv.noConsole || argv.adminSession || argv.userSession || Boolean(argv.forceSession)
   };
   
   // Ensure data directory exists

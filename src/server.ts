@@ -26,9 +26,38 @@ async function main() {
       gameServer.startAutoAdminSession();
     } else if (config.AUTO_USER_SESSION) {
       gameServer.startAutoUserSession();
+    } else if (config.FORCE_SESSION_USERNAME) {
+      // Start a session with the specified username
+      await startForcedUserSession(gameServer, config.FORCE_SESSION_USERNAME);
     }
   } catch (error) {
     handleError(error);
+  }
+}
+
+/**
+ * Start a session as a specific user
+ */
+async function startForcedUserSession(server: GameServer, username: string): Promise<void> {
+  console.log(`Starting forced session as user: ${username}`);
+  
+  // Suppress normal console output for a cleaner experience
+  const originalConsole = console.log;
+  console.log = () => {}; // No-op function
+  
+  try {
+    // Use the new specialized method for forced sessions
+    await server.startForcedSession(server.getTelnetPort(), username);
+    
+    // Add auto-exit handler for when the session ends
+    process.on('SIGINT', () => {
+      process.exit(0);
+    });
+  } catch (error) {
+    // Restore console for error reporting
+    console.log = originalConsole;
+    console.error(`Error starting forced session as ${username}:`, error);
+    process.exit(1);
   }
 }
 

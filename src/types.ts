@@ -170,6 +170,7 @@ export interface User {
   movementRestricted?: boolean; // Flag to restrict player movement
   movementRestrictedReason?: string; // Custom reason why movement is restricted
   flags?: string[]; // Array to store player flags for permissions, quests, etc.
+  pendingAdminMessages?: Array<{message: string, timestamp: string}>; // Store admin messages for offline users
 }
 
 export interface ConnectedClient {

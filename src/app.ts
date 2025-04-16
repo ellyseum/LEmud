@@ -32,7 +32,6 @@ export class GameServer {
   private gameTimerManager: GameTimerManager;
   private serverStats: ServerStats;
   private idleCheckInterval: NodeJS.Timeout;
-  private isAdminLoginPending: boolean = false;
   private shutdownTimerActive: boolean = false;
   private shutdownTimer: NodeJS.Timeout | null = null;
   private isLocalClientConnected: boolean = false;
@@ -334,7 +333,6 @@ export class GameServer {
   }
 
   public setAdminLoginPending(isPending: boolean): void {
-    this.isAdminLoginPending = isPending;
     this.telnetServer.setAdminLoginPending(isPending);
   }
 
@@ -563,23 +561,8 @@ export class GameServer {
             process.stdin.removeListener('data', keyListener);
             this.startLocalAdminSession(this.telnetServer.getActualPort());
           } else if (lowerKey === 'u') {
-            // List all connected users
-            console.log("\n=== Connected Users ===");
-            let userCount = 0;
-            
-            this.clientManager.getClients().forEach(client => {
-              if (client.authenticated && client.user) {
-                const idleTime = Math.floor((Date.now() - client.lastActivity) / 1000);
-                console.log(`${client.user.username}: connected for ${Math.floor((Date.now() - client.connectedAt) / 1000)}s, idle for ${idleTime}s`);
-                userCount++;
-              }
-            });
-            
-            if (userCount === 0) {
-              console.log("No authenticated users currently connected.");
-            }
-            console.log(`Total connections: ${this.clientManager.getClients().size}`);
-            console.log("======================\n");
+            // Change from listing users to opening user admin menu
+            this.startUserAdminMenu(keyListener);
           } else if (lowerKey === 'm') {
             this.startMonitorUserSession(keyListener);
           } else if (lowerKey === 's') {
@@ -597,7 +580,7 @@ export class GameServer {
               console.log("Available options:");
               console.log("  c: Connect locally");
               console.log("  a: Admin session");
-              console.log("  u: List connected users");
+              console.log("  u: User admin menu");
               console.log("  m: Monitor user");
               console.log("  s: Send system message");
               console.log("  q: Shutdown server");
@@ -673,7 +656,7 @@ export class GameServer {
     });
   }
 
-  private startLocalAdminSession(port: number): void {
+  public startLocalAdminSession(port: number): void {
     if (!this.prepareLocalSessionStart()) return;
 
     this.telnetServer.setAdminLoginPending(true);
@@ -718,6 +701,50 @@ export class GameServer {
     });
   }
 
+  // Add a new public method for starting a regular user session
+  public startLocalUserSession(port: number, username?: string): void {
+    if (!this.prepareLocalSessionStart()) return;
+
+    this.localClientSocket = new net.Socket();
+
+    // Set up listeners
+    this.localClientSocket.on('data', (data) => {
+      process.stdout.write(data);
+    });
+
+    this.localClientSocket.on('close', () => {
+      console.log('\nUser session connection closed.');
+      this.endLocalSession();
+    });
+
+    this.localClientSocket.on('error', (err) => {
+      console.error(`\nLocal user connection error: ${err.message}`);
+      this.endLocalSession();
+    });
+
+    // Connect to the server
+    this.localClientSocket.connect(port, 'localhost', () => {
+      systemLogger.info(`Local user client connected to localhost:${port} as ${username || 'anonymous'}`);
+      console.log(`\nConnected as regular user${username ? ' ' + username : ''} on port ${port}.`);
+
+      // Set up stdin
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.setEncoding('utf8');
+
+        process.stdin.on('data', (key) => {
+          if (key.toString() === '\u0003') {
+            console.log('\nCtrl+C detected. Disconnecting user session...');
+            this.endLocalSession();
+          } else if (this.localClientSocket && this.localClientSocket.writable) {
+            this.localClientSocket.write(key);
+          }
+        });
+      }
+    });
+  }
+
   private prepareLocalSessionStart(): boolean {
     if (this.isLocalClientConnected || !process.stdin.isTTY) return false;
 
@@ -728,7 +755,7 @@ export class GameServer {
     process.stdin.removeAllListeners('data');
 
     // Find and remove the console transport
-    const winston = require('winston');
+    const winston = require('winston'); // Keep require for instanceof check below
     const consoleTransport = systemLogger.transports.find((t: any) => t instanceof winston.transports.Console);
     if (consoleTransport) {
       this.originalConsoleTransport = consoleTransport;
@@ -757,7 +784,7 @@ export class GameServer {
     }
 
     // Restore console logging
-    const winston = require('winston');
+    const winston = require('winston'); // Keep require for instanceof check below
     if (this.originalConsoleTransport && !systemLogger.transports.some((t: any) => t === this.originalConsoleTransport)) {
       systemLogger.add(this.originalConsoleTransport);
       systemLogger.info('Console logging restored.');
@@ -790,12 +817,11 @@ export class GameServer {
     process.stdin.removeListener('data', keyListener);
     
     // Pause console logging
-    const winston = require('winston');
+    const winston = require('winston'); // Keep require for instanceof check below
     let monitorConsoleTransport: any = null;
     const consoleTransport = systemLogger.transports.find((t: any) => t instanceof winston.transports.Console);
     if (consoleTransport) {
       monitorConsoleTransport = consoleTransport;
-      systemLogger.remove(consoleTransport);
       console.log("\nConsole logging paused. Starting user monitoring...");
     }
     
@@ -894,16 +920,14 @@ export class GameServer {
         
         // Find the client object for the selected user
         let targetClient: ConnectedClient | undefined;
-        let targetClientId: string | undefined;
         
         this.clientManager.getClients().forEach((client, clientId) => {
           if (client.authenticated && client.user && client.user.username === selectedUsername) {
             targetClient = client;
-            targetClientId = clientId;
           }
         });
         
-        if (!targetClient || !targetClientId) {
+        if (!targetClient) {
           console.log(`\nERROR: Could not find client for user ${selectedUsername}`);
           
           // Restore console logging
@@ -926,7 +950,7 @@ export class GameServer {
         process.stdin.removeListener('data', userSelectionHandler);
         
         // Start the monitoring session
-        this.startMonitoringSession(targetClient, targetClientId, selectedUsername, monitorConsoleTransport, keyListener);
+        this.startMonitoringSession(targetClient, selectedUsername, monitorConsoleTransport, keyListener);
       }
     };
     
@@ -939,7 +963,6 @@ export class GameServer {
 
   private startMonitoringSession(
     targetClient: ConnectedClient, 
-    targetClientId: string, 
     username: string, 
     monitorConsoleTransport: any, 
     mainKeyListener: (key: string) => void
@@ -1290,12 +1313,11 @@ export class GameServer {
     process.stdin.removeListener('data', keyListener);
     
     // Pause console logging temporarily like we do for local client sessions
-    const winston = require('winston');
+    const winston = require('winston'); // Keep require for instanceof check below
     let messageConsoleTransport: any = null;
     const consoleTransport = systemLogger.transports.find((t: any) => t instanceof winston.transports.Console);
     if (consoleTransport) {
       messageConsoleTransport = consoleTransport;
-      systemLogger.remove(consoleTransport);
       console.log("\nConsole logging paused. Enter your system message:");
     }
     
@@ -1370,12 +1392,11 @@ export class GameServer {
     process.stdin.removeListener('data', keyListener);
     
     // Pause console logging
-    const winston = require('winston');
+    const winston = require('winston'); // Keep require for instanceof check below
     let shutdownConsoleTransport: any = null;
     const consoleTransport = systemLogger.transports.find((t: any) => t instanceof winston.transports.Console);
     if (consoleTransport) {
       shutdownConsoleTransport = consoleTransport;
-      systemLogger.remove(consoleTransport);
     }
     
     console.log("\n=== Shutdown Options ===");
@@ -1611,6 +1632,13 @@ export class GameServer {
     return getPromptText(client);
   }
 
+  /**
+   * Get the actual Telnet port the server is running on
+   */
+  public getTelnetPort(): number {
+    return this.telnetServer.getActualPort();
+  }
+
   public async startAutoAdminSession(): Promise<void> {
     // Suppress normal console output for automated sessions
     this.suppressNormalOutput();
@@ -1642,7 +1670,6 @@ export class GameServer {
   private suppressNormalOutput(): void {
     // Don't show the welcome message or keyboard instructions
     // Need to preserve the original method structure for type compatibility
-    const originalInfo = systemLogger.info;
     systemLogger.info = function() {
       // No-op function that maintains the return type
       return systemLogger;
@@ -1661,6 +1688,1297 @@ export class GameServer {
         process.exit(0);
       }, 100);
     };
+  }
+
+  // Menu system state management
+  private menuState = {
+    active: false,
+    currentMenu: 'main', // 'main', 'edit', 'flags', etc.
+    selectedUser: '',
+    selectedIndex: 0,
+    currentPage: 0,
+    allUsers: [] as any[]
+  };
+
+  private startUserAdminMenu(keyListener: (key: string) => void): void {
+    // Make sure we're not already handling user admin menu
+    process.stdin.removeAllListeners('data');
+    
+    // Remove the key listener temporarily
+    process.stdin.removeListener('data', keyListener);
+    
+    // Reset the menu state
+    this.menuState = {
+      active: true,
+      currentMenu: 'main',
+      selectedUser: '',
+      selectedIndex: 0,
+      currentPage: 0,
+      allUsers: []
+    };
+    
+    // Pause console logging - store the console transport to restore later
+    const winston = require('winston'); // Keep require for instanceof check below
+    let userAdminConsoleTransport: any = null;
+    const consoleTransport = systemLogger.transports.find((t: any) => t instanceof winston.transports.Console);
+    if (consoleTransport) {
+      userAdminConsoleTransport = consoleTransport;
+      console.log("\nConsole logging paused while user admin menu is active...");
+    }
+    
+    // Get all registered users and sort alphabetically
+    const allUsers = this.userManager.getAllUsers().sort((a, b) => 
+      a.username.toLowerCase().localeCompare(b.username.toLowerCase())
+    );
+    
+    // Store in the state
+    this.menuState.allUsers = allUsers;
+    
+    if (allUsers.length === 0) {
+      console.log("\n=== User Admin Menu ===");
+      console.log("No registered users found.");
+      console.log("=====================\n");
+      
+      // Restore console logging before returning
+      if (userAdminConsoleTransport) {
+        systemLogger.add(userAdminConsoleTransport);
+        systemLogger.info('Console logging restored after user admin menu.');
+      }
+      
+      // Restore the key listener
+      this.exitUserAdminMenu();
+      return;
+    }
+    
+    // Function to exit the menu that can be called from anywhere
+    const exitMenu = () => {
+      this.exitUserAdminMenu();
+    };
+    
+    // Set up the global exit function
+    (this as any)._exitUserAdminMenu = exitMenu;
+    
+    // Display the initial menu
+    this.displayUserListMenu();
+    
+    // Set up key handler for the menu
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    
+    // Add our non-recursive menu handler
+    process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+  }
+  
+  private exitUserAdminMenu(): void {
+    console.log('\n\nUser admin menu canceled.');
+    
+    // Restore console logging
+    const winston = require('winston'); // Keep require for instanceof check below
+    const consoleTransport = systemLogger.transports.find((t: any) => t instanceof winston.transports.Console);
+    if (consoleTransport && !systemLogger.transports.some((t: any) => t === consoleTransport)) {
+      systemLogger.add(consoleTransport);
+      systemLogger.info('Console logging restored after user admin menu.');
+    }
+    
+    // Reset menu state
+    this.menuState.active = false;
+    
+    // Clean up all listeners and restore the main keyboard control
+    process.stdin.removeAllListeners('data');
+    this.setupKeyListener();
+  }
+  
+  private handleMenuKeyPress(key: string): void {
+    // Handle Ctrl+C - cancel and return to main menu from any submenu
+    if (key === '\u0003') {
+      this.exitUserAdminMenu();
+      return;
+    }
+    
+    // Route to appropriate handler based on current menu state
+    switch (this.menuState.currentMenu) {
+      case 'main':
+        this.handleMainMenuKeyPress(key);
+        break;
+      case 'edit':
+        this.handleEditMenuKeyPress(key);
+        break;
+      case 'flags':
+        this.handleFlagsMenuKeyPress(key);
+        break;
+      // Add other menu states as needed
+      default:
+        // Default to main menu
+        this.menuState.currentMenu = 'main';
+        this.displayUserListMenu();
+    }
+  }
+  
+  private handleMainMenuKeyPress(key: string): void {
+    const { selectedIndex, currentPage, allUsers } = this.menuState;
+    const usersPerPage = 10;
+    const totalPages = Math.ceil(allUsers.length / usersPerPage);
+    
+    // Handle arrow keys for navigation
+    if (key === '\u001b[A' || key === '\u001bOA') {
+      // Up arrow - move selection up
+      if (selectedIndex > 0) {
+        this.menuState.selectedIndex--;
+        // If we moved to previous page
+        if (this.menuState.selectedIndex < currentPage * usersPerPage) {
+          this.menuState.currentPage--;
+        }
+        this.displayUserListMenu();
+      }
+    }
+    else if (key === '\u001b[B' || key === '\u001bOB') {
+      // Down arrow - move selection down
+      if (selectedIndex < allUsers.length - 1) {
+        this.menuState.selectedIndex++;
+        // If we moved to next page
+        if (this.menuState.selectedIndex >= (currentPage + 1) * usersPerPage) {
+          this.menuState.currentPage++;
+        }
+        this.displayUserListMenu();
+      }
+    }
+    else if (key === '\u001b[D' || key === '\u001bOD') {
+      // Left arrow - previous page
+      if (currentPage > 0) {
+        this.menuState.currentPage--;
+        this.menuState.selectedIndex = currentPage * usersPerPage;
+        this.displayUserListMenu();
+      }
+    }
+    else if (key === '\u001b[C' || key === '\u001bOC') {
+      // Right arrow - next page
+      if (currentPage < totalPages - 1) {
+        this.menuState.currentPage++;
+        this.menuState.selectedIndex = this.menuState.currentPage * usersPerPage;
+        this.displayUserListMenu();
+      }
+    }
+    
+    // Handle action keys
+    else if (key.toLowerCase() === 'd') {
+      // Direct login as selected user
+      const selectedUser = allUsers[selectedIndex];
+      this.menuState.selectedUser = selectedUser.username;
+      this.handleDirectLogin(selectedUser.username);
+    }
+    else if (key.toLowerCase() === 'k') {
+      // Kick selected user
+      const selectedUser = allUsers[selectedIndex];
+      this.menuState.selectedUser = selectedUser.username;
+      this.handleKickUser(selectedUser.username, this.handleMenuKeyPress.bind(this)); // Pass return handler
+    }
+    else if (key.toLowerCase() === 'm') {
+      // Send admin message to selected user
+      const selectedUser = allUsers[selectedIndex];
+      this.menuState.selectedUser = selectedUser.username;
+      this.handleSendAdminMessage(selectedUser.username, this.handleMenuKeyPress.bind(this)); // Pass return handler
+    }
+    else if (key.toLowerCase() === 'e') {
+      // Edit selected user
+      const selectedUser = allUsers[selectedIndex];
+      this.menuState.selectedUser = selectedUser.username;
+      this.menuState.currentMenu = 'edit';
+      this.displayEditUserMenu(selectedUser.username);
+    }
+    else if (key.toLowerCase() === 'p') {
+      // Change password for selected user
+      const selectedUser = allUsers[selectedIndex];
+      this.menuState.selectedUser = selectedUser.username;
+      this.handleChangePassword(selectedUser.username, this.handleMenuKeyPress.bind(this)); // Pass return handler
+    }
+    else if (key.toLowerCase() === 't') {
+      // Delete selected user
+      const selectedUser = allUsers[selectedIndex];
+      this.menuState.selectedUser = selectedUser.username;
+      this.handleDeleteUser(selectedUser.username, this.handleMenuKeyPress.bind(this)); // Pass return handler
+    }
+    else if (key.toLowerCase() === 'c') {
+      // Cancel and return to main menu
+      this.exitUserAdminMenu();
+    }
+  }
+  
+  private handleEditMenuKeyPress(key: string): void {
+    // Handle numeric inputs for the edit menu
+    if (key === '1') {
+      // Flag editing
+      this.menuState.currentMenu = 'flags';
+      this.displayEditUserFlagsMenu(this.menuState.selectedUser);
+    }
+    else if (key === '2') {
+      // Toggle admin status
+      this.handleToggleAdminStatus(this.menuState.selectedUser); // Removed extra argument
+    }
+    else if (key === '3') {
+      // Reset stats
+      this.handleResetUserStats(this.menuState.selectedUser); // Removed extra argument
+    }
+    else if (key === '4' || key.toLowerCase() === 'c' || key === '\u001b') { // 4, c, or ESC
+      // Return to main menu
+      this.menuState.currentMenu = 'main';
+      this.displayUserListMenu();
+    }
+  }
+  
+  private handleFlagsMenuKeyPress(key: string): void {
+    // Handle numeric inputs for the flags menu
+    if (key === '1') {
+      // Add flag - switch to text input mode
+      this.promptForFlagAdd(this.menuState.selectedUser);
+    }
+    else if (key === '2') {
+      // Remove flag - switch to flag selection mode
+      this.promptForFlagRemoval(this.menuState.selectedUser);
+    }
+    else if (key === '3' || key.toLowerCase() === 'c' || key === '\u001b') { // 3, c, or ESC
+      // Return to edit menu
+      this.menuState.currentMenu = 'edit';
+      this.displayEditUserMenu(this.menuState.selectedUser);
+    }
+  }
+  
+  private displayUserListMenu(): void {
+    const { selectedIndex, currentPage, allUsers } = this.menuState;
+    const usersPerPage = 10;
+    const totalPages = Math.ceil(allUsers.length / usersPerPage);
+    
+    // Clear the screen
+    console.clear();
+    
+    // Calculate page bounds
+    const startIdx = currentPage * usersPerPage;
+    const endIdx = Math.min(startIdx + usersPerPage, allUsers.length);
+    const pageUsers = allUsers.slice(startIdx, endIdx);
+    
+    // Display header
+    console.log(`\n=== User Admin Menu (Page ${currentPage + 1}/${totalPages}) ===`);
+    console.log("Navigate: ↑/↓ keys | Actions: (d)irect login, (k)ick, (m)essage, (e)dit, change (p)assword, dele(t)e, (c)ancel");
+    console.log("Page navigation: ←/→ keys | Selected user highlighted in white");
+    console.log("");
+    
+    // Display users with the selected one highlighted
+    for (let i = 0; i < pageUsers.length; i++) {
+      const user = pageUsers[i];
+      const userIndex = startIdx + i;
+      const isSelected = userIndex === selectedIndex;
+      
+      // Format each user entry with additional info
+      const isOnline = this.userManager.isUserActive(user.username);
+      const lastLoginDate = user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never';
+      
+      let userDisplay = `${userIndex + 1}. ${user.username} `;
+      if (isOnline) userDisplay += '[ONLINE] ';
+      userDisplay += `(Last login: ${lastLoginDate})`;
+      
+      if (isSelected) {
+        console.log(`\x1b[47m\x1b[30m${userDisplay}\x1b[0m`);
+      } else {
+        console.log(userDisplay);
+      }
+    }
+    
+    console.log("\nPress letter key for action or (c) to cancel");
+  }
+
+  private handleDirectLogin(username: string): void {
+    console.log(`\nInitiating direct login as ${username}...`);
+    
+    // Check if user exists
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => {
+        // Redisplay the menu after error
+        const allUsers = this.userManager.getAllUsers().sort((a, b) => 
+          a.username.toLowerCase().localeCompare(b.username.toLowerCase())
+        );
+        const currentPage = Math.floor(allUsers.findIndex(u => u.username === username) / 10);
+        this.displayUserPage(allUsers, allUsers.findIndex(u => u.username === username), currentPage);
+      }, 2000);
+      return;
+    }
+    
+    // First check if user is already logged in
+    if (this.userManager.isUserActive(username)) {
+      // Ask if we want to take over the session
+      console.log(`\nUser ${username} is already logged in. Do you want to take over their session? (y/n)`);
+      
+      // Temporarily switch to line input mode
+      process.stdin.removeAllListeners('data');
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      
+      rl.question('> ', (answer) => {
+        rl.close();
+        
+        if (answer.toLowerCase() === 'y') {
+          // Find the client and take over
+          const clients = Array.from(this.clientManager.getClients().values());
+          const targetClient = clients.find(c => c.user && c.user.username === username);
+          
+          if (targetClient) {
+            // Notify the user they're being taken over
+            targetClient.connection.write('\r\n\x1b[33mAn administrator is taking over your session.\x1b[0m\r\n');
+            
+            // Start monitoring their session with direct control
+            this.startForcedSession(this.telnetServer.getActualPort(), username)
+              .catch(error => {
+                console.log(`\nError during forced login: ${error.message}`);
+                setTimeout(() => {
+                  if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(true);
+                  }
+                  process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+                  this.menuState.currentMenu = 'main';
+                  this.displayUserListMenu();
+                }, 2000);
+              });
+          } else {
+            console.log(`\nError: Could not find active session for ${username}.`);
+            setTimeout(() => {
+              if (process.stdin.isTTY) {
+                process.stdin.setRawMode(true);
+              }
+              process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+              this.menuState.currentMenu = 'main';
+              this.displayUserListMenu();
+            }, 2000);
+          }
+        } else {
+          // Return to the menu
+          console.log(`\nLogin canceled.`);
+          setTimeout(() => {
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(true);
+            }
+            process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+            this.menuState.currentMenu = 'main';
+            this.displayUserListMenu();
+          }, 1000);
+        }
+      });
+    } else {
+      // User is not logged in, so create a new console login with the forced session
+      this.startForcedSession(this.telnetServer.getActualPort(), username)
+        .catch(error => {
+          console.log(`\nError during forced login: ${error.message}`);
+          // Return to the menu after a brief delay
+          setTimeout(() => {
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(true);
+            }
+            process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+            this.menuState.currentMenu = 'main';
+            this.displayUserListMenu();
+          }, 2000);
+        });
+    }
+  }
+
+  private handleKickUser(username: string, returnHandler: (key: string) => void): void {
+    // Check if user is online first
+    if (!this.userManager.isUserActive(username)) {
+      console.log(`\nUser ${username} is not currently online.`);
+      setTimeout(() => {
+        // Refresh the menu display
+        this.startUserAdminMenu(returnHandler);
+      }, 2000);
+      return;
+    }
+    
+    console.log(`\nKicking user ${username}. Are you sure? (y/n)`);
+    
+    // Temporarily change key handler for this question
+    const originalHandler = returnHandler;
+    const confirmHandler = (key: string) => {
+      if (key.toLowerCase() === 'y') {
+        // Find the client and disconnect them
+        const clients = Array.from(this.clientManager.getClients().values());
+        const targetClient = clients.find(c => c.user && c.user.username === username);
+        
+        if (targetClient) {
+          // Notify the user they're being kicked
+          targetClient.connection.write('\r\n\x1b[31mYou have been disconnected by an administrator.\x1b[0m\r\n');
+          
+          // Log the action
+          systemLogger.info(`Admin kicked user: ${username}`);
+          
+          // Wait a moment then disconnect
+          setTimeout(() => {
+            targetClient.connection.end();
+            console.log(`\nUser ${username} has been kicked.`);
+            setTimeout(() => this.startUserAdminMenu(originalHandler), 1000);
+          }, 500);
+        } else {
+          console.log(`\nError: Could not find active session for ${username}.`);
+          setTimeout(() => this.startUserAdminMenu(originalHandler), 2000);
+        }
+      } else {
+        // Return to the menu
+        console.log(`\nKick canceled.`);
+        setTimeout(() => this.startUserAdminMenu(originalHandler), 1000);
+      }
+      
+      // Remove this temporary handler
+      process.stdin.removeListener('data', confirmHandler);
+    };
+    
+    // Set up the confirmation handler
+    process.stdin.removeListener('data', returnHandler);
+    process.stdin.on('data', confirmHandler);
+  }
+
+  private handleSendAdminMessage(username: string, returnHandler: (key: string) => void): void {
+    // Check if user exists
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => this.startUserAdminMenu(returnHandler), 2000);
+      return;
+    }
+    
+    // Create readline interface for message input
+    process.stdin.removeListener('data', returnHandler);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    console.log(`\nEnter admin message to send to ${username} (Ctrl+C to cancel):`);
+    rl.question('> ', (message) => {
+      rl.close();
+      
+      if (message.trim()) {
+        // Log the message
+        systemLogger.info(`Admin sent message to ${username}: ${message}`);
+        
+        // If user is online, send the message immediately
+        if (this.userManager.isUserActive(username)) {
+          const targetClient = this.userManager.getActiveUserSession(username);
+          if (targetClient) {
+            targetClient.connection.write(`\r\n\x1b[31m[ADMIN MESSAGE]: ${message}\x1b[0m\r\n`);
+            console.log(`\nMessage sent to ${username}.`);
+          }
+        }
+        
+        // Also store the message to be shown on next login if user is offline
+        // This would require adding a pendingAdminMessages array to the User interface
+        // and checking it on login
+        try {
+          if (!user.pendingAdminMessages) {
+            user.pendingAdminMessages = [];
+          }
+          user.pendingAdminMessages.push({
+            message,
+            timestamp: new Date().toISOString()
+          });
+          this.userManager.updateUser(username, user);
+          console.log(`\nMessage will be shown to ${username} on next login.`);
+        } catch (error) {
+          console.log(`\nError storing message: ${error}`);
+        }
+      } else {
+        console.log(`\nEmpty message, not sending.`);
+      }
+      
+      // Return to the menu
+      setTimeout(() => {
+        // Restore raw mode and key handler
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        this.startUserAdminMenu(returnHandler);
+      }, 1000);
+    });
+  }
+
+  private handleEditUser(username: string, returnHandler: (key: string) => void): void {
+    // Check if user exists
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => this.startUserAdminMenu(returnHandler), 2000);
+      return;
+    }
+    
+    // Create a simple menu for editing user properties
+    console.clear();
+    console.log(`\n=== Edit User: ${username} ===`);
+    console.log("Select field to edit:");
+    console.log("1. Add/remove flags");
+    console.log("2. Toggle admin status");
+    console.log("3. Reset stats");
+    console.log("4. Cancel");
+    
+    // Remove key handler and set raw mode off for readline
+    process.stdin.removeListener('data', returnHandler);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question('Select option (1-4): ', (answer) => {
+      rl.close();
+      
+      switch (answer) {
+        case '1':
+          this.handleEditUserFlags(username, returnHandler);
+          break;
+        case '2':
+          this.handleToggleAdminStatus(username);
+          break;
+        case '3':
+          this.handleResetUserStats(username);
+          break;
+        default:
+          // Return to main menu
+          if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+          }
+          process.stdin.resume();
+          this.startUserAdminMenu(returnHandler);
+      }
+    });
+  }
+
+  private handleEditUserFlags(username: string, returnHandler: (key: string) => void): void {
+    // Get current flags
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => this.startUserAdminMenu(returnHandler), 2000);
+      return;
+    }
+    
+    const currentFlags = user.flags || [];
+    
+    console.clear();
+    console.log(`\n=== Edit Flags for User: ${username} ===`);
+    console.log(`Current flags: ${currentFlags.length > 0 ? currentFlags.join(', ') : 'None'}`);
+    console.log("1. Add flag");
+    console.log("2. Remove flag");
+    console.log("3. Back to edit menu");
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question('Select option (1-3): ', (answer) => {
+      switch (answer) {
+        case '1':
+          rl.question('Enter flag to add: ', (flag) => {
+            rl.close();
+            
+            if (flag.trim()) {
+              // Add the flag if it doesn't exist
+              if (!currentFlags.includes(flag.trim())) {
+                user.flags = [...currentFlags, flag.trim()];
+                this.userManager.updateUser(username, user);
+                console.log(`\nFlag "${flag.trim()}" added to ${username}`);
+                systemLogger.info(`Admin added flag "${flag.trim()}" to user ${username}`);
+              } else {
+                console.log(`\nFlag "${flag.trim()}" already exists on ${username}`);
+              }
+            }
+            
+            // Return to flags menu
+            setTimeout(() => this.handleEditUserFlags(username, returnHandler), 1000);
+          });
+          break;
+          
+        case '2':
+          if (currentFlags.length === 0) {
+            rl.close();
+            console.log("\nUser has no flags to remove.");
+            setTimeout(() => this.handleEditUserFlags(username, returnHandler), 1000);
+          } else {
+            console.log("\nSelect flag to remove:");
+            currentFlags.forEach((flag, i) => {
+              console.log(`${i + 1}. ${flag}`);
+            });
+            
+            rl.question(`Select flag (1-${currentFlags.length}): `, (index) => {
+              rl.close();
+              
+              const flagIndex = parseInt(index, 10) - 1;
+              if (flagIndex >= 0 && flagIndex < currentFlags.length) {
+                const flagToRemove = currentFlags[flagIndex];
+                user.flags = currentFlags.filter(f => f !== flagToRemove);
+                this.userManager.updateUser(username, user);
+                console.log(`\nFlag "${flagToRemove}" removed from ${username}`);
+                systemLogger.info(`Admin removed flag "${flagToRemove}" from user ${username}`);
+              } else {
+                console.log("\nInvalid selection.");
+              }
+              
+              // Return to flags menu
+              setTimeout(() => this.handleEditUserFlags(username, returnHandler), 1000);
+            });
+          }
+          break;
+          
+        default:
+          rl.close();
+          // Return to edit menu
+          setTimeout(() => this.handleEditUser(username, returnHandler), 100);
+      }
+    });
+  }
+
+  private handleChangePassword(username: string, returnHandler: (key: string) => void): void {
+    // Check if user exists
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => this.startUserAdminMenu(returnHandler), 2000);
+      return;
+    }
+    
+    console.log(`\nChange password for user ${username}`);
+    
+    // Remove key handler and set raw mode off for readline
+    process.stdin.removeListener('data', returnHandler);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question('Enter new password: ', (newPassword) => {
+      if (newPassword.trim()) {
+        rl.question('Confirm new password: ', (confirmPassword) => {
+          rl.close();
+          
+          if (newPassword === confirmPassword) {
+            try {
+              // Use the UserManager's changeUserPassword method instead of direct manipulation
+              // This ensures the password is hashed and stored correctly using the same
+              // mechanism as during user creation
+              const success = this.userManager.changeUserPassword(username, newPassword);
+              
+              if (success) {
+                console.log(`\nPassword changed successfully for ${username}`);
+                systemLogger.info(`Admin changed password for user ${username}`);
+              } else {
+                console.log(`\nError changing password: User not found or update failed`);
+              }
+            } catch (error) {
+              console.log(`\nError changing password: ${error}`);
+            }
+          } else {
+            console.log("\nPasswords don't match. Password not changed.");
+          }
+          
+          // Return to main menu
+          setTimeout(() => {
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(true);
+            }
+            process.stdin.resume();
+            this.startUserAdminMenu(returnHandler);
+          }, 1000);
+        });
+      } else {
+        rl.close();
+        console.log("\nEmpty password not allowed.");
+        
+        // Return to main menu
+        setTimeout(() => {
+          if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+          }
+          process.stdin.resume();
+          this.startUserAdminMenu(returnHandler);
+        }, 1000);
+      }
+    });
+  }
+
+  private handleDeleteUser(username: string, returnHandler: (key: string) => void): void {
+    // Check if user exists
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => this.startUserAdminMenu(returnHandler), 2000);
+      return;
+    }
+    
+    // Don't allow deleting the built-in admin
+    if (username.toLowerCase() === 'admin') {
+      console.log("\nCannot delete the built-in 'admin' user.");
+      setTimeout(() => this.startUserAdminMenu(returnHandler), 2000);
+      return;
+    }
+    
+    console.log(`\nWARNING: You are about to delete user ${username}`);
+    console.log("This action CANNOT be undone and will remove all user data.");
+    
+    // Remove key handler and set raw mode off for readline
+    process.stdin.removeListener('data', returnHandler);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question(`Type "${username}" to confirm deletion: `, (confirmation) => {
+      rl.close();
+      
+      if (confirmation === username) {
+        try {
+          // Check if user is online first
+          if (this.userManager.isUserActive(username)) {
+            // Find the client and disconnect them
+            const clients = Array.from(this.clientManager.getClients().values());
+            const targetClient = clients.find(c => c.user && c.user.username === username);
+            
+            if (targetClient) {
+              targetClient.connection.write('\r\n\x1b[31mYour account has been deleted by an administrator.\x1b[0m\r\n');
+              setTimeout(() => targetClient.connection.end(), 500);
+            }
+          }
+          
+          // Delete the user
+          this.userManager.deleteUser(username);
+          
+          console.log(`\nUser ${username} has been deleted.`);
+          systemLogger.info(`Admin deleted user ${username}`);
+        } catch (error) {
+          console.log(`\nError deleting user: ${error}`);
+        }
+      } else {
+        console.log("\nConfirmation didn't match. User not deleted.");
+      }
+      
+      // Return to main menu
+      setTimeout(() => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        this.startUserAdminMenu(returnHandler);
+      }, 1000);
+    });
+  }
+
+  /**
+   * Start a forced session as a specific user without password authentication.
+   * This method handles the entire login flow automatically.
+   * Used by both command line --forceSession and the user admin menu.
+   */
+  public startForcedSession(port: number, username: string): Promise<void> {
+    if (!this.prepareLocalSessionStart()) {
+      return Promise.reject(new Error('Could not prepare session start'));
+    }
+
+    return new Promise((resolve, reject) => {
+      systemLogger.info(`Starting forced session as user: ${username}`);
+
+      this.localClientSocket = new net.Socket();
+      let loginState = 'waiting'; // States: waiting, username, password, connected
+      let buffer = '';
+      let dataHandled = false;
+      let lastDataTime = Date.now();
+      let loginTimeout: NodeJS.Timeout;
+
+      // Set flag to let telnet server know this is a forced session
+      this.telnetServer.setForcedSessionUsername(username);
+
+      // Set up listeners for the socket
+      this.localClientSocket.on('data', (data) => {
+        const dataStr = data.toString();
+        buffer += dataStr;
+        process.stdout.write(data);
+        lastDataTime = Date.now(); // Update last data time
+
+        // Log all received data in debug mode
+        systemLogger.debug(`[ForcedSession] Received data in state ${loginState}: ${dataStr.replace(/\r\n/g, '\\r\\n')}`);
+
+        // Handle login flow automatically
+        if (!dataHandled) {
+          // Check for successful login at any stage - more flexible detection
+          if (buffer.includes('Welcome') || 
+              buffer.includes('logged in') || 
+              buffer.includes('>') || 
+              buffer.includes('You are in')) {
+            loginState = 'connected';
+            systemLogger.info(`Forced session successfully logged in as ${username}`);
+            
+            // Clear the timeout since we're connected
+            if (loginTimeout) {
+              clearTimeout(loginTimeout);
+            }
+            
+            resolve();
+            return;
+          }
+
+          // Check for username prompt
+          if (loginState === 'waiting' && (buffer.includes('Username:') || buffer.includes('login:') || buffer.includes('name:'))) {
+            systemLogger.info(`Forced session detected username prompt, sending: ${username}`);
+            this.localClientSocket?.write(`${username}\n`);
+            loginState = 'username';
+            buffer = '';
+            dataHandled = true;
+            return;
+          }
+
+          // Check for password prompt
+          if ((loginState === 'username' || loginState === 'waiting') && 
+              (buffer.includes('Password:') || buffer.includes('password:'))) {
+            systemLogger.info(`Forced session detected password prompt for ${username}, bypass authentication`);
+            // Send any password since server should bypass auth for forced sessions
+            this.localClientSocket?.write(`forcedlogin\n`);
+            loginState = 'password';
+            buffer = '';
+            dataHandled = true;
+            return;
+          }
+
+          // Check for login failure
+          if ((loginState === 'username' || loginState === 'password') && 
+              (buffer.includes('Invalid') || buffer.includes('failed') || buffer.includes('incorrect'))) {
+            const error = new Error(`Failed to authenticate forced session for user: ${username}`);
+            systemLogger.error(error.message);
+            
+            // Clear the timeout
+            if (loginTimeout) {
+              clearTimeout(loginTimeout);
+            }
+            
+            // Clean up forced session flag
+            this.telnetServer.setForcedSessionUsername('');
+            reject(error);
+            this.endLocalSession();
+            return;
+          }
+        }
+        
+        // Reset the data handled flag for next chunk
+        dataHandled = false;
+      });
+
+      this.localClientSocket.on('close', () => {
+        console.log('\nForced session connection closed.');
+        // Clean up forced session flag
+        this.telnetServer.setForcedSessionUsername('');
+        
+        // Clear the timeout
+        if (loginTimeout) {
+          clearTimeout(loginTimeout);
+        }
+        
+        this.endLocalSession();
+        if (loginState !== 'connected') {
+          reject(new Error('Connection closed before login completed'));
+        }
+      });
+
+      this.localClientSocket.on('error', (err) => {
+        console.error(`\nForced session connection error: ${err.message}`);
+        systemLogger.error(`Forced session error for ${username}: ${err.message}`);
+        
+        // Clean up forced session flag
+        this.telnetServer.setForcedSessionUsername('');
+        
+        // Clear the timeout
+        if (loginTimeout) {
+          clearTimeout(loginTimeout);
+        }
+        
+        this.endLocalSession();
+        reject(err);
+      });
+
+      // Connect to the server
+      this.localClientSocket.connect(port, 'localhost', () => {
+        systemLogger.info(`Forced session socket connected to localhost:${port} for user ${username}`);
+        console.log(`\nStarting forced session as ${username}...`);
+
+        // Set up stdin for the session
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdin.setEncoding('utf8');
+
+          process.stdin.on('data', (key) => {
+            if (key.toString() === '\u0003') {
+              console.log('\nCtrl+C detected. Disconnecting forced session...');
+              this.endLocalSession();
+            } else if (this.localClientSocket && this.localClientSocket.writable) {
+              this.localClientSocket.write(key);
+            }
+          });
+        }
+      });
+
+      // Add a more sophisticated timeout that checks for inactivity
+      const timeoutCheck = () => {
+        const currentTime = Date.now();
+        const timeSinceLastData = currentTime - lastDataTime;
+        
+        // Only time out if we haven't received data for a while and we're not connected
+        if (loginState !== 'connected') {
+          if (timeSinceLastData > 5000) {
+            // If no data for 5 seconds, try sending an enter key to prompt a response
+            if (this.localClientSocket && this.localClientSocket.writable) {
+              systemLogger.info(`Forced session login appears stuck, sending enter key`);
+              this.localClientSocket.write('\n');
+              lastDataTime = currentTime; // Reset the timer
+            }
+          }
+          
+          // If total time exceeds 20 seconds, time out
+          if (currentTime - lastDataTime > 20000) {
+            systemLogger.error(`Forced session login timeout for user: ${username}`);
+            // Clean up forced session flag
+            this.telnetServer.setForcedSessionUsername('');
+            reject(new Error('Login timeout for forced session'));
+            this.endLocalSession();
+          } else {
+            // Check again in 1 second
+            loginTimeout = setTimeout(timeoutCheck, 1000);
+          }
+        }
+      };
+      
+      // Start the timeout checker
+      loginTimeout = setTimeout(timeoutCheck, 1000);
+    });
+  }
+
+  private displayEditUserMenu(username: string): void {
+    // Get user data
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      this.menuState.currentMenu = 'main';
+      this.displayUserListMenu();
+      return;
+    }
+    
+    // Import SudoCommand to check admin status
+    const { SudoCommand } = require('./command/commands/sudo.command');
+    const isAdmin = SudoCommand.isAuthorizedUser(username);
+    
+    console.clear();
+    console.log(`\n=== Edit User: ${username} ===`);
+    console.log(`Account created: ${new Date(user.joinDate || Date.now()).toLocaleDateString()}`);
+    console.log(`Admin status: ${isAdmin ? 'ADMIN' : 'NOT ADMIN'}`);
+    console.log(`Flags: ${(user?.flags?.length  ?? 0) > 0 ? user?.flags?.join(', ') : 'None'}`);
+    console.log("\n1. Manage user flags");
+    console.log(`2. ${isAdmin ? 'Remove' : 'Grant'} admin privileges`);
+    console.log("3. Reset user stats");
+    console.log("4. Return to user list");
+    
+    console.log("\nPress number key to select option");
+  }
+  
+  private displayEditUserFlagsMenu(username: string): void {
+    // Get user data
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      this.menuState.currentMenu = 'main';
+      this.displayUserListMenu();
+      return;
+    }
+    
+    console.clear();
+    console.log(`\n=== Manage Flags for User: ${username} ===`);
+    console.log(`Current flags: ${(user?.flags?.length ?? 0) > 0 ? user?.flags?.join(', ') : 'None'}`);
+    console.log("\n1. Add new flag");
+    console.log("2. Remove existing flag");
+    console.log("3. Return to edit menu");
+    
+    console.log("\nPress number key to select option");
+  }
+  
+  private promptForFlagAdd(username: string): void {
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      this.menuState.currentMenu = 'main';
+      this.displayUserListMenu();
+      return;
+    }
+    
+    // Temporarily switch to line input mode
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    process.stdin.removeAllListeners('data');
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question('\nEnter flag to add: ', (flag) => {
+      rl.close();
+      
+      if (flag.trim()) {
+        // Add the flag if it doesn't exist
+        if (!user.flags) {
+          user.flags = [];
+        }
+        
+        if (!user.flags.includes(flag.trim())) {
+          user.flags.push(flag.trim());
+          this.userManager.updateUser(username, user);
+          console.log(`\nFlag "${flag.trim()}" added to ${username}`);
+          systemLogger.info(`Admin added flag "${flag.trim()}" to user ${username}`);
+        } else {
+          console.log(`\nFlag "${flag.trim()}" already exists on ${username}`);
+        }
+      } else {
+        console.log("\nEmpty flag not added.");
+      }
+      
+      // Return to flags menu after a short delay
+      setTimeout(() => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+        this.menuState.currentMenu = 'flags';
+        this.displayEditUserFlagsMenu(username);
+      }, 1000);
+    });
+  }
+  
+  private promptForFlagRemoval(username: string): void {
+    const user = this.userManager.getUser(username);
+    if (!user || !user.flags || user.flags.length === 0) {
+      console.log(`\nNo flags to remove for user ${username}.`);
+      setTimeout(() => {
+        this.menuState.currentMenu = 'flags';
+        this.displayEditUserFlagsMenu(username);
+      }, 1000);
+      return;
+    }
+    
+    // Temporarily switch to line input mode
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    process.stdin.removeAllListeners('data');
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    console.log("\nSelect flag to remove:");
+    user.flags.forEach((flag, i) => {
+      console.log(`${i + 1}. ${flag}`);
+    });
+    
+    rl.question(`Select flag (1-${user.flags.length}): `, (index) => {
+      rl.close();
+      
+      const flagIndex = parseInt(index, 10) - 1;
+      if (flagIndex >= 0 && flagIndex < (user?.flags?.length ?? 0)) {
+        const flagToRemove = user?.flags?.[flagIndex];
+        user.flags = user?.flags?.filter(f => f !== flagToRemove);
+        this.userManager.updateUser(username, user);
+        console.log(`\nFlag "${flagToRemove}" removed from ${username}`);
+        systemLogger.info(`Admin removed flag "${flagToRemove}" from user ${username}`);
+      } else {
+        console.log("\nInvalid selection.");
+      }
+      
+      // Return to flags menu after a short delay
+      setTimeout(() => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+        this.menuState.currentMenu = 'flags';
+        this.displayEditUserFlagsMenu(username);
+      }, 1000);
+    });
+  }
+  
+  private handleToggleAdminStatus(username: string): void {
+    // Import SudoCommand to check admin status
+    const { SudoCommand } = require('./command/commands/sudo.command');
+    const isAdmin = SudoCommand.isAuthorizedUser(username);
+    
+    if (username.toLowerCase() === 'admin') {
+      console.log("\nCannot change admin status for the built-in 'admin' user.");
+      setTimeout(() => {
+        this.menuState.currentMenu = 'edit';
+        this.displayEditUserMenu(username);
+      }, 2000);
+      return;
+    }
+    
+    // Temporarily switch to line input mode
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    process.stdin.removeAllListeners('data');
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question(`\nDo you want to ${isAdmin ? 'REMOVE' : 'GRANT'} admin privileges? (y/n): `, (answer) => {
+      rl.close();
+      
+      if (answer.toLowerCase() === 'y') {
+        try {
+          // Get command registry to add/remove admin
+          const commandRegistry = this.commandHandler.getCommandRegistry();
+          if (commandRegistry) {
+            const adminManageCmd = commandRegistry.getCommand('adminmanage');
+            if (adminManageCmd) {
+              if (isAdmin) {
+                // Remove admin - cast to AdminManageCommand to access the method
+                (adminManageCmd as any).removeAdmin({ user: { username: 'admin' } }, username);
+                console.log(`\nRemoved admin privileges from ${username}`);
+              } else {
+                // Add admin with default level (MOD) - cast to AdminManageCommand to access the method
+                (adminManageCmd as any).addAdmin({ user: { username: 'admin' } }, username, 'mod');
+                console.log(`\nGranted admin privileges to ${username}`);
+              }
+            } else {
+              console.log("\nError: Could not find adminmanage command.");
+            }
+          }
+        } catch (error) {
+          console.log(`\nError toggling admin status: ${error}`);
+        }
+      }
+      
+      // Return to edit menu after a short delay
+      setTimeout(() => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+        this.menuState.currentMenu = 'edit';
+        this.displayEditUserMenu(username);
+      }, 1000);
+    });
+  }
+  
+  private handleResetUserStats(username: string): void {
+    // Get current user
+    const user = this.userManager.getUser(username);
+    if (!user) {
+      console.log(`\nError: User ${username} not found.`);
+      setTimeout(() => {
+        this.menuState.currentMenu = 'main';
+        this.displayUserListMenu();
+      }, 2000);
+      return;
+    }
+    
+    // Temporarily switch to line input mode
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    
+    process.stdin.removeAllListeners('data');
+    
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    
+    rl.question('\nWARNING: This will reset all character stats. Type "confirm" to proceed: ', (answer) => {
+      rl.close();
+      
+      if (answer.toLowerCase() === 'confirm') {
+        try {
+          // Reset stats to defaults but keep username and other account info
+          const resetUser = {
+            ...user,
+            // Keep these fields
+            username: user.username,
+            password: user.password,
+            joinDate: user.joinDate,
+            flags: user.flags,
+            // Reset gameplay stats
+            hp: 100,
+            maxHp: 100,
+            strength: 10,
+            dexterity: 10,
+            intelligence: 10,
+            currentRoomId: 'start', // or whatever your starting room is
+            inventory: { items: [], currency: { gold: 0, silver: 0, copper: 0 } },
+            equipment: {},
+            experience: 0,
+            level: 1
+          };
+          
+          this.userManager.updateUser(username, resetUser);
+          console.log(`\nStats reset for user ${username}`);
+          systemLogger.info(`Admin reset stats for user ${username}`);
+        } catch (error) {
+          console.log(`\nError resetting user stats: ${error}`);
+        }
+      } else {
+        console.log("\nStats reset cancelled.");
+      }
+      
+      // Return to edit menu after a short delay
+      setTimeout(() => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+        this.menuState.currentMenu = 'edit';
+        this.displayEditUserMenu(username);
+      }, 1000);
+    });
+  }
+  
+  // Helper method to display the user page (needed for handling direct login errors)
+  private displayUserPage(allUsers: any[], selectedIndex: number, currentPage: number): void {
+    // Update the menu state
+    this.menuState.allUsers = allUsers;
+    this.menuState.selectedIndex = selectedIndex;
+    this.menuState.currentPage = currentPage;
+    
+    // Display the menu
+    this.displayUserListMenu();
   }
 }
 

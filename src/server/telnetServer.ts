@@ -16,6 +16,7 @@ export class TelnetServer {
   private commandHandler: CommandHandler;
   private serverStats: ServerStats;
   private isAdminLoginPending: boolean = false;
+  private forcedSessionUsername: string = ''; // Add new property to track forced session username
   private actualPort: number = config.TELNET_PORT;
 
   constructor(
@@ -35,8 +36,81 @@ export class TelnetServer {
 
     // Create TELNET server
     this.server = net.createServer((socket) => {
+      // Check if this connection is for a forced user session
+      if (this.forcedSessionUsername) {
+        const username = this.forcedSessionUsername;
+        this.forcedSessionUsername = ''; // Reset flag immediately to prevent race conditions
+        
+        systemLogger.info(`Incoming connection flagged as forced login for user: ${username}`);
+        
+        // Create the connection wrapper
+        const connection = new TelnetConnection(socket);
+        
+        // Setup client normally first
+        setupClientFn(connection);
+        
+        // Get the client ID
+        const clientId = connection.getId();
+        const client = this.clients.get(clientId);
+        
+        if (client) {
+          // Set a special flag in stateData for the state machine to handle
+          client.stateData.forcedUserLogin = username;
+          
+          // Initialize client state
+          this.stateMachine.transitionTo(client, ClientStateType.CONNECTING);
+          
+          systemLogger.info(`Forced login initialized for user ${username}, connection: ${clientId}`);
+          
+          // Send welcome banner
+          connection.write('========================================\r\n');
+          connection.write(`       FORCED LOGIN: ${username}\r\n`);
+          connection.write('========================================\r\n\r\n');
+          
+          // Delay slightly to allow telnet negotiation to complete
+          setTimeout(() => {
+            // First check if the user exists
+            if (this.userManager.userExists(username)) {
+              // Simulate typing username at prompt
+              processInputFn(client, username);
+              
+              // Force authentication immediately, bypassing password check
+              client.authenticated = true;
+              
+              // Set up user data
+              const userData = this.userManager.getUser(username);
+              if (userData) {
+                client.user = userData;
+                this.userManager.registerUserSession(username, client);
+                
+                // Transition to authenticated state
+                this.stateMachine.transitionTo(client, ClientStateType.AUTHENTICATED);
+                
+                // Log the forced login
+                systemLogger.info(`User ${username} logged in via forced session.`);
+                
+                // Notify of successful login
+                connection.write(`\r\nLogged in as ${username}. Welcome!\r\n\r\n`);
+                
+                // Execute the "look" command to help user orient
+                setTimeout(() => {
+                  processInputFn(client, 'look');
+                }, 500);
+              } else {
+                systemLogger.error(`Failed to load user data for ${username} during forced login.`);
+                connection.write(`Error loading user data for ${username}. Disconnecting.\r\n`);
+                connection.end();
+              }
+            } else {
+              systemLogger.error(`Attempted forced login with non-existent user: ${username}`);
+              connection.write(`User ${username} does not exist. Disconnecting.\r\n`);
+              connection.end();
+            }
+          }, 1000);
+        }
+      }
       // Check if this connection is the pending admin login
-      if (this.isAdminLoginPending) {
+      else if (this.isAdminLoginPending) {
         this.isAdminLoginPending = false; // Reset flag immediately
         systemLogger.info(`Incoming connection flagged as direct admin login.`);
         
@@ -159,5 +233,16 @@ export class TelnetServer {
         resolve();
       });
     });
+  }
+
+  public setForcedSessionUsername(username: string): void {
+    this.forcedSessionUsername = username;
+    if (username) {
+      systemLogger.info(`Forced session username set: ${username}`);
+    }
+  }
+
+  public getForcedSessionUsername(): string {
+    return this.forcedSessionUsername;
   }
 }

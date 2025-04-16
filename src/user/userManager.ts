@@ -778,4 +778,25 @@ export class UserManager {
     if (!user) return null;
     return [...(user.flags || [])]; // Return a copy or empty array
   }
+
+  /**
+   * Updates a user object with new data
+   * @param username The username of the user to update
+   * @param updatedUser The updated user data
+   * @returns True if the user was updated, false if user not found
+   */
+  public updateUser(username: string, updatedUser: User): boolean {
+    const index = this.users.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
+    if (index === -1) return false;
+
+    // Preserve the username to prevent changing it
+    updatedUser.username = this.users[index].username;
+    
+    // Update the user in the array
+    this.users[index] = updatedUser;
+    
+    // Save changes to disk
+    this.saveUsers();
+    return true;
+  }
 }

@@ -209,4 +209,12 @@ export class CommandHandler {
   private isRestrictedWhileUnconscious(commandName: string): boolean {
     return this.restrictedCommandsWhileUnconscious.includes(commandName.toLowerCase());
   }
+  
+  /**
+   * Get the command registry instance
+   * @returns The CommandRegistry instance
+   */
+  public getCommandRegistry(): CommandRegistry {
+    return this.commands;
+  }
 }
