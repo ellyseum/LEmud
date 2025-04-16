@@ -26,6 +26,8 @@ export class UserMonitor {
     }
 
     public startMonitorUserSession(): void {
+        // Clear any existing stdin listeners so monitor handlers take precedence
+        process.stdin.removeAllListeners('data');
         // Pause console logging
         const winston = require('winston');
         let monitorConsoleTransport: any = null;
@@ -158,6 +160,8 @@ export class UserMonitor {
         username: string, 
         monitorConsoleTransport: any
     ): void {
+        // Clear any existing stdin listeners to avoid ESC leaks
+        process.stdin.removeAllListeners('data');
         let userSudoEnabled = false; // Track if sudo access is enabled
         
         console.log('=== Monitoring Session Controls ===');

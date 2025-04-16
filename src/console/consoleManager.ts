@@ -114,18 +114,23 @@ export class ConsoleManager {
         this.localSessionManager.startLocalClientSession(this.telnetServer.getActualPort());
         break;
       case 'a':
+        this.removeMainKeyListener();
         this.localSessionManager.startLocalAdminSession(this.telnetServer.getActualPort());
         break;
       case 'u':
+        this.removeMainKeyListener();
         this.userAdminMenu.startUserAdminMenu();
         break;
       case 'm':
+        this.removeMainKeyListener();
         this.userMonitor.startMonitorUserSession();
         break;
       case 's':
+        this.removeMainKeyListener();
         this.consoleInterface.sendSystemMessage();
         break;
       case 'q':
+        this.removeMainKeyListener();
         this.consoleInterface.showShutdownOptions();
         break;
     }
