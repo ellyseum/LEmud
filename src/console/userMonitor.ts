@@ -170,8 +170,8 @@ export class UserMonitor {
         console.log('m: Send admin message');
         console.log('k: Kick user');
         console.log('u: Toggle sudo access');
+        console.log('t: Take over session');
         console.log('c: Cancel monitoring');
-        console.log('Ctrl+C: Cancel monitoring');
         console.log('===============================\n');
         
         // Flag the client as being monitored
@@ -485,6 +485,39 @@ export class UserMonitor {
                     targetClient.connection.write(targetClient.buffer);
                 }
                 
+                return;
+            }
+
+            // Handle 't' to enter takeover mode
+            if (key.toLowerCase() === 't') {
+                process.stdin.removeListener('data', monitorKeyHandler);
+                console.log('\n=== Takeover Mode: typing will be sent to user (Ctrl+C to exit) ===');
+                const takeoverKeyHandler = (tk: string) => {
+                    // Exit takeover on Ctrl+C
+                    if (tk === '\u0003') {
+                        process.stdin.removeListener('data', takeoverKeyHandler);
+                        if (process.stdin.isTTY) process.stdin.setRawMode(true);
+                        process.stdin.on('data', monitorKeyHandler);
+                        console.log('\nExiting takeover mode.');
+                        return;
+                    }
+                    
+                    // Get client manager instance to use its handleClientData method
+                    const clientManager = require('../client/clientManager').ClientManager.getInstance();
+                    
+                    // Save original isInputBlocked state
+                    const originalBlockedState = targetClient.isInputBlocked;
+                    
+                    // Temporarily allow input even if user input is blocked
+                    targetClient.isInputBlocked = false;
+                    
+                    // Process input through client manager's input handling system
+                    clientManager.handleClientData(targetClient, tk);
+                    
+                    // Restore original block state
+                    targetClient.isInputBlocked = originalBlockedState;
+                };
+                process.stdin.on('data', takeoverKeyHandler);
                 return;
             }
         };
