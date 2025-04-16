@@ -165,4 +165,25 @@ export class ConsoleManager {
   public async startAutoForcedSession(username: string): Promise<void> {
     return this.autoSessionHandler.startAutoForcedSession(username);
   }
+
+  /**
+   * Send a system message to all users
+   */
+  public sendSystemMessage(): void {
+    this.consoleInterface.sendSystemMessage();
+  }
+
+  /**
+   * Show shutdown options menu
+   */
+  public showShutdownOptions(): void {
+    this.consoleInterface.showShutdownOptions();
+  }
+
+  /**
+   * Display welcome message
+   */
+  public logWelcomeMessage(): void {
+    this.consoleInterface.logWelcomeMessage();
+  }
 }
