@@ -38,26 +38,24 @@ export class ConsoleInterface {
                 // Define the key listener function
                 this.mainKeyListener = (key: string) => {
                     const lowerKey = key.toLowerCase();
-                    
+
                     // Forward the keypress to the registered handler
-                    if (['c', 'a', 'u', 'm', 's', 'q'].includes(lowerKey)) {
-                        this.onKeyCommand(lowerKey);
+                    // Add 'h' to the list of handled keys
+                    if (['l', 'a', 'u', 'm', 's', 'q', 'h', '?'].includes(lowerKey)) {
+                        // Handle 'h' and '?' specifically for help
+                        if (lowerKey === 'h' || lowerKey === '?') {
+                            this.displayHelpMessage();
+                        } else {
+                            this.onKeyCommand(lowerKey);
+                        }
                     } else if (key === '\u0003') { // Ctrl+C
                         systemLogger.info('Ctrl+C detected. Shutting down server...');
                         this.gameServer.shutdown();
                     } else {
-                        // Show menu options again for unrecognized keys
-                        // Only show for printable characters, not control sequences
+                        // Show help message for unrecognized keys
                         if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) <= 126) {
                             console.log(`\nUnrecognized option: '${key}'`);
-                            console.log("Available options:");
-                            console.log("  c: Connect locally");
-                            console.log("  a: Admin session");
-                            console.log("  u: User admin menu");
-                            console.log("  m: Monitor user");
-                            console.log("  s: Send system message");
-                            console.log("  q: Shutdown server");
-                            console.log("  Ctrl+C: Shutdown server");
+                            this.displayHelpMessage(); // Show full help on error
                         }
                     }
                 };
@@ -98,11 +96,24 @@ export class ConsoleInterface {
             systemLogger.info('========================================');
             systemLogger.info('           MUD SERVER STARTED          ');
             systemLogger.info('========================================');
-            systemLogger.info(`Press 'c' to connect locally, 'a' for admin session`);
-            systemLogger.info(`Press 'u' to list users, 'm' to monitor user`);
-            systemLogger.info(`Press 's' for system message, 'q' to shutdown`);
+            systemLogger.info(`Press 'l' to connect locally, 'a' for admin session`);
+            systemLogger.info(`Press 'u' for users, 'm' to monitor, 's' for message`);
+            systemLogger.info(`Press 'q' to shutdown, 'h' or '?' for help`);
             systemLogger.info('========================================');
         }
+    }
+
+    private displayHelpMessage(): void {
+        console.log("\n=== Console Commands Help ===");
+        console.log("  l : Connect Locally   - Start a new local game session.");
+        console.log("  a : Admin Session     - Start a local admin session (requires admin user).");
+        console.log("  u : User Admin Menu   - Open the user management interface.");
+        console.log("  m : Monitor User      - Monitor an active user's session.");
+        console.log("  s : System Message    - Send a broadcast message to all online users.");
+        console.log("  q : Shutdown Server   - Show options for shutting down the MUD server.");
+        console.log("  h,? : Help            - Display this help message.");
+        console.log("  Ctrl+C : Shutdown    - Immediately shut down the MUD server.");
+        console.log("===========================");
     }
 
     public sendSystemMessage(): void {

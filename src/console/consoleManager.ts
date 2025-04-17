@@ -68,7 +68,6 @@ export class ConsoleManager {
     // UserMonitor - handles monitoring user sessions
     this.userMonitor = new UserMonitor(
       this.clientManager,
-      this.gameServer,
       () => this.consoleInterface.setupKeyListener(),
       this.commandHandler
     );

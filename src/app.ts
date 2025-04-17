@@ -154,7 +154,6 @@ export class GameServer {
       // Create UserMonitor with correct parameters
       this.userMonitor = new UserMonitor(
         this.clientManager,
-        this,
         () => this.consoleManager.setupKeyListener(),
         this.commandHandler
       );
