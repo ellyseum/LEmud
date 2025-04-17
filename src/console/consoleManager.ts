@@ -109,7 +109,7 @@ export class ConsoleManager {
    */
   private handleKeyCommand(command: string): void {
     switch(command) {
-      case 'c':
+      case 'l':
         this.localSessionManager.startLocalClientSession(this.telnetServer.getActualPort());
         break;
       case 'a':

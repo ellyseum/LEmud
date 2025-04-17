@@ -408,10 +408,6 @@ export class UserAdminMenu {
                 this.handleDeleteUser(selectedUser.username);
             }
         }
-        else if (key.toLowerCase() === 'r') {
-            // Refresh the user list
-            this.refreshUserList();
-        }
         else if (key.toLowerCase() === 'c') {
             // Cancel and return to main menu
             this.exitUserAdminMenu();
@@ -433,12 +429,11 @@ export class UserAdminMenu {
         }
 
         switch(key.toLowerCase()) {
-            case 's':
-                this.saveUserEdits(username);
-                break;
             case 'f':
                 // Switch to flags menu
                 this.menuState.currentMenu = 'flags';
+                this.menuState.selectedIndex = 0;  // initialize flag selection
+                this.menuState.currentPage = 0;
                 this.displayFlagsMenu(username);
                 break;
             case 'c':
@@ -451,63 +446,87 @@ export class UserAdminMenu {
     private handleFlagsMenuKeyPress(key: string): void {
         if (key === '\u0003' || key.toLowerCase() === 'c') {
             console.log("\nFlags edit cancelled.");
-            // Return to edit menu
             this.menuState.currentMenu = 'edit';
             this.displayEditUserMenu(this.menuState.selectedUser);
             return;
         }
 
         const username = this.menuState.selectedUser;
-        if (!username) {
-            console.log("\nNo user selected for flag editing.");
-            this.returnToUserAdminMenu(500);
-            return;
-        }
+        const user = this.userManager.getUserByUsername(username)!;
+        const flags = user.flags || [];
+        const flagsPerPage = 10;
+        const totalPages = Math.ceil(flags.length / flagsPerPage);
+        let { selectedIndex, currentPage } = this.menuState;
 
-        // Get the user data
-        const user: User | undefined = this.userManager.getUserByUsername(username);
-        if (!user) {
-            console.log(`\nUser ${username} not found.`);
-            this.returnToUserAdminMenu(500);
-            return;
-        }
-
-        // Ensure flags array exists
-        if (!user.flags) {
-            user.flags = [];
-        }
-        const currentFlags: string[] = user.flags; // Explicitly string[]
-
-        // Define the toggleable flags (adjust as needed)
-        const toggleableFlags = ['admin', 'builder', 'immortal', 'developer'];
-
-        // Handle number keys to toggle flags
-        if (key >= '1' && key <= toggleableFlags.length.toString()) {
-            const flagIndex = parseInt(key) - 1;
-            const flagName = toggleableFlags[flagIndex];
-            
-            // Toggle the flag in the string array
-            const flagExists = currentFlags.includes(flagName);
-            if (flagExists) {
-                user.flags = currentFlags.filter(f => f !== flagName); // Assign filtered array
-                console.log(`\nToggled flag ${flagName}: OFF`);
-            } else {
-                // Create a new array with the added flag to ensure immutability if needed,
-                // or simply push if direct mutation is okay.
-                user.flags = [...currentFlags, flagName]; // Use spread syntax for clarity
-                console.log(`\nToggled flag ${flagName}: ON`);
+        // Navigation keys
+        if (key === '\u001b[A' || key === '\u001bOA') { // Up
+            if (selectedIndex > 0) selectedIndex--;
+            else selectedIndex = flags.length - 1;
+        } else if (key === '\u001b[B' || key === '\u001bOB') { // Down
+            if (selectedIndex < flags.length - 1) selectedIndex++;
+            else selectedIndex = 0;
+        } else if (key === '\u001b[D' || key === '\u001bOD') { // Prev page
+            if (currentPage > 0) {
+                currentPage--;
+                selectedIndex = currentPage * flagsPerPage;
             }
-            
-            // Update the display immediately
-            this.displayFlagsMenu(username);
-        } else if (key.toLowerCase() === 's') {
-            // Save flags (pass the string array)
-            this.saveUserFlags(username, user.flags); // user.flags is guaranteed string[] here
-        } else if (key.toLowerCase() === 'b') {
-            // Go back to edit menu
+        } else if (key === '\u001b[C' || key === '\u001bOC') { // Next page
+            if (currentPage < totalPages - 1) {
+                currentPage++;
+                selectedIndex = currentPage * flagsPerPage;
+            }
+        }
+        // Add new flag
+        else if (key.toLowerCase() === 'a') {
+            this.isAwaitingInput = true;
+            this.promptForInput(`\nEnter flag to add:\n> `, (flag) => {
+                this.isAwaitingInput = false;
+                if (flag.trim()) {
+                    user.flags = [...flags, flag.trim()];
+                    console.log(`\nFlag "${flag.trim()}" added!`);
+                    this.menuState.selectedIndex = user.flags.length - 1;
+                    this.menuState.currentPage = Math.floor(this.menuState.selectedIndex / flagsPerPage);
+                }
+                this.displayFlagsMenu(username);
+            }, () => {
+                this.isAwaitingInput = false;
+                this.displayFlagsMenu(username);
+            });
+            return;
+        }
+        // Delete selected flag
+        else if (key.toLowerCase() === 'd') {
+            if (flags.length === 0) { this.displayFlagsMenu(username); return; }
+            const flagName = flags[selectedIndex];
+            this.isAwaitingInput = true;
+            this.promptForInput(`\nDelete flag "${flagName}" (y/N)? `, (answer) => {
+                this.isAwaitingInput = false;
+                if (answer.toLowerCase() === 'y') {
+                    user.flags = flags.filter((_, i) => i !== selectedIndex);
+                    console.log(`\nFlag "${flagName}" deleted!`);
+                    // adjust selection
+                    const maxIndex = user.flags.length - 1;
+                    this.menuState.selectedIndex = Math.min(selectedIndex, maxIndex);
+                    this.menuState.currentPage = Math.floor(this.menuState.selectedIndex / flagsPerPage);
+                }
+                this.displayFlagsMenu(username);
+            }, () => {
+                this.isAwaitingInput = false;
+                this.displayFlagsMenu(username);
+            });
+            return;
+        }
+        // Back to edit menu
+        else if (key.toLowerCase() === 'b') {
             this.menuState.currentMenu = 'edit';
             this.displayEditUserMenu(username);
+            return;
         }
+
+        // Update state and redisplay
+        this.menuState.selectedIndex = selectedIndex;
+        this.menuState.currentPage = currentPage;
+        this.displayFlagsMenu(username);
     }
     
     private displayUserListMenu(): void {
@@ -525,7 +544,7 @@ export class UserAdminMenu {
         
         // Display header
         console.log(`\n=== User Admin Menu (Page ${currentPage + 1}/${totalPages}) ===`);
-        console.log("Navigate: ↑/↓ keys | Actions: force (l)ogin, (k)ick user, admin (m)essage, (e)dit user, change (p)assword, (d)elete user, (r)efresh, (c)ancel");
+        console.log("Navigate: ↑/↓ keys | Actions: force (l)ogin, (k)ick user, admin (m)essage, (e)dit user, change (p)assword, (d)elete user, (c)ancel");
         console.log("Page navigation: ←/→ keys | Selected user highlighted in white");
         console.log("");
         
@@ -831,7 +850,7 @@ export class UserAdminMenu {
         console.log(`\nFlags: ${user.flags?.join(', ') ?? '(none)'}`); // Use ?? for flags as well
             
         console.log("\n=== Actions ===");
-        console.log("(s)ave, (f)lags, (c)ancel / Ctrl+C");
+        console.log("(f)lags, (c)ancel / Ctrl+C");
         
         // Set up event handler for edit menu
         process.stdin.removeAllListeners('data');
@@ -854,34 +873,34 @@ export class UserAdminMenu {
         
         // Display flags
         console.log(`\n=== User Flags: ${username} ===`);
-        console.log("Toggle flags by pressing the corresponding number");
-        console.log("");
+        console.log("Navigate: ↑/↓ keys | Add: (a)dd flag | Delete: (d)elete flag | Back: (b)ack | Cancel: (c)ancel / Ctrl+C");
         
-        // Ensure flags array exists
-        const currentFlags = user.flags || [];
-        
-        // Define the toggleable flags (should match handleFlagsMenuKeyPress)
-        const toggleableFlags = ['admin', 'builder', 'immortal', 'developer'];
-        
-        // Display toggleable flags
-        toggleableFlags.forEach((flagName, index) => {
-            const value = currentFlags.includes(flagName);
-            console.log(`${index + 1}. ${flagName}: ${value ? 'ON' : 'off'}`);
-        });
+        const flags = user.flags || [];
+        const flagsPerPage = 10;
+        const totalPages = Math.ceil(flags.length / flagsPerPage);
+        const { selectedIndex, currentPage } = this.menuState;
 
-        // Display other non-toggleable flags (if any)
-        const otherFlags = currentFlags.filter(f => !toggleableFlags.includes(f));
-        if (otherFlags.length > 0) {
-            console.log("\nOther Flags (read-only):");
-            otherFlags.forEach(flagName => {
-                console.log(`- ${flagName}`);
-            });
+        // Calculate page bounds
+        const startIdx = currentPage * flagsPerPage;
+        const endIdx = Math.min(startIdx + flagsPerPage, flags.length);
+        const pageFlags = flags.slice(startIdx, endIdx);
+
+        // Display flags with the selected one highlighted
+        for (let i = 0; i < pageFlags.length; i++) {
+            const flag = pageFlags[i];
+            const flagIndexOnPage = i; // Index relative to the current page
+            const absoluteFlagIndex = startIdx + flagIndexOnPage; // Absolute index in flags
+            const isSelected = absoluteFlagIndex === selectedIndex;
+
+            if (isSelected) {
+                console.log(`\x1b[47m\x1b[30m${absoluteFlagIndex + 1}. ${flag}\x1b[0m`); // White background, black text
+            } else {
+                console.log(`${absoluteFlagIndex + 1}. ${flag}`);
+            }
         }
-            
-        console.log("\n=== Actions ===");
-        console.log("Press flag number to toggle, (s)ave, (b)ack to edit menu, (c)ancel / Ctrl+C");
-        
-        // Set up event handler for flags menu
+
+        console.log(`\nPage ${currentPage + 1}/${totalPages}`);
+
         process.stdin.removeAllListeners('data');
         process.stdin.on('data', this.handleMenuKeyPress.bind(this));
         if (process.stdin.isTTY) process.stdin.setRawMode(true);

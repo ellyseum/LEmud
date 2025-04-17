@@ -93,13 +93,13 @@ export class ConsoleInterface {
 
     public logWelcomeMessage(): void {
         if (config.IS_TTY) {
-            systemLogger.info('========================================');
-            systemLogger.info('           MUD SERVER STARTED          ');
-            systemLogger.info('========================================');
-            systemLogger.info(`Press 'l' to connect locally, 'a' for admin session`);
-            systemLogger.info(`Press 'u' for users, 'm' to monitor, 's' for message`);
-            systemLogger.info(`Press 'q' to shutdown, 'h' or '?' for help`);
-            systemLogger.info('========================================');
+            console.log('========================================');
+            console.log('           MUD SERVER STARTED          ');
+            console.log('========================================');
+            console.log(`Press 'l' to connect locally, 'a' for admin session`);
+            console.log(`Press 'u' for users, 'm' to monitor, 's' for message`);
+            console.log(`Press 'q' to shutdown, 'h' or '?' for help`);
+            console.log('========================================');
         }
     }
 
