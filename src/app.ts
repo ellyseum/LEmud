@@ -561,6 +561,23 @@ export class GameServer {
     this.setupAutoExit();
   }
 
+  /**
+   * Start a forced session as a specific user via CLI --forceSession, with auto-exit on quit or Ctrl+C
+   */
+  public async startAutoForcedSession(username: string): Promise<void> {
+    // Suppress normal console output for automated sessions
+    this.suppressNormalOutput();
+
+    // Brief delay to let the server initialize
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Start the forced session
+    await this.localSessionManager.startForcedSession(this.telnetServer.getActualPort(), username);
+
+    // Auto-exit when the session ends
+    this.setupAutoExit();
+  }
+
   private suppressNormalOutput(): void {
     // Don't show the welcome message or keyboard instructions
     // Need to preserve the original method structure for type compatibility

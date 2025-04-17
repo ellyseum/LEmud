@@ -23,12 +23,12 @@ async function main() {
     
     // If auto sessions are enabled, start them after server initialization
     if (config.AUTO_ADMIN_SESSION) {
-      gameServer.startAutoAdminSession();
+      await gameServer.startAutoAdminSession();
     } else if (config.AUTO_USER_SESSION) {
-      gameServer.startAutoUserSession();
+      await gameServer.startAutoUserSession();
     } else if (config.FORCE_SESSION_USERNAME) {
-      // Start a session with the specified username
-      await startForcedUserSession(gameServer, config.FORCE_SESSION_USERNAME);
+      // Start forced session with auto-exit behavior
+      await gameServer.startAutoForcedSession(config.FORCE_SESSION_USERNAME);
     }
   } catch (error) {
     handleError(error);

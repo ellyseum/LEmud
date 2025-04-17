@@ -233,6 +233,23 @@ export class LocalSessionManager {
     }
 
     public startForcedSession(port: number, username: string): Promise<void> {
+        // Prepare the local session (disable main console input, pause logging, etc.)
+        if (!this.prepareLocalSessionStart()) {
+            return Promise.reject(new Error('Cannot start forced session: preparation failed'));
+        }
+        // Immediately set raw mode and listen for Ctrl+C to allow early cancel
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdin.setEncoding('utf8');
+            process.stdin.removeAllListeners('data');
+            process.stdin.on('data', (key: string) => {
+                if (key === '\u0003') {
+                    console.log('\nCtrl+C detected. Disconnecting forced session...');
+                    this.endLocalSession();
+                }
+            });
+        }
         return new Promise((resolve, reject) => {
             systemLogger.info(`Starting forced session as user: ${username}`);
 
@@ -299,7 +316,8 @@ export class LocalSessionManager {
                     else if ((loginState === 'username' || loginState === 'waiting') && 
                         (buffer.includes('Password:') || buffer.includes('password:'))) {
                         systemLogger.info(`Forced session detected password prompt for ${username}, sending placeholder`);
-                        this.localClientSocket?.write(`forcedlogin\n`);
+                        // Send empty response to advance past password prompt without echoing placeholder
+                        this.localClientSocket?.write(`\n`);
                         loginState = 'password';
                         buffer = '';
                         dataHandled = true;
