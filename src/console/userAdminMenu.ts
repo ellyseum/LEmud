@@ -1,7 +1,7 @@
 import readline from 'readline';
 import { UserManager } from '../user/userManager';
 import { ClientManager } from '../client/clientManager';
-import { ConnectedClient } from '../types';
+import { ConnectedClient, User } from '../types'; // Import User type
 import { systemLogger } from '../utils/logger';
 import { LocalSessionManager } from './localSessionManager';
 import { TelnetServer } from '../server/telnetServer';
@@ -18,7 +18,9 @@ interface MenuState {
   selectedUser: string;
   selectedIndex: number;
   currentPage: number;
-  allUsers: any[];
+  allUsers: User[]; // Use User[] instead of any[]
+  editData?: Partial<User>; // Use Partial<User> instead of any
+  userPendingDeletion?: string; // Add userPendingDeletion to track deletion
 }
 
 export class UserAdminMenu {
@@ -29,6 +31,8 @@ export class UserAdminMenu {
     private telnetServer: TelnetServer;
     private gameServer: GameServer;
     private onMenuExit: () => void;
+    private refreshIntervalId: NodeJS.Timeout | null = null;
+    private isAwaitingInput: boolean = false; // Flag to track input state
 
     private menuState: MenuState = {
         active: false,
@@ -223,6 +227,15 @@ export class UserAdminMenu {
         
         // Add our non-recursive menu handler
         process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+
+        // Start auto-refresh timer
+        this.clearRefreshTimer();
+        this.refreshIntervalId = setInterval(() => {
+            // Only refresh if the menu is active, on the main screen, AND not waiting for input
+            if (this.menuState.active && this.menuState.currentMenu === 'main' && !this.isAwaitingInput) {
+                this.refreshUserList(true);
+            }
+        }, 1000);
     }
     
     private exitUserAdminMenu(): void {
@@ -257,6 +270,15 @@ export class UserAdminMenu {
         
         // Call the callback for menu exit
         this.onMenuExit();
+
+        this.clearRefreshTimer();
+    }
+
+    private clearRefreshTimer(): void {
+        if (this.refreshIntervalId) {
+            clearInterval(this.refreshIntervalId);
+            this.refreshIntervalId = null;
+        }
     }
     
     private handleMenuKeyPress(key: string): void {
@@ -337,8 +359,8 @@ export class UserAdminMenu {
         }
         
         // Handle action keys
-        else if (key.toLowerCase() === 'd') {
-            // Direct login as selected user
+        else if (key.toLowerCase() === 'l') {
+            this.clearRefreshTimer();
             const selectedUser = allUsers[selectedIndex];
             if (selectedUser) {
                 this.menuState.selectedUser = selectedUser.username;
@@ -378,13 +400,17 @@ export class UserAdminMenu {
                 this.handleChangePassword(selectedUser.username);
             }
         }
-        else if (key.toLowerCase() === 't') {
+        else if (key.toLowerCase() === 'd') {
             // Delete selected user
             const selectedUser = allUsers[selectedIndex];
             if (selectedUser) {
                 this.menuState.selectedUser = selectedUser.username;
                 this.handleDeleteUser(selectedUser.username);
             }
+        }
+        else if (key.toLowerCase() === 'r') {
+            // Refresh the user list
+            this.refreshUserList();
         }
         else if (key.toLowerCase() === 'c') {
             // Cancel and return to main menu
@@ -393,46 +419,99 @@ export class UserAdminMenu {
     }
     
     private handleEditMenuKeyPress(key: string): void {
-        // Handle numeric inputs for the edit menu
-        if (key === '1') {
-            // Flag editing
-            this.menuState.currentMenu = 'flags';
-            this.displayEditUserFlagsMenu(this.menuState.selectedUser);
+        if (key === '\u0003' || key.toLowerCase() === 'c') {
+            console.log("\nEdit cancelled.");
+            this.returnToUserAdminMenu(500);
+            return;
         }
-        else if (key === '2') {
-            // Toggle admin status
-            this.handleToggleAdminStatus(this.menuState.selectedUser);
+
+        const username = this.menuState.selectedUser;
+        if (!username) {
+            console.log("\nNo user selected for editing.");
+            this.returnToUserAdminMenu(500);
+            return;
         }
-        else if (key === '3') {
-            // Reset stats
-            this.handleResetUserStats(this.menuState.selectedUser);
-        }
-        else if (key === '4' || key.toLowerCase() === 'c' || key === '\u001b') { // 4, c, or ESC
-            // Return to main menu
-            this.menuState.currentMenu = 'main';
-            this.displayUserListMenu();
+
+        switch(key.toLowerCase()) {
+            case 's':
+                this.saveUserEdits(username);
+                break;
+            case 'f':
+                // Switch to flags menu
+                this.menuState.currentMenu = 'flags';
+                this.displayFlagsMenu(username);
+                break;
+            case 'c':
+                console.log("\nEditing cancelled.");
+                this.returnToUserAdminMenu(500);
+                break;
         }
     }
-    
+
     private handleFlagsMenuKeyPress(key: string): void {
-        // Handle numeric inputs for the flags menu
-        if (key === '1') {
-            // Add flag - switch to text input mode
-            this.promptForFlagAdd(this.menuState.selectedUser);
-        }
-        else if (key === '2') {
-            // Remove flag - switch to flag selection mode
-            this.promptForFlagRemoval(this.menuState.selectedUser);
-        }
-        else if (key === '3' || key.toLowerCase() === 'c' || key === '\u001b') { // 3, c, or ESC
+        if (key === '\u0003' || key.toLowerCase() === 'c') {
+            console.log("\nFlags edit cancelled.");
             // Return to edit menu
             this.menuState.currentMenu = 'edit';
             this.displayEditUserMenu(this.menuState.selectedUser);
+            return;
+        }
+
+        const username = this.menuState.selectedUser;
+        if (!username) {
+            console.log("\nNo user selected for flag editing.");
+            this.returnToUserAdminMenu(500);
+            return;
+        }
+
+        // Get the user data
+        const user: User | undefined = this.userManager.getUserByUsername(username);
+        if (!user) {
+            console.log(`\nUser ${username} not found.`);
+            this.returnToUserAdminMenu(500);
+            return;
+        }
+
+        // Ensure flags array exists
+        if (!user.flags) {
+            user.flags = [];
+        }
+        const currentFlags: string[] = user.flags; // Explicitly string[]
+
+        // Define the toggleable flags (adjust as needed)
+        const toggleableFlags = ['admin', 'builder', 'immortal', 'developer'];
+
+        // Handle number keys to toggle flags
+        if (key >= '1' && key <= toggleableFlags.length.toString()) {
+            const flagIndex = parseInt(key) - 1;
+            const flagName = toggleableFlags[flagIndex];
+            
+            // Toggle the flag in the string array
+            const flagExists = currentFlags.includes(flagName);
+            if (flagExists) {
+                user.flags = currentFlags.filter(f => f !== flagName); // Assign filtered array
+                console.log(`\nToggled flag ${flagName}: OFF`);
+            } else {
+                // Create a new array with the added flag to ensure immutability if needed,
+                // or simply push if direct mutation is okay.
+                user.flags = [...currentFlags, flagName]; // Use spread syntax for clarity
+                console.log(`\nToggled flag ${flagName}: ON`);
+            }
+            
+            // Update the display immediately
+            this.displayFlagsMenu(username);
+        } else if (key.toLowerCase() === 's') {
+            // Save flags (pass the string array)
+            this.saveUserFlags(username, user.flags); // user.flags is guaranteed string[] here
+        } else if (key.toLowerCase() === 'b') {
+            // Go back to edit menu
+            this.menuState.currentMenu = 'edit';
+            this.displayEditUserMenu(username);
         }
     }
     
     private displayUserListMenu(): void {
-        const { selectedIndex, currentPage, allUsers } = this.menuState;
+        const { selectedIndex, currentPage, allUsers, userPendingDeletion } = this.menuState;
         const usersPerPage = 10; // Configurable?
         const totalPages = Math.ceil(allUsers.length / usersPerPage);
         
@@ -446,7 +525,7 @@ export class UserAdminMenu {
         
         // Display header
         console.log(`\n=== User Admin Menu (Page ${currentPage + 1}/${totalPages}) ===`);
-        console.log("Navigate: ↑/↓ keys | Actions: (d)irect login, (k)ick, (m)essage, (e)dit, change (p)assword, dele(t)e, (c)ancel");
+        console.log("Navigate: ↑/↓ keys | Actions: force (l)ogin, (k)ick user, admin (m)essage, (e)dit user, change (p)assword, (d)elete user, (r)efresh, (c)ancel");
         console.log("Page navigation: ←/→ keys | Selected user highlighted in white");
         console.log("");
         
@@ -466,6 +545,11 @@ export class UserAdminMenu {
             else userDisplay += '\x1b[90m[OFFLINE]\x1b[0m '; // Grey for offline
             userDisplay += `(Last login: ${lastLoginDate})`;
             
+            // Add deletion indicator if this user is pending deletion
+            if (user.username === userPendingDeletion) {
+                userDisplay += ' \x1b[31m(DELETING...)\x1b[0m'; // Red indicator
+            }
+            
             if (isSelected) {
                 console.log(`\x1b[47m\x1b[30m${userDisplay}\x1b[0m`); // White background, black text
             } else {
@@ -476,627 +560,493 @@ export class UserAdminMenu {
         console.log("\nPress letter key for action or (c)ancel / Ctrl+C");
     }
 
-    private handleDirectLogin(username: string): void {
-        console.log(`\nInitiating direct login as ${username}...`);
+    private refreshUserList(isAutoRefresh: boolean = false): void {
+        // Get all registered users and sort alphabetically
+        const allUsers = this.userManager.getAllUsers().sort((a, b) => 
+            a.username.toLowerCase().localeCompare(b.username.toLowerCase())
+        );
         
-        // Check if user exists
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            setTimeout(() => {
-                // Redisplay the menu after error
-                this.menuState.currentMenu = 'main';
-                this.displayUserListMenu();
-                // Re-attach listener
-                process.stdin.removeAllListeners('data');
-                process.stdin.on('data', this.handleMenuKeyPress.bind(this));
-                if (process.stdin.isTTY) process.stdin.setRawMode(true);
-            }, 2000);
-            return;
-        }
+        // Update the state
+        this.menuState.allUsers = allUsers;
         
-        // Remove menu key handler before potentially switching modes
-        process.stdin.removeAllListeners('data');
-
-        // First check if user is already logged in
-        if (this.userManager.isUserActive(username)) {
-            // Ask if we want to take over the session
-            console.log(`\nUser ${username} is already logged in. Do you want to take over their session? (y/n)`);
-            
-            // Temporarily switch to line input mode
-            if (process.stdin.isTTY) {
-                process.stdin.setRawMode(false);
-            }
-            
-            const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout
-            });
-
-            rl.on('SIGINT', () => {
-                rl.close();
-                console.log("\nLogin cancelled.");
-                this.returnToUserAdminMenu();
-            });
-            
-            rl.question('> ', (answer) => {
-                rl.close();
-                
-                if (answer.toLowerCase() === 'y') {
-                    // Find the client and take over
-                    const clients = Array.from(this.clientManager.getClients().values());
-                    const targetClient = clients.find(c => c.user && c.user.username === username);
-                    
-                    if (targetClient) {
-                        // Notify the user they're being taken over
-                        targetClient.connection.write('\r\n\x1b[33mAn administrator is taking over your session.\x1b[0m\r\n');
-                        
-                        // Before we start the forced session, ensure the local session is prepared
-                        if (this.localSessionManager.prepareLocalSessionStart()) {
-                            // Start forced session
-                            this.localSessionManager.startForcedSession(this.telnetServer.getActualPort(), username)
-                                .catch(error => {
-                                    console.log(`\nError during forced login: ${error.message}`);
-                                    this.returnToUserAdminMenu(2000); // Return after delay
-                                });
-                        } else {
-                            console.log(`\nCannot prepare local session. Try again later.`);
-                            this.returnToUserAdminMenu(2000);
-                        }
-                    } else {
-                        console.log(`\nError: Could not find active session for ${username}.`);
-                        this.returnToUserAdminMenu(2000); // Return after delay
-                    }
-                } else {
-                    // Return to the menu
-                    console.log(`\nLogin canceled.`);
-                    this.returnToUserAdminMenu(1000); // Return after delay
-                }
-            });
+        // Only reset selection/page if it's NOT an auto-refresh
+        // to avoid disrupting user navigation during auto-refresh.
+        if (!isAutoRefresh) {
+            this.menuState.selectedIndex = 0; // Reset selection to the top
+            this.menuState.currentPage = 0;   // Reset page to the first page
         } else {
-            // User is not logged in, so create a new console login with the forced session
-            // Before we start the forced session, ensure the local session is prepared
-            if (this.localSessionManager.prepareLocalSessionStart()) {
-                this.localSessionManager.startForcedSession(this.telnetServer.getActualPort(), username)
-                    .catch(error => {
-                        console.log(`\nError during forced login: ${error.message}`);
-                        this.returnToUserAdminMenu(2000); // Return after delay
-                    });
-            } else {
-                console.log(`\nCannot prepare local session. Try again later.`);
-                this.returnToUserAdminMenu(2000);
+            // For auto-refresh, ensure selectedIndex is still valid
+            if (this.menuState.selectedIndex >= allUsers.length) {
+                this.menuState.selectedIndex = Math.max(0, allUsers.length - 1);
+            }
+            // Ensure currentPage is still valid
+            const usersPerPage = 10;
+            const totalPages = Math.ceil(allUsers.length / usersPerPage);
+            if (this.menuState.currentPage >= totalPages) {
+                this.menuState.currentPage = Math.max(0, totalPages - 1);
+            }
+            // Adjust selectedIndex if it falls outside the current page after potential user removal
+            const startIndex = this.menuState.currentPage * usersPerPage;
+            const endIndex = startIndex + usersPerPage;
+            if (this.menuState.selectedIndex < startIndex || this.menuState.selectedIndex >= endIndex) {
+                 // If selection is outside current page view after refresh, reset to top of current page
+                 this.menuState.selectedIndex = startIndex; 
+            }
+        }
+        
+        // Redisplay the menu
+        // Only redisplay if it's not an auto-refresh OR if the list content actually changed
+        // (This check might be complex, for now, always redisplay on manual refresh)
+        if (!isAutoRefresh) {
+            this.displayUserListMenu();
+        } else {
+            // For auto-refresh, only redisplay if the menu is currently active and showing the main list
+            if (this.menuState.active && this.menuState.currentMenu === 'main') {
+                this.displayUserListMenu();
             }
         }
     }
 
-    private handleKickUser(username: string): void {
-        // Check if user is online first
-        if (!this.userManager.isUserActive(username)) {
-            console.log(`\nUser ${username} is not currently online.`);
-            this.returnToUserAdminMenu(2000); // Return after delay
-            return;
-        }
-        
-        console.log(`\nKicking user ${username}. Are you sure? (y/n)`);
-        
-        // Temporarily change key handler for this question
-        process.stdin.removeAllListeners('data');
-        if (process.stdin.isTTY) process.stdin.setRawMode(true); // Need raw for y/n
-
-        const confirmHandler = (key: string) => {
-            process.stdin.removeListener('data', confirmHandler); // Remove self immediately
-
-            if (key.toLowerCase() === 'y') {
-                // Find the client and disconnect them
-                const clients = Array.from(this.clientManager.getClients().values());
-                const targetClient = clients.find(c => c.user && c.user.username === username);
-                
-                if (targetClient) {
-                    // Notify the user they're being kicked
-                    targetClient.connection.write('\r\n\x1b[31mYou have been disconnected by an administrator.\x1b[0m\r\n');
-                    
-                    // Log the action
-                    systemLogger.info(`Admin kicked user: ${username}`);
-                    
-                    // Wait a moment then disconnect
-                    setTimeout(() => {
-                        targetClient.connection.end();
-                        console.log(`\nUser ${username} has been kicked.`);
-                        this.returnToUserAdminMenu(1000); // Return after delay
-                    }, 500);
-                } else {
-                    console.log(`\nError: Could not find active session for ${username}.`);
-                    this.returnToUserAdminMenu(2000); // Return after delay
-                }
-            } else {
-                // Return to the menu
-                console.log(`\nKick canceled.`);
-                this.returnToUserAdminMenu(1000); // Return after delay
-            }
-        };
-        
-        // Set up the confirmation handler
-        process.stdin.on('data', confirmHandler);
-    }
-
-    private handleSendAdminMessage(username: string): void {
-        // Check if user exists
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.returnToUserAdminMenu(2000);
-            return;
-        }
-        
-        console.log(`\nEnter admin message to send to ${username} (Ctrl+C to cancel):`);
-
-        // Use our new promptForInput helper instead of direct readline
-        this.promptForInput(
-            '> ', 
-            (message) => {
-                if (message.trim()) {
-                    // Log the message
-                    systemLogger.info(`Admin sent message to ${username}: ${message}`);
-                    
-                    // If user is online, send the message immediately
-                    if (this.userManager.isUserActive(username)) {
-                        const targetClient = this.userManager.getActiveUserSession(username);
-                        if (targetClient) {
-                            // Use the boxed message formatter
-                            const boxedMessage = createAdminMessageBox(message);
-                            targetClient.connection.write(boxedMessage);
-                            // Re-display prompt for user
-                            const promptText = getPromptText(targetClient);
-                            targetClient.connection.write(promptText);
-                            if (targetClient.buffer.length > 0) {
-                                targetClient.connection.write(targetClient.buffer);
-                            }
-                            console.log(`\nMessage sent to online user ${username}.`);
-                        }
-                    }
-                    
-                    // Also store the message to be shown on next login if user is offline
-                    try {
-                        if (!user.pendingAdminMessages) {
-                            user.pendingAdminMessages = [];
-                        }
-                        user.pendingAdminMessages.push({
-                            message,
-                            timestamp: new Date().toISOString()
-                        });
-                        this.userManager.updateUser(username, user);
-                        console.log(`\nMessage stored for ${username} (will be shown on next login).`);
-                    } catch (error) {
-                        console.log(`\nError storing message: ${error}`);
-                    }
-                } else {
-                    console.log(`\nEmpty message, not sending.`);
-                }
-                
-                // Return to the menu
-                this.returnToUserAdminMenu(1000);
-            },
-            () => this.returnToUserAdminMenu() // Cancel callback
-        );
-    }
-
-    private displayEditUserMenu(username: string): void {
-        // Get user data
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.menuState.currentMenu = 'main';
-            this.displayUserListMenu();
-            return;
-        }
-        
-        // Import SudoCommand to check admin status
-        const { SudoCommand } = require('../command/commands/sudo.command');
-        const isAdmin = SudoCommand.isAuthorizedUser(username);
-        
-        console.clear();
-        console.log(`\n=== Edit User: ${username} ===`);
-        console.log(`Account created: ${new Date(user.joinDate || Date.now()).toLocaleDateString()}`);
-        console.log(`Admin status: ${isAdmin ? '\x1b[32mADMIN\x1b[0m' : '\x1b[90mNOT ADMIN\x1b[0m'}`);
-        console.log(`Flags: ${(user?.flags?.length  ?? 0) > 0 ? user?.flags?.join(', ') : 'None'}`);
-        console.log("\n1. Manage user flags");
-        console.log(`2. ${isAdmin ? 'Remove' : 'Grant'} admin privileges`);
-        console.log("3. Reset user stats");
-        console.log("4. Return to user list (or c/ESC)");
-        
-        console.log("\nPress number key to select option");
-    }
-    
-    private displayEditUserFlagsMenu(username: string): void {
-        // Get user data
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.menuState.currentMenu = 'main';
-            this.displayUserListMenu();
-            return;
-        }
-        
-        console.clear();
-        console.log(`\n=== Manage Flags for User: ${username} ===`);
-        console.log(`Current flags: ${(user?.flags?.length ?? 0) > 0 ? user?.flags?.join(', ') : 'None'}`);
-        console.log("\n1. Add new flag");
-        console.log("2. Remove existing flag");
-        console.log("3. Return to edit menu (or c/ESC)");
-        
-        console.log("\nPress number key to select option");
-    }
-    
-    private promptForFlagAdd(username: string): void {
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.returnToUserAdminMenu(2000);
-            return;
-        }
-        
-        console.log("\nEnter flag to add (Ctrl+C to cancel):");
-
-        // Use promptForInput helper
-        this.promptForInput(
-            '> ', 
-            (flag) => {
-                if (flag.trim()) {
-                    // Add the flag if it doesn't exist
-                    if (!user.flags) {
-                        user.flags = [];
-                    }
-                    
-                    if (!user.flags.includes(flag.trim())) {
-                        user.flags.push(flag.trim());
-                        this.userManager.updateUser(username, user);
-                        console.log(`\nFlag "${flag.trim()}" added to ${username}`);
-                        systemLogger.info(`Admin added flag "${flag.trim()}" to user ${username}`);
-                    } else {
-                        console.log(`\nFlag "${flag.trim()}" already exists on ${username}`);
-                    }
-                } else {
-                    console.log("\nEmpty flag not added.");
-                }
-                
-                // Return to flags menu after a short delay
-                this.returnToFlagsMenu(username, 1500);
-            },
-            () => this.returnToFlagsMenu(username) // Cancel callback
-        );
-    }
-    
-    private promptForFlagRemoval(username: string): void {
-        const user = this.userManager.getUser(username);
-        if (!user || !user.flags || user.flags.length === 0) {
-            console.log(`\nNo flags to remove for user ${username}.`);
-            this.returnToFlagsMenu(username, 1500);
-            return;
-        }
-        
-        console.log("\nSelect flag to remove (Ctrl+C to cancel):");
-        user.flags.forEach((flag, i) => {
-            console.log(`${i + 1}. ${flag}`);
-        });
-
-        // Use promptForInput helper
-        this.promptForInput(
-            `Select flag (1-${user.flags.length}): `, 
-            (index) => {
-                const flagIndex = parseInt(index, 10) - 1;
-                if (flagIndex >= 0 && flagIndex < (user?.flags?.length ?? 0)) {
-                    const flagToRemove = user?.flags?.[flagIndex];
-                    if (flagToRemove) { // Ensure flag exists at index
-                        user.flags = user?.flags?.filter(f => f !== flagToRemove);
-                        this.userManager.updateUser(username, user);
-                        console.log(`\nFlag "${flagToRemove}" removed from ${username}`);
-                        systemLogger.info(`Admin removed flag "${flagToRemove}" from user ${username}`);
-                    } else {
-                        console.log("\nInvalid selection.");
-                    }
-                } else {
-                    console.log("\nInvalid selection.");
-                }
-                
-                // Return to flags menu after a short delay
-                this.returnToFlagsMenu(username, 1500);
-            },
-            () => this.returnToFlagsMenu(username) // Cancel callback
-        );
-    }
-    
-    private handleToggleAdminStatus(username: string): void {
-        // Import SudoCommand to check admin status
-        const { SudoCommand } = require('../command/commands/sudo.command');
-        const isAdmin = SudoCommand.isAuthorizedUser(username);
-        
-        if (username.toLowerCase() === 'admin') {
-            console.log("\nCannot change admin status for the built-in 'admin' user.");
-            this.returnToEditMenu(username, 2000);
-            return;
-        }
-        
-        console.log(`\nDo you want to ${isAdmin ? 'REMOVE' : 'GRANT'} admin privileges for ${username}?`);
-        
-        // Use our new promptForInput helper
-        this.promptForInput(
-            '(y/n)> ', 
-            (answer) => {
-                if (answer.toLowerCase() === 'y') {
-                    try {
-                        // Get command registry to add/remove admin
-                        const commandRegistry = this.commandHandler.getCommandRegistry();
-                        if (commandRegistry) {
-                            const adminManageCmd = commandRegistry.getCommand('adminmanage');
-                            if (adminManageCmd && (adminManageCmd as any).addAdmin && (adminManageCmd as any).removeAdmin) {
-                                // Create a dummy admin client for context
-                                const adminClientContext = { user: { username: 'console_admin' } } as ConnectedClient;
-
-                                if (isAdmin) {
-                                    // Remove admin - cast to access the method
-                                    (adminManageCmd as any).removeAdmin(adminClientContext, username);
-                                    console.log(`\nRemoved admin privileges from ${username}`);
-                                    systemLogger.info(`Console admin removed admin privileges from ${username}`);
-                                } else {
-                                    // Add admin with default level (MOD) - cast to access the method
-                                    (adminManageCmd as any).addAdmin(adminClientContext, username, 'mod');
-                                    console.log(`\nGranted admin privileges (MOD) to ${username}`);
-                                    systemLogger.info(`Console admin granted admin privileges (MOD) to ${username}`);
-                                }
-                            } else {
-                                console.log("\nError: Could not find adminmanage command or its methods.");
-                            }
-                        } else {
-                            console.log("\nError: Could not get command registry.");
-                        }
-                    } catch (error) {
-                        console.log(`\nError toggling admin status: ${error}`);
-                        systemLogger.error(`Error toggling admin status for ${username}:`, error);
-                    }
-                } else {
-                    console.log("\nAdmin status not changed.");
-                }
-                
-                // Return to edit menu after a short delay
-                this.returnToEditMenu(username, 1500);
-            },
-            () => this.returnToEditMenu(username) // Cancel callback
-        );
-    }
-    
-    private handleResetUserStats(username: string): void {
-        // Get current user
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.returnToUserAdminMenu(2000);
-            return;
-        }
-        
-        console.log('\nWARNING: This will reset character stats (HP, attributes, level, XP, inventory, equipment, location).');
-        console.log('Account info (username, password, flags, join date) will be kept.');
-
-        // Use our promptForInput helper
-        this.promptForInput(
-            `Type "confirm" to reset stats for ${username}: `, 
-            (answer) => {
-                if (answer.toLowerCase() === 'confirm') {
-                    try {
-                        // Reset stats to defaults but keep account info
-                        const resetUser = {
-                            ...user, // Keep existing fields like password, joinDate, flags, etc.
-                            // Reset gameplay stats
-                            hp: 100, // Example default
-                            maxHp: 100, // Example default
-                            strength: 10, // Example default
-                            dexterity: 10, // Example default
-                            intelligence: 10, // Example default
-                            // Use a fallback for STARTING_ROOM_ID since it's not in config
-                            currentRoomId: 'start', // Default starting room ID
-                            inventory: { items: [], currency: { gold: 0, silver: 0, copper: 0 } },
-                            equipment: {},
-                            experience: 0,
-                            level: 1,
-                            // Clear potentially problematic state data if needed
-                            stateData: {}, 
-                            // Clear pending messages? Optional.
-                            // pendingAdminMessages: [], 
-                        };
-                        
-                        this.userManager.updateUser(username, resetUser);
-                        console.log(`\nStats reset for user ${username}`);
-                        systemLogger.info(`Admin reset stats for user ${username}`);
-
-                        // If user is online, notify them and potentially move them
-                        if (this.userManager.isUserActive(username)) {
-                            const targetClient = this.userManager.getActiveUserSession(username);
-                            if (targetClient) {
-                                targetClient.connection.write('\r\n\x1b[31mAn administrator has reset your character stats.\x1b[0m\r\n');
-                                
-                                // Use the handleCommand method instead of trying to use processCommand
-                                this.commandHandler.handleCommand(targetClient, `teleport start`);
-                            }
-                        }
-
-                    } catch (error) {
-                        console.log(`\nError resetting user stats: ${error}`);
-                        systemLogger.error(`Error resetting stats for ${username}:`, error);
-                    }
-                } else {
-                    console.log("\nStats reset cancelled.");
-                }
-                
-                // Return to edit menu after a short delay
-                this.returnToEditMenu(username, 1500);
-            },
-            () => this.returnToEditMenu(username) // Cancel callback
-        );
-    }
-
-    private handleChangePassword(username: string): void {
-        // Check if user exists
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.returnToUserAdminMenu(2000);
-            return;
-        }
-        
-        console.log(`\nChange password for user ${username}`);
-
-        // First get the new password
-        this.promptForInput(
-            'Enter new password (Ctrl+C to cancel): ', 
-            (newPassword) => {
-                if (newPassword.length < config.MIN_PASSWORD_LENGTH) {
-                    console.log(`\nPassword must be at least ${config.MIN_PASSWORD_LENGTH} characters long.`);
-                    // Return to menu with a delay
-                    this.returnToUserAdminMenu(2000);
-                    return;
-                }
-                
-                // Now get password confirmation
-                this.promptForInput(
-                    'Confirm new password: ',
-                    (confirmPassword) => {
-                        if (newPassword === confirmPassword) {
-                            try {
-                                const success = this.userManager.changeUserPassword(username, newPassword);
-                                if (success) {
-                                    console.log(`\nPassword changed successfully for ${username}`);
-                                    systemLogger.info(`Admin changed password for user ${username}`);
-                                } else {
-                                    console.log(`\nError changing password: User not found or update failed`);
-                                    systemLogger.error(`Failed to change password for ${username} via userManager`);
-                                }
-                            } catch (error) {
-                                console.log(`\nError changing password: ${error}`);
-                                systemLogger.error(`Error changing password for ${username}:`, error);
-                            }
-                        } else {
-                            console.log("\nPasswords don't match. Password not changed.");
-                        }
-                        
-                        // Return to main menu
-                        this.returnToUserAdminMenu(1500);
-                    },
-                    () => this.returnToUserAdminMenu(), // Cancel callback for confirmation
-                    { hideInput: true } // Option to hide input for password confirmation
-                );
-            },
-            () => this.returnToUserAdminMenu(), // Cancel callback for first password
-             { hideInput: true } // Option to hide input for password
-        );
-    }
-
-    private handleDeleteUser(username: string): void {
-        // Check if user exists
-        const user = this.userManager.getUser(username);
-        if (!user) {
-            console.log(`\nError: User ${username} not found.`);
-            this.returnToUserAdminMenu(2000);
-            return;
-        }
-        
-        // Don't allow deleting the built-in admin
-        if (username.toLowerCase() === 'admin') {
-            console.log("\nCannot delete the built-in 'admin' user.");
-            this.returnToUserAdminMenu(2000);
-            return;
-        }
-        
-        console.log(`\n\x1b[31mWARNING:\x1b[0m You are about to delete user \x1b[1m${username}\x1b[0m`);
-        console.log("This action CANNOT be undone and will remove all user data.");
-        
-        // Use promptForInput helper
-        this.promptForInput(
-            `Type "${username}" to confirm deletion: `, 
-            (confirmation) => {
-                if (confirmation === username) {
-                    try {
-                        // Check if user is online first
-                        if (this.userManager.isUserActive(username)) {
-                            // Find the client and disconnect them
-                            const clients = Array.from(this.clientManager.getClients().values());
-                            const targetClient = clients.find(c => c.user && c.user.username === username);
-                            
-                            if (targetClient) {
-                                targetClient.connection.write('\r\n\x1b[31mYour account is being deleted by an administrator.\x1b[0m\r\n');
-                                setTimeout(() => targetClient.connection.end(), 500);
-                            }
-                        }
-                        
-                        // Delete the user
-                        const deleted = this.userManager.deleteUser(username);
-                        if (deleted) {
-                            console.log(`\nUser ${username} has been deleted.`);
-                            systemLogger.info(`Admin deleted user ${username}`);
-                            // Refresh user list in menu state
-                            this.menuState.allUsers = this.userManager.getAllUsers().sort((a, b) => 
-                                a.username.toLowerCase().localeCompare(b.username.toLowerCase())
-                            );
-                            // Adjust selected index if necessary
-                            if (this.menuState.selectedIndex >= this.menuState.allUsers.length) {
-                                this.menuState.selectedIndex = Math.max(0, this.menuState.allUsers.length - 1);
-                            }
-                        } else {
-                            console.log(`\nFailed to delete user ${username}.`);
-                            systemLogger.error(`Failed to delete user ${username}`);
-                        }
-                    } catch (error) {
-                        console.log(`\nError deleting user: ${error}`);
-                        systemLogger.error(`Error deleting user ${username}:`, error);
-                    }
-                } else {
-                    console.log("\nConfirmation didn't match. User not deleted.");
-                }
-                
-                // Return to main menu
-                this.returnToUserAdminMenu(1500);
-            },
-            () => this.returnToUserAdminMenu() // Cancel callback
-        );
-    }
-
-    // Helper to return to the main user admin menu list
     private returnToUserAdminMenu(delay: number = 0): void {
         setTimeout(() => {
             this.menuState.currentMenu = 'main';
             this.displayUserListMenu();
-            // Re-attach listener for MENU keypresses (not the custom input handler)
             process.stdin.removeAllListeners('data');
             process.stdin.on('data', this.handleMenuKeyPress.bind(this));
-            if (process.stdin.isTTY) process.stdin.setRawMode(true); // Raw mode for menu navigation
+            if (process.stdin.isTTY) process.stdin.setRawMode(true);
             process.stdin.resume();
             process.stdin.setEncoding('utf8');
+
+            // Restart the refresh timer
+            this.clearRefreshTimer();
+            this.refreshIntervalId = setInterval(() => {
+                if (this.menuState.active && this.menuState.currentMenu === 'main' && !this.isAwaitingInput) {
+                    this.refreshUserList(true);
+                }
+            }, 1000);
         }, delay);
     }
 
-    // Helper to return to the edit user menu
     private returnToEditMenu(username: string, delay: number = 0): void {
         setTimeout(() => {
             this.menuState.currentMenu = 'edit';
             this.displayEditUserMenu(username);
-            // Re-attach listener for MENU keypresses
-            process.stdin.removeAllListeners('data');
-            process.stdin.on('data', this.handleMenuKeyPress.bind(this));
-            if (process.stdin.isTTY) process.stdin.setRawMode(true); // Raw mode for menu navigation
-            process.stdin.resume();
-            process.stdin.setEncoding('utf8');
         }, delay);
     }
 
-    // Helper to return to the flags menu
-    private returnToFlagsMenu(username: string, delay: number = 0): void {
-        setTimeout(() => {
-            this.menuState.currentMenu = 'flags';
-            this.displayEditUserFlagsMenu(username);
-            // Re-attach listener for MENU keypresses
-            process.stdin.removeAllListeners('data');
-            process.stdin.on('data', this.handleMenuKeyPress.bind(this));
-            if (process.stdin.isTTY) process.stdin.setRawMode(true); // Raw mode for menu navigation
-            process.stdin.resume();
-            process.stdin.setEncoding('utf8');
-        }, delay);
+    // --- Implementation of missing methods ---
+
+    private handleDirectLogin(username: string): void {
+        console.log(`\nAttempting direct login as user: ${username}...`);
+        
+        // Find the user
+        const user = this.userManager.getUserByUsername(username);
+        if (!user) {
+            console.log(`User ${username} not found.`);
+            this.returnToUserAdminMenu(1500);
+            return;
+        }
+
+        // Check if user is already logged in
+        const existingClient = this.clientManager.getClientByUsername(username);
+        if (existingClient) {
+            console.log(`User ${username} is already logged in.`);
+            this.isAwaitingInput = true; // Set flag before prompt
+            this.promptForInput(
+                `\nUser ${username} is already online. Take over their session? (y/n): `,
+                (answer) => {
+                    this.isAwaitingInput = false; // Clear flag in callback
+                    if (answer.toLowerCase() === 'y') {
+                        console.log(`Taking over ${username}'s session...`);
+                        // Disconnect the existing client
+                        existingClient.connection.write('\r\n\x1b[33mAn admin is taking over your session.\x1b[0m\r\n');
+                        existingClient.connection.end();
+                        
+                        // Wait a moment before creating new session
+                        setTimeout(() => {
+                            this.createLocalAdminSession(username);
+                        }, 500);
+                    } else {
+                        console.log("Taking over session cancelled.");
+                        this.returnToUserAdminMenu(1000);
+                    }
+                },
+                () => {
+                    this.isAwaitingInput = false; // Clear flag in cancel callback
+                    this.returnToUserAdminMenu();
+                }
+            );
+            return;
+        }
+
+        // Create local admin session
+        this.createLocalAdminSession(username);
+    }
+
+    private createLocalAdminSession(username: string): void {
+        try {
+            // Clear menu state and intervals
+            this.clearRefreshTimer();
+            this.menuState.active = false;
+            
+            // Restore console logging
+            if (this._userAdminConsoleTransport) {
+                if (Array.isArray(this._userAdminConsoleTransport)) {
+                    this._userAdminConsoleTransport.forEach(transport => {
+                        systemLogger.add(transport);
+                    });
+                } else {
+                    systemLogger.add(this._userAdminConsoleTransport);
+                }
+                this._userAdminConsoleTransport = null;
+            }
+
+            // Create console session
+            systemLogger.info(`Admin initiated direct login as user: ${username}`);
+            this.localSessionManager.createConsoleSession(username, true);
+            
+            // Don't call onMenuExit as the local session will handle console
+        } catch (error) {
+            console.error(`Error initiating console session as ${username}:`, error);
+            systemLogger.error(`Failed admin direct login as ${username}: ${error}`);
+            this.returnToUserAdminMenu(1000);
+        }
+    }
+
+    private handleKickUser(username: string): void {
+        console.log(`\nAttempting to kick user: ${username}...`);
+        
+        // Check if user is online
+        const client = this.clientManager.getClientByUsername(username);
+        if (!client) {
+            console.log(`\nUser ${username} is not currently online.`);
+            this.returnToUserAdminMenu(1500);
+            return;
+        }
+        
+        // Confirm kick
+        this.isAwaitingInput = true; // Set flag
+        this.promptForInput(
+            `\nAre you sure you want to kick ${username}? (y/n): `,
+            (answer) => {
+                this.isAwaitingInput = false; // Clear flag
+                if (answer.toLowerCase() === 'y') {
+                    console.log(`\nKicking user: ${username}`);
+                    
+                    // Send message to user before disconnecting
+                    client.connection.write('\r\n\x1b[31mYou have been kicked by an administrator.\x1b[0m\r\n');
+                    
+                    // Log the action
+                    systemLogger.info(`Admin kicked user: ${username}`);
+                    
+                    // Disconnect the client
+                    setTimeout(() => {
+                        client.connection.end();
+                        console.log(`User ${username} has been kicked.`);
+                        this.returnToUserAdminMenu(1000);
+                    }, 500);
+                } else {
+                    console.log("\nKick cancelled.");
+                    this.returnToUserAdminMenu(1000);
+                }
+            },
+            () => {
+                this.isAwaitingInput = false; // Clear flag
+                this.returnToUserAdminMenu();
+            }
+        );
+    }
+
+    private handleSendAdminMessage(username: string): void {
+        console.log(`\nPrepare message for user: ${username}...`);
+        
+        // Check if user is online
+        const client = this.clientManager.getClientByUsername(username);
+        if (!client) {
+            console.log(`\nUser ${username} is not currently online.`);
+            this.returnToUserAdminMenu(1500);
+            return;
+        }
+        
+        // Prompt for message
+        this.isAwaitingInput = true; // Set flag
+        this.promptForInput(
+            `\nEnter message to send to ${username} (Ctrl+C to cancel): `,
+            (message) => {
+                this.isAwaitingInput = false; // Clear flag
+                if (message.trim()) {
+                    console.log(`\nSending message to ${username}: "${message}"`);
+                    
+                    // Create a boxed message for the user
+                    const boxedMessage = createAdminMessageBox(message);
+                    
+                    // Send the message
+                    client.connection.write(boxedMessage);
+                    
+                    // Redisplay the prompt for the user
+                    const promptText = getPromptText(client);
+                    client.connection.write(promptText);
+                    if (client.buffer.length > 0) {
+                        client.connection.write(client.buffer);
+                    }
+                    
+                    // Log the action
+                    systemLogger.info(`Admin sent message to user ${username}: ${message}`);
+                    console.log(`Message sent to ${username}.`);
+                } else {
+                    console.log("\nMessage was empty, not sent.");
+                }
+                this.returnToUserAdminMenu(1000);
+            },
+            () => {
+                this.isAwaitingInput = false; // Clear flag
+                this.returnToUserAdminMenu();
+            }
+        );
+    }
+
+    private displayEditUserMenu(username: string): void {
+        console.clear();
+        
+        // Get user data
+        const user: User | undefined = this.userManager.getUserByUsername(username);
+        if (!user) {
+            console.log(`\nError: User ${username} not found.`);
+            this.returnToUserAdminMenu(1500);
+            return;
+        }
+        
+        // Store user data for editing - ensure it's Partial<User>
+        this.menuState.editData = { ...user } as Partial<User>; 
+        
+        // Display edit form with nullish coalescing for optional fields
+        console.log(`\n=== Edit User: ${username} ===`);
+        console.log(`Email: ${user.email ?? '(not set)'}`);
+        console.log(`Role: ${user.role ?? 'player'}`);
+        console.log(`Last login: ${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}`);
+        // Ensure 'created' is treated as Date or undefined before calling toLocaleString
+        const createdDate = user.created ? (typeof user.created === 'string' ? new Date(user.created) : user.created) : undefined;
+        console.log(`Created: ${createdDate ? createdDate.toLocaleString() : 'Unknown'}`);
+        console.log(`Description: ${user.description ?? '(not set)'}`);
+        console.log(`\nFlags: ${user.flags?.join(', ') ?? '(none)'}`); // Use ?? for flags as well
+            
+        console.log("\n=== Actions ===");
+        console.log("(s)ave, (f)lags, (c)ancel / Ctrl+C");
+        
+        // Set up event handler for edit menu
+        process.stdin.removeAllListeners('data');
+        process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+        if (process.stdin.isTTY) process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.setEncoding('utf8');
+    }
+
+    private displayFlagsMenu(username: string): void {
+        console.clear();
+        
+        // Get user data
+        const user = this.userManager.getUserByUsername(username);
+        if (!user) {
+            console.log(`\nError: User ${username} not found.`);
+            this.returnToUserAdminMenu(1500);
+            return;
+        }
+        
+        // Display flags
+        console.log(`\n=== User Flags: ${username} ===`);
+        console.log("Toggle flags by pressing the corresponding number");
+        console.log("");
+        
+        // Ensure flags array exists
+        const currentFlags = user.flags || [];
+        
+        // Define the toggleable flags (should match handleFlagsMenuKeyPress)
+        const toggleableFlags = ['admin', 'builder', 'immortal', 'developer'];
+        
+        // Display toggleable flags
+        toggleableFlags.forEach((flagName, index) => {
+            const value = currentFlags.includes(flagName);
+            console.log(`${index + 1}. ${flagName}: ${value ? 'ON' : 'off'}`);
+        });
+
+        // Display other non-toggleable flags (if any)
+        const otherFlags = currentFlags.filter(f => !toggleableFlags.includes(f));
+        if (otherFlags.length > 0) {
+            console.log("\nOther Flags (read-only):");
+            otherFlags.forEach(flagName => {
+                console.log(`- ${flagName}`);
+            });
+        }
+            
+        console.log("\n=== Actions ===");
+        console.log("Press flag number to toggle, (s)ave, (b)ack to edit menu, (c)ancel / Ctrl+C");
+        
+        // Set up event handler for flags menu
+        process.stdin.removeAllListeners('data');
+        process.stdin.on('data', this.handleMenuKeyPress.bind(this));
+        if (process.stdin.isTTY) process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.setEncoding('utf8');
+    }
+
+    private handleChangePassword(username: string): void {
+        console.log(`\nChange password for user: ${username}...`);
+        
+        this.isAwaitingInput = true; // Set flag
+        this.promptForInput(
+            `\nEnter new password for ${username} (Ctrl+C to cancel): `,
+            (password) => {
+                this.isAwaitingInput = false; // Clear flag after first input
+                if (!password || password.length < 4) {
+                    console.log("\nPassword must be at least 4 characters.");
+                    this.returnToUserAdminMenu(1500);
+                    return;
+                }
+                
+                // Confirm the password
+                this.isAwaitingInput = true; // Set flag for second input
+                this.promptForInput(
+                    `Confirm new password: `,
+                    async (confirmPassword) => {
+                        this.isAwaitingInput = false; // Clear flag
+                        if (password !== confirmPassword) {
+                            console.log("\nPasswords do not match.");
+                            this.returnToUserAdminMenu(1500);
+                            return;
+                        }
+                        
+                        try {
+                            // Update the password
+                            await this.userManager.updateUserPassword(username, password);
+                            console.log(`\nPassword for ${username} updated successfully.`);
+                            systemLogger.info(`Admin changed password for user: ${username}`);
+                        } catch (error) {
+                            console.error(`\nError changing password: ${error}`);
+                            systemLogger.error(`Admin password change failed for ${username}: ${error}`);
+                        }
+                        
+                        this.returnToUserAdminMenu(1500);
+                    },
+                    () => {
+                        this.isAwaitingInput = false; // Clear flag
+                        this.returnToUserAdminMenu();
+                    },
+                    { hideInput: true }
+                );
+            },
+            () => {
+                this.isAwaitingInput = false; // Clear flag
+                this.returnToUserAdminMenu();
+            },
+            { hideInput: true }
+        );
+    }
+
+    private handleDeleteUser(username: string): void {
+        console.log(`\nDelete user: ${username}...`);
+        
+        // Prevent deleting the primary admin account
+        if (config.adminUsername && username.toLowerCase() === config.adminUsername.toLowerCase()) {
+            console.log(`\nCannot delete the primary admin account (${config.adminUsername}).`);
+            this.returnToUserAdminMenu(1500);
+            return;
+        }
+        
+        // Show warning and confirm
+        this.isAwaitingInput = true; // Set flag
+        this.promptForInput(
+            `\n\x1b[31mWARNING: This will permanently delete user ${username} and all their data.\x1b[0m\nType the username to confirm: `,
+            async (confirmation) => {
+                this.isAwaitingInput = false; // Clear flag
+                if (confirmation.toLowerCase() !== username.toLowerCase()) {
+                    console.log("\nUsername didn't match. Delete cancelled.");
+                    this.returnToUserAdminMenu(1500);
+                    return;
+                }
+                
+                try {
+                    // Check if user is online and kick them
+                    const client = this.clientManager.getClientByUsername(username);
+                    if (client) {
+                        client.connection.write('\r\n\x1b[31mYour account is being deleted by an administrator.\x1b[0m\r\n');
+                        client.connection.end();
+                        console.log(`\nKicked ${username} before deletion.`);
+                        // Small delay to allow the disconnect to process
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                    
+                    // Mark user as pending deletion
+                    this.menuState.userPendingDeletion = username;
+                    this.displayUserListMenu();
+
+                    // Delete the user
+                    await this.userManager.deleteUser(username);
+                    console.log(`\nUser ${username} deleted successfully.`);
+                    systemLogger.info(`Admin deleted user: ${username}`);
+                } catch (error) {
+                    console.error(`\nError deleting user: ${error}`);
+                    systemLogger.error(`Admin deletion failed for ${username}: ${error}`);
+                } finally {
+                    // Clear pending deletion state
+                    this.menuState.userPendingDeletion = undefined;
+                    this.returnToUserAdminMenu(1500);
+                }
+            },
+            () => {
+                this.isAwaitingInput = false; // Clear flag
+                this.returnToUserAdminMenu();
+            }
+        );
+    }
+
+    private saveUserEdits(username: string): void {
+        console.log(`\nSaving changes for ${username}...`);
+
+        // Get the edited data
+        const editData: Partial<User> = this.menuState.editData || {};
+
+        // Create a payload for the update, explicitly removing username
+        // as updateUser preserves the original username based on the first argument.
+        const updatePayload = { ...editData };
+        delete updatePayload.username; // Ensure username is not in the partial update data
+
+        try {
+            // Call updateUser with the payload excluding username
+            this.userManager.updateUser(username, updatePayload);
+            console.log(`\nUser ${username} updated successfully.`);
+            systemLogger.info(`Admin edited user: ${username}`);
+        } catch (error) {
+            console.error(`\nError updating user: ${error}`);
+            systemLogger.error(`Admin edit failed for ${username}: ${error}`);
+        }
+
+        this.returnToUserAdminMenu(1500);
+    }
+
+    private saveUserFlags(username: string, flags: string[]): void {
+        console.log(`\nSaving flags for ${username}...`);
+        
+        try {
+            // Get current user data
+            const user = this.userManager.getUserByUsername(username);
+            if (!user) {
+                throw new Error(`User ${username} not found`);
+            }
+            
+            // Update flags (assign the string array)
+            user.flags = flags;
+            this.userManager.updateUser(username, user);
+            
+            console.log(`\nFlags for ${username} updated successfully.`);
+            systemLogger.info(`Admin updated flags for user: ${username}`);
+            
+            // Return to edit menu
+            this.menuState.currentMenu = 'edit';
+            this.displayEditUserMenu(username);
+        } catch (error) {
+            console.error(`\nError updating flags: ${error}`);
+            systemLogger.error(`Admin flag update failed for ${username}: ${error}`);
+            this.returnToUserAdminMenu(1500);
+        }
     }
 }

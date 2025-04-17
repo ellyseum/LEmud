@@ -20,6 +20,7 @@ export const WS_PORT = cliConfig.wsPort;
 export const JWT_SECRET = process.env.JWT_SECRET || 'mud-admin-secret-key';
 export const MIN_PASSWORD_LENGTH = 6;
 export const maxPasswordAttempts = 3; // Max failed password attempts before disconnection
+export const adminUsername = 'admin'; // Default admin username
 
 // Security settings
 export const DISABLE_REMOTE_ADMIN = cliConfig.disableRemoteAdmin;
@@ -94,6 +95,7 @@ export default {
   JWT_SECRET,
   MIN_PASSWORD_LENGTH,
   maxPasswordAttempts,
+  adminUsername,
   DATA_DIR,
   PUBLIC_DIR,
   ADMIN_DIR,

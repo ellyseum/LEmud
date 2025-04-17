@@ -355,4 +355,34 @@ export class LocalSessionManager {
             });
         });
     }
+
+    /**
+     * Creates a console session with automatic login for the specified user
+     * @param username The username to login as
+     * @param isAdmin Whether this is an admin session (with special privileges)
+     */
+    public createConsoleSession(username: string, isAdmin: boolean = false): void {
+        const port = this.telnetServer.getActualPort();
+        
+        // Check if username is provided
+        if (!username) {
+            console.error('Cannot create console session: No username provided');
+            return;
+        }
+        
+        // Set the appropriate flags in the telnet server
+        if (isAdmin) {
+            this.telnetServer.setAdminLoginPending(true);
+        }
+        
+        // Set the forced session username so the server can handle it appropriately
+        this.telnetServer.setForcedSessionUsername(username);
+        
+        // Start a session with the appropriate method
+        if (isAdmin) {
+            this.startLocalAdminSession(port);
+        } else {
+            this.startLocalUserSession(port, username);
+        }
+    }
 }

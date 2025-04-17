@@ -782,21 +782,51 @@ export class UserManager {
   /**
    * Updates a user object with new data
    * @param username The username of the user to update
-   * @param updatedUser The updated user data
+   * @param updatedData The partial user data to apply
    * @returns True if the user was updated, false if user not found
    */
-  public updateUser(username: string, updatedUser: User): boolean {
+  public updateUser(username: string, updatedData: Partial<User>): boolean {
     const index = this.users.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
     if (index === -1) return false;
 
-    // Preserve the username to prevent changing it
-    updatedUser.username = this.users[index].username;
-    
-    // Update the user in the array
-    this.users[index] = updatedUser;
+    // Get the existing user
+    const existingUser = this.users[index]; // Type: User
+
+    // Merge the updated data onto the existing user, ensuring username is not changed
+    const dataToMerge = { ...updatedData };
+    delete dataToMerge.username; // Prevent username change via this method
+
+    // Explicitly construct the updated user object to satisfy the User type
+    const updatedUserObject: User = {
+      ...existingUser, // Start with existing user properties
+      ...dataToMerge,   // Override with updated data (excluding username)
+      username: existingUser.username // Explicitly keep the original username (string)
+    };
+
+    // Apply the updates
+    this.users[index] = updatedUserObject;
     
     // Save changes to disk
     this.saveUsers();
     return true;
+  }
+
+  /**
+   * Gets a user by username - alias for getUser to improve code readability
+   * @param username The username to find
+   * @returns User object or undefined if not found
+   */
+  public getUserByUsername(username: string): User | undefined {
+    return this.getUser(username);
+  }
+
+  /**
+   * Updates a user's password
+   * @param username The username of the user to update
+   * @param newPassword The new password for the user
+   * @returns True if the password was updated, false if user not found
+   */
+  public updateUserPassword(username: string, newPassword: string): boolean {
+    return this.changeUserPassword(username, newPassword);
   }
 }

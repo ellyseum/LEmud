@@ -171,6 +171,12 @@ export interface User {
   movementRestrictedReason?: string; // Custom reason why movement is restricted
   flags?: string[]; // Array to store player flags for permissions, quests, etc.
   pendingAdminMessages?: Array<{message: string, timestamp: string}>; // Store admin messages for offline users
+
+  // Add missing optional properties used in UserAdminMenu
+  email?: string;
+  role?: string; // e.g., 'player', 'admin', 'builder'
+  created?: Date; // Date user was created
+  description?: string; // User-set description
 }
 
 export interface ConnectedClient {

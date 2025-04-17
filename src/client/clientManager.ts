@@ -702,4 +702,18 @@ export class ClientManager {
       }
     });
   }
+
+  /**
+   * Find a client by username
+   * @param username The username to search for
+   * @returns The client if found, otherwise undefined
+   */
+  public getClientByUsername(username: string): ConnectedClient | undefined {
+    for (const client of this.clients.values()) {
+      if (client.user && client.user.username.toLowerCase() === username.toLowerCase()) {
+        return client;
+      }
+    }
+    return undefined;
+  }
 }
