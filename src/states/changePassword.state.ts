@@ -50,6 +50,11 @@ export class ChangePasswordState implements ClientState {
         stateData.confirmPassword = input;
         if (stateData.newPassword === stateData.confirmPassword) {
           this.userManager.changeUserPassword(client.user.username, stateData.newPassword);
+          // Clear sensitive fields to prevent data leakage
+          stateData.currentPassword = '';
+          stateData.newPassword = '';
+          stateData.confirmPassword = '';
+          stateData.step = '';
           writeToClient(client, colorize('\nPassword has been updated!\n', 'green'));
           client.stateData.transitionTo = ClientStateType.AUTHENTICATED;
         } else {
