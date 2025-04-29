@@ -140,7 +140,7 @@ export class CommandRegistry {
       new ResetNameCommand(), // Add our new ResetName command
       new RepairCommand(), // Add our new Repair command
       new BugReportCommand(this.userManager), // Add our new Bug Report command
-      new ChangePasswordCommand(this.userManager) // Add our new ChangePassword command
+      new ChangePasswordCommand(this.stateMachine) // Add our new ChangePassword command
     ];
     
     // Register all commands

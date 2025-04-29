@@ -1,12 +1,11 @@
-// Import all commands to ensure they're registered
 import './adminmanage.command';
 import './attack.command';
 import './break.command';
 import './damage.command';
-import './debug.command'; // Import our new debug command
-import './destroy.command'; // Import our new destroy command
+import './debug.command';
+import './destroy.command';
 import './drop.command';
-import './effect.command'; // Add our new effect command
+import './effect.command';
 import './equip.command';
 import './equipment.command';
 import './get.command';
@@ -20,11 +19,11 @@ import './look.command';
 import './move.command';
 import './pickup.command';
 import './quit.command';
-import './rename.command'; // Import our new rename command
-import './resetname.command'; // Import our new resetname command
-import './repair.command'; // Import our new repair command
-import './restrict.command'; // Import our restrict command
-import './root.command'; // Import our new root command
+import './rename.command';
+import './resetname.command';
+import './repair.command';
+import './restrict.command';
+import './root.command';
 import './say.command';
 import './scores.command';
 import './snake.command';
@@ -33,13 +32,13 @@ import './stats.command';
 import './sudo.command';
 import './unequip.command';
 import './yell.command';
-import './addflag.command'; // Import flag management commands
+import './addflag.command';
 import './removeflag.command';
 import './listflags.command';
+import './changePassword.command'; // Import the new ChangePasswordCommand
 import { systemLogger } from '../../utils/logger';
 
-// Export ScoresCommand so it can be registered properly
 export * from './scores.command';
+export * from './changePassword.command'; // Export the new ChangePasswordCommand
 
-// This file ensures all commands are imported and registered with the command registry
 systemLogger.info('Loading all commands');

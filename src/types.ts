@@ -8,7 +8,8 @@ export enum ClientStateType {
   CONFIRMATION = 'confirmation',
   AUTHENTICATED = 'authenticated',
   TRANSFER_REQUEST = 'transfer_request',  // New state for handling session transfers
-  SNAKE_GAME = 'snake_game'  // New state for playing Snake game
+  SNAKE_GAME = 'snake_game',  // New state for playing Snake game
+  CHANGE_PASSWORD = 'change-password'  // State for changing user password
 }
 
 // Define equipment slots
