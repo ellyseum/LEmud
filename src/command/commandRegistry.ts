@@ -49,6 +49,7 @@ import { RenameCommand } from './commands/rename.command'; // Updated to match t
 import { ResetNameCommand } from './commands/resetname.command'; // Import our new Reset Name command
 import { RepairCommand } from './commands/repair.command'; // Import our new Repair command
 import { BugReportCommand } from './commands/bugreport.command';
+import { ChangePasswordCommand } from './commands/changePassword.command'; // Import our new ChangePassword command
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -139,6 +140,7 @@ export class CommandRegistry {
       new ResetNameCommand(), // Add our new ResetName command
       new RepairCommand(), // Add our new Repair command
       new BugReportCommand(this.userManager), // Add our new Bug Report command
+      new ChangePasswordCommand(this.userManager) // Add our new ChangePassword command
     ];
     
     // Register all commands
@@ -225,6 +227,8 @@ export class CommandRegistry {
     this.aliases.set('brp', {commandName: 'bugreport'});
     this.aliases.set('bugs', {commandName: 'bugreport', args: 'list'});
     this.aliases.set('report', {commandName: 'bugreport'});
+    // Add alias for change password command
+    this.aliases.set('changepass', {commandName: 'changepassword'});
   }
 
   private registerDirectionCommands(): void {

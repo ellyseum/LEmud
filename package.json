@@ -4,7 +4,7 @@
   "description": "Elly Mud / LLM Engineered Multi User Dungeon",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc --build --verbose --sourceMap",
+    "build": "tsc --build --verbose",
     "start": "tsc --sourceMap && node --enable-source-maps dist/server.js",
     "start:admin": "tsc --sourceMap && node --enable-source-maps dist/server.js -a",
     "start:user": "tsc --sourceMap && node --enable-source-maps dist/server.js -u",
