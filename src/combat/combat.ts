@@ -409,8 +409,16 @@ export class Combat {
     // Get all players targeting this entity
     const targetingPlayers = [...this.combatSystem.getEntityTargeters(entityId)];
     
+    // Ensure at least the player who killed the NPC gets experience
+    // by adding them to the list if they're not already included
+    if (!targetingPlayers.includes(this.player.user.username)) {
+      targetingPlayers.push(this.player.user.username);
+    }
+    
     // Calculate experience per player - divide the total experience by number of participants
-    const experiencePerPlayer = Math.floor(npc.experienceValue / targetingPlayers.length);
+    // Ensure we always have at least 1 participant to avoid dividing by zero
+    const numParticipants = Math.max(1, targetingPlayers.length);
+    const experiencePerPlayer = Math.floor(npc.experienceValue / numParticipants);
     
     // Award experience to all participating players
     for (const playerName of targetingPlayers) {
@@ -546,11 +554,8 @@ export class Combat {
   }
 
   public isDone(): boolean {
-    // Remove or change the “brokenByPlayer” check so the enemy can still attack.
-    // For example, simply remove `|| this.brokenByPlayer`:
     const allDead = this.activeCombatants.every(c => !c.isAlive());
     return allDead ||
-           /* this.brokenByPlayer || */  // <-- Remove this to allow combat to continue
            !this.player.user ||
            this.player.user.health <= 0;
   }
