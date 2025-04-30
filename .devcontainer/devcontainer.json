@@ -2,5 +2,6 @@
   "tasks": {
     "build": "npm run build",
     "launch": "npm start"
-  }
+  },
+  "postCreateCommand": "cd /workspaces/LEMud && npm install"
 }
