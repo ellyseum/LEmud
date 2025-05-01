@@ -2,5 +2,8 @@ node_modules
 data/admin/
 data/users.json
 data/admin.json
+data/bug-reports.json
 logs
 dist
+memory.md
+last-session.md

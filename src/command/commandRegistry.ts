@@ -5,7 +5,7 @@ import { writeToClient } from '../utils/socketWriter';
 import { UserManager } from '../user/userManager';
 import { RoomManager } from '../room/roomManager';
 import { CombatSystem } from '../combat/combatSystem';
-import { systemLogger, createContextLogger } from '../utils/logger';
+import { createContextLogger } from '../utils/logger';
 
 // Create a context-specific logger for CommandRegistry
 const commandLogger = createContextLogger('CommandRegistry');
@@ -37,6 +37,7 @@ import { GiveItemCommand } from './commands/giveitem.command';
 import { SudoCommand } from './commands/sudo.command';
 import { AdminManageCommand } from './commands/adminmanage.command';
 import { SnakeCommand } from './commands/snake.command';
+import { WaitCommand } from './commands/wait.command'; // Import our new Wait command
 import { ScoresCommand } from './commands/scores.command';
 import { DebugCommand } from './commands/debug.command'; // Import our new Debug command
 import { RestrictCommand } from './commands/restrict.command'; // Import our new Restrict command
@@ -101,6 +102,7 @@ export class CommandRegistry {
   private registerCommands(): void {
     // Create command instances
     const snakeCommand = new SnakeCommand(this.stateMachine); // Pass StateMachine instance
+    const waitCommand = new WaitCommand(this.stateMachine); // Pass StateMachine instance for our new WaitCommand
     const commands: Command[] = [
       new SayCommand(this.clients),
       new ListCommand(this.clients),
@@ -128,6 +130,7 @@ export class CommandRegistry {
       SudoCommand.getInstance(),
       new AdminManageCommand(this.userManager),
       snakeCommand, // Add SnakeCommand instance
+      waitCommand, // Add WaitCommand instance
       new ScoresCommand(), // Add ScoresCommand instance
       new DebugCommand(this.roomManager, this.userManager, this.combatSystem), // Add our new Debug command
       new RestrictCommand(this.userManager), // Add our new Restrict command
@@ -229,6 +232,8 @@ export class CommandRegistry {
     this.aliases.set('report', {commandName: 'bugreport'});
     // Add alias for change password command
     this.aliases.set('changepass', {commandName: 'changepassword'});
+    // Add alias for wait command
+    this.aliases.set('wa', {commandName: 'wait'});
   }
 
   private registerDirectionCommands(): void {

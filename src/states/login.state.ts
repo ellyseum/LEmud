@@ -5,6 +5,7 @@ import { writeToClient } from '../utils/socketWriter';
 import config, { DISABLE_REMOTE_ADMIN, RESTRICTED_USERNAMES } from '../config';
 import { formatUsername, standardizeUsername } from '../utils/formatters';
 import { systemLogger } from '../utils/logger';
+import { createSessionReferenceFile } from '../utils/fileUtils';
 
 export class LoginState implements ClientState {
   name = ClientStateType.LOGIN;
@@ -168,6 +169,10 @@ export class LoginState implements ClientState {
         // Update last login time and register new session
         this.userManager.updateLastLogin(username);
         this.userManager.registerUserSession(username, client);
+        
+        // Create a session reference file for debugging
+        const isAdmin = username.toLowerCase() === 'admin';
+        createSessionReferenceFile(client, username, isAdmin);
         
         return true; // Authentication successful
       }
