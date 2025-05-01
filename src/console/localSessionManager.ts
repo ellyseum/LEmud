@@ -3,6 +3,7 @@ import { systemLogger } from '../utils/logger';
 import { TelnetServer } from '../server/telnetServer';
 import { ConsoleManager } from './consoleManager';
 import config from '../config';
+import { DebugModeManager } from '../utils/debugUtils';
 
 export class LocalSessionManager {
     private consoleManager: ConsoleManager;
@@ -34,6 +35,10 @@ export class LocalSessionManager {
 
         this.isLocalClientConnected = true;
         systemLogger.info("Attempting to start local session...");
+        
+        // Enable debug mode for this local session
+        DebugModeManager.getInstance().setLocalSessionActive(true);
+        systemLogger.debug("Debug mode activated for local session");
 
         // Pause the main key listener via ConsoleManager
         this.consoleManager.removeMainKeyListener();
@@ -65,6 +70,10 @@ export class LocalSessionManager {
         if (!this.isLocalClientConnected) return;
 
         systemLogger.info('Ending local session...');
+        
+        // Disable debug mode when local session ends
+        DebugModeManager.getInstance().setLocalSessionActive(false);
+        systemLogger.debug("Debug mode deactivated as local session ended");
 
         // Clean up socket
         if (this.localClientSocket) {

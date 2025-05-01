@@ -36,6 +36,7 @@ export interface CLIConfig {
   noColor: boolean;
   silent: boolean;
   noConsole: boolean;
+  debug: boolean; // Debug mode flag
 }
 
 // Parse command line arguments
@@ -157,6 +158,11 @@ export function parseCommandLineArgs(): CLIConfig {
       default: false,
       alias: 'c'
     })
+    .option('debug', {
+      type: 'boolean',
+      description: 'Enable debug mode with additional logging and diagnostics',
+      default: false
+    })
     .help()
     .alias('help', 'h')
     .parseSync();
@@ -184,7 +190,8 @@ export function parseCommandLineArgs(): CLIConfig {
     noColor: argv.noColor,
     // Auto-enable silent and noConsole if an auto-session is requested
     silent: argv.silent || argv.adminSession || argv.userSession || Boolean(argv.forceSession),
-    noConsole: argv.noConsole || argv.adminSession || argv.userSession || Boolean(argv.forceSession)
+    noConsole: argv.noConsole || argv.adminSession || argv.userSession || Boolean(argv.forceSession),
+    debug: argv.debug // Updated to use the debug flag from command line arguments
   };
   
   // Ensure data directory exists

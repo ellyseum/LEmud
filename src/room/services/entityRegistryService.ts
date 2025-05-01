@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/room/services/entityRegistryService.ts
 import { IEntityRegistryService } from '../interfaces';
 import { ConnectedClient } from '../../types';
 import { Room } from '../room';

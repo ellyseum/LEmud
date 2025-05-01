@@ -1,6 +1,5 @@
 import path from 'path';
 import fs from 'fs';
-import readline from 'readline';
 import { systemLogger } from './utils/logger';
 import { ConnectedClient, ServerStats } from './types';
 import { UserManager } from './user/userManager';
@@ -14,16 +13,17 @@ import { APIServer } from './server/apiServer';
 import { ClientManager } from './client/clientManager';
 import { readPasswordFromConsole } from './utils/consoleUtils';
 import { AdminLevel } from './command/commands/adminmanage.command';
-import { createSystemMessageBox, createAdminMessageBox } from './utils/messageFormatter';
 import { getPromptText } from './utils/promptFormatter'; // Import the getPromptText function
 import { SnakeGameState } from './states/snake-game.state';
+import { WaitingState } from './states/waiting.state';
 import { LocalSessionManager } from './console/localSessionManager';
 import { ConsoleManager } from './console/consoleManager';
 import { UserMonitor } from './console/userMonitor';
 import { UserAdminMenu } from './console/userAdminMenu';
 import { ShutdownManager } from './server/shutdownManager';
+import { isDebugMode } from './utils/debugUtils'; // Import the isDebugMode function
+import { clearSessionReferenceFile } from './utils/fileUtils'; // Import the clearSessionReferenceFile function
 import config from './config';
-import net from 'net';
 
 export class GameServer {
   private telnetServer: TelnetServer;
@@ -98,6 +98,9 @@ export class GameServer {
 
       // Share the global clients map with SnakeGameState
       SnakeGameState.setGlobalClients(this.clientManager.getClients());
+      
+      // Share the global clients map with WaitingState
+      WaitingState.setGlobalClients(this.clientManager.getClients());
 
       // Create the API server first (since WebSocket server needs its HTTP server)
       this.apiServer = new APIServer(
@@ -405,6 +408,13 @@ export class GameServer {
       }
       
       systemLogger.info('Admin user verified. Starting server components...');
+
+      // Clear the last-session.md file if debug mode is enabled
+      if (isDebugMode()) {
+        // clearSessionReferenceFile is now statically imported at the top
+        clearSessionReferenceFile();
+        systemLogger.info('Cleared last-session.md file (debug mode enabled)');
+      }
 
       // Start the API server first
       await this.apiServer.start();

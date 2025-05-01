@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/utils/itemManager.ts
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";

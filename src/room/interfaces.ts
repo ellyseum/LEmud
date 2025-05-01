@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/room/interfaces.ts
 import { Room } from './room';
 import { ConnectedClient, Currency, Exit, Item } from '../types';
 import { NPC } from '../combat/npc';

@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/room/services/roomUINotificationService.ts
 import { IRoomUINotificationService } from '../interfaces';
 import { ConnectedClient } from '../../types';
 import { Room } from '../room';

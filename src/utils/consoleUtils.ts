@@ -1,5 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/utils/consoleUtils.ts
-
 import readline from 'readline';
 
 /**

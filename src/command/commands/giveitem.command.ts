@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/command/commands/giveitem.command.ts
 import { ConnectedClient, GameItem, ItemInstance } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
