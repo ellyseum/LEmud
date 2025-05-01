@@ -1,4 +1,3 @@
-// filepath: /workspaces/LEmud/src/states/waiting.state.ts
 import { ClientState, ClientStateType, ConnectedClient } from "../types";
 import { colorize } from "../utils/colors";
 import { writeToClient, writeFormattedMessageToClient } from "../utils/socketWriter";

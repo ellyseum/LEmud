@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/room/services/directionHelper.ts
 import { IDirectionHelper } from '../interfaces';
 
 export class DirectionHelper implements IDirectionHelper {

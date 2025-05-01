@@ -1,5 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/utils/messageFormatter.ts
-
 /**
  * Utility functions for formatting messages in decorative boxes
  */

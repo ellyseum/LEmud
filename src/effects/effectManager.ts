@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/effects/effectManager.ts
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
 import { UserManager } from '../user/userManager';

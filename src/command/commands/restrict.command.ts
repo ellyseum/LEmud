@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/command/commands/restrict.command.ts
 import { ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';

@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/command/commands/effect.command.ts
 import { Command } from '../command.interface';
 import { ConnectedClient } from '../../types';
 import { writeFormattedMessageToClient } from '../../utils/socketWriter';

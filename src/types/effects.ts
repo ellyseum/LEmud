@@ -1,5 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/types/effects.ts
-
 /**
  * Enum defining the different types of effects that can be applied to entities
  */

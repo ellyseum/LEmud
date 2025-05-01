@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/command/commands/unequip.command.ts
 import { ConnectedClient, EquipmentSlot } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';

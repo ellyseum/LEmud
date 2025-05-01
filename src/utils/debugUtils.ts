@@ -1,4 +1,3 @@
-// filepath: /workspaces/LEmud/src/utils/debugUtils.ts
 import { parseCommandLineArgs } from '../config/cliConfig';
 
 /**

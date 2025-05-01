@@ -1,4 +1,3 @@
-// filepath: /Users/jelden/projects/game/src/room/services/npcInteractionService.ts
 import { INPCInteractionService } from '../interfaces';
 import { Room } from '../room';
 import { NPC } from '../../combat/npc';

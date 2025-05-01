@@ -1,4 +1,3 @@
-// filepath: /workspaces/LEmud/src/command/commands/wait.command.ts
 import { ConnectedClient, ClientStateType } from '../../types';
 import { colorize } from '../../utils/colors';
 import { writeToClient } from '../../utils/socketWriter';
