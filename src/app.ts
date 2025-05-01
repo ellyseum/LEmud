@@ -22,6 +22,7 @@ import { UserMonitor } from './console/userMonitor';
 import { UserAdminMenu } from './console/userAdminMenu';
 import { ShutdownManager } from './server/shutdownManager';
 import { isDebugMode } from './utils/debugUtils'; // Import the isDebugMode function
+import { clearSessionReferenceFile } from './utils/fileUtils'; // Import the clearSessionReferenceFile function
 import config from './config';
 
 export class GameServer {
@@ -410,7 +411,7 @@ export class GameServer {
 
       // Clear the last-session.md file if debug mode is enabled
       if (isDebugMode()) {
-        const { clearSessionReferenceFile } = require('./utils/fileUtils');
+        // clearSessionReferenceFile is now statically imported at the top
         clearSessionReferenceFile();
         systemLogger.info('Cleared last-session.md file (debug mode enabled)');
       }
