@@ -52,6 +52,32 @@ import { RepairCommand } from './commands/repair.command'; // Import our new Rep
 import { BugReportCommand } from './commands/bugreport.command';
 import { ChangePasswordCommand } from './commands/changePassword.command'; // Import our new ChangePassword command
 
+// Function to calculate Levenshtein distance between two strings
+function levenshteinDistance(a: string, b: string): number {
+  const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null));
+
+  for (let i = 0; i <= a.length; i += 1) {
+    matrix[0][i] = i;
+  }
+
+  for (let j = 0; j <= b.length; j += 1) {
+    matrix[j][0] = j;
+  }
+
+  for (let j = 1; j <= b.length; j += 1) {
+    for (let i = 1; i <= a.length; i += 1) {
+      const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1, // deletion
+        matrix[j - 1][i] + 1, // insertion
+        matrix[j - 1][i - 1] + indicator, // substitution
+      );
+    }
+  }
+
+  return matrix[b.length][a.length];
+}
+
 export class CommandRegistry {
   private commands: Map<string, Command>;
   private aliases: Map<string, {commandName: string, args?: string}>;
@@ -334,6 +360,38 @@ export class CommandRegistry {
   }
 
   /**
+   * Find the closest command name to the given input using Levenshtein distance.
+   */
+  private findClosestCommand(input: string): string | null {
+    let minDistance = Infinity;
+    let suggestion: string | null = null;
+    const threshold = 3; // Maximum allowed distance for a suggestion
+
+    const allCommandNames = [
+      ...this.commands.keys(),
+      ...this.aliases.keys(),
+    ];
+
+    for (const name of allCommandNames) {
+      // Skip internal/directional aliases if they match the input exactly
+      if (this.isDirectionCommand(name) && name === input) continue;
+
+      const distance = levenshteinDistance(input, name);
+      if (distance < minDistance && distance <= threshold) {
+        minDistance = distance;
+        suggestion = name;
+      }
+    }
+
+    // Don't suggest the input itself if it wasn't found
+    if (suggestion === input) {
+      return null;
+    }
+
+    return suggestion;
+  }
+
+  /**
    * Execute a command with the given input
    */
   public executeCommand(client: ConnectedClient, input: string): void {
@@ -397,13 +455,27 @@ export class CommandRegistry {
     }
     
     // If we got here, the command wasn't found
-    writeToClient(client, colorize(`Unknown command: ${commandName}\r\n`, 'yellow'));
-    
-    // Get the help command and execute it to show available commands
-    const helpCommand = this.getCommand('help');
-    if (helpCommand) {
-      helpCommand.execute(client, '');
+    // Find the closest command suggestion
+    const suggestion = this.findClosestCommand(lowercaseCommand);
+
+    let message = colorize(`Command '`, 'red');
+    message += colorize(commandName, 'bright');
+    message += colorize(`' not recognized.`, 'red');
+
+    if (suggestion) {
+      message += colorize(` Did you mean '`, 'red');
+      message += colorize(suggestion, 'bright');
+      message += colorize(`'?`, 'red');
     }
+    message += '\r\n'; // Newline
+
+    message += colorize('Hint: ', 'brightWhite');
+    message += colorize(`Type '`, 'yellow');
+    message += colorize('help', 'bright');
+    message += colorize(`' for a list of commands.`, 'yellow');
+    message += '\r\n';
+
+    writeToClient(client, message);
   }
   
   /**
