@@ -51,6 +51,11 @@
         "timestamp": "2025-04-13T08:26:19.423Z",
         "event": "drop",
         "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-05-02T02:39:16.842Z",
+        "event": "pickup",
+        "details": "Picked up by test from room start"
       }
     ]
   },
@@ -76,6 +81,16 @@
         "timestamp": "2025-04-13T08:04:28.684Z",
         "event": "drop",
         "details": "Dropped by asdf in room start"
+      },
+      {
+        "timestamp": "2025-05-02T02:39:29.282Z",
+        "event": "pickup",
+        "details": "Picked up by test from room start"
+      },
+      {
+        "timestamp": "2025-05-02T02:39:37.003Z",
+        "event": "equip",
+        "details": "Equipped by test in slot mainHand"
       }
     ]
   },
