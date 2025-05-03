@@ -1,4 +1,7 @@
-// Add these routes to your existing admin API routes
+const express = require('express');
+const router = express.Router();
+const { authenticateAdmin } = require('../middleware/auth');
+const { loadMUDConfig, saveMUDConfig } = require('../../src/admin/adminApi');
 
 /**
  * GET /api/admin/mud-config
@@ -6,28 +9,7 @@
  */
 router.get('/mud-config', authenticateAdmin, async (req, res) => {
     try {
-        // Replace this with actual configuration loading from your system
-        const config = {
-            dataFiles: {
-                players: './data/players.json',
-                rooms: './data/rooms.json',
-                items: './data/items.json',
-                npcs: './data/npcs.json'
-            },
-            game: {
-                startingRoom: 'town-square',
-                maxPlayers: 100,
-                idleTimeout: 30,
-                maxPasswordAttempts: 5
-            },
-            advanced: {
-                debugMode: false,
-                allowRegistration: true,
-                backupInterval: 6,
-                logLevel: 'info'
-            }
-        };
-        
+        const config = await loadMUDConfig();
         res.json({
             success: true,
             config
@@ -57,16 +39,17 @@ router.post('/mud-config', authenticateAdmin, async (req, res) => {
             });
         }
         
-        // Implement actual configuration saving here
-        // This would typically write to a config file or database
-        
-        console.log('New MUD configuration:', newConfig);
-        
-        // Return success
-        res.json({
-            success: true,
-            message: 'Configuration updated successfully'
-        });
+        if (await saveMUDConfig(newConfig)) {
+            res.json({
+                success: true,
+                message: 'Configuration updated successfully'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to save configuration'
+            });
+        }
     } catch (error) {
         console.error('Error updating MUD configuration:', error);
         res.status(500).json({
@@ -116,3 +99,5 @@ router.put('/players/:username', authenticateAdmin, async (req, res) => {
         });
     }
 });
+
+module.exports = router;

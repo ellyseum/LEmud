@@ -38,46 +38,6 @@ const DEFAULT_CONFIG = {
 };
 
 /**
- * Load MUD configuration
- * Creates default config if it doesn't exist
- */
-export function loadMUDConfig() {
-  try {
-    // Create data directory if it doesn't exist
-    const dataDir = path.dirname(CONFIG_FILE);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    
-    // Create default config if file doesn't exist
-    if (!fs.existsSync(CONFIG_FILE)) {
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
-      return DEFAULT_CONFIG;
-    }
-    
-    // Read and parse config
-    const configData = fs.readFileSync(CONFIG_FILE, 'utf8');
-    return JSON.parse(configData);
-  } catch (error) {
-    console.error('Error loading MUD configuration:', error);
-    return DEFAULT_CONFIG;
-  }
-}
-
-/**
- * Save MUD configuration
- */
-function saveMUDConfig(config: any) {
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    return true;
-  } catch (error) {
-    console.error('Error saving MUD configuration:', error);
-    return false;
-  }
-}
-
-/**
  * Get MUD configuration - API handler
  */
 export function getMUDConfig() {
@@ -559,4 +519,43 @@ export function deletePlayer(userManager: UserManager, roomManager: RoomManager,
       res.status(500).json({ success: false, message: 'Failed to delete player' });
     }
   };
+}
+
+/**
+ * Load the MUD configuration.
+ * 
+ * @returns {Promise<MUDConfig>} A Promise that resolves to the MUD configuration object.
+ */
+export async function loadMUDConfig(): Promise<MUDConfig> {
+  try {
+    // Ensure data directory exists
+    const dataDir = path.dirname(CONFIG_FILE);
+    await ensureExists(dataDir, true);
+    
+    // Ensure config file exists
+    const configExists = await ensureExists(CONFIG_FILE, false, JSON.stringify(DEFAULT_CONFIG, null, 2));
+    if (!configExists) {
+      return DEFAULT_CONFIG;
+    }
+    
+    // Read and parse config
+    const configData = await fs.promises.readFile(CONFIG_FILE, 'utf8');
+    return JSON.parse(configData);
+  } catch (error) {
+    console.error('Error loading MUD configuration:', error);
+    return DEFAULT_CONFIG;
+  }
+}
+
+/**
+ * Save MUD configuration
+ */
+export async function saveMUDConfig(config: any): Promise<boolean> {
+  try {
+    await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Error saving MUD configuration:', error);
+    return false;
+  }
 }
