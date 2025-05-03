@@ -6,11 +6,11 @@
   "scripts": {
     "build": "tsc --build --verbose",
     "start": "tsc --sourceMap && node --enable-source-maps dist/server.js",
-    "start:admin": "tsc --sourceMap && node --enable-source-maps dist/server.js -a",
+    "start:admin": "tsc --sourceMap && node --enable-source-maps dist/server.js -af",
     "start:user": "tsc --sourceMap && node --enable-source-maps dist/server.js -u",
     "dev": "ts-node-dev --transpile-only --respawn src/server.ts",
     "watch": "ts-node-dev --transpile-only --respawn --watch src src/server.ts",
-    "watch:admin": "ts-node-dev --transpile-only --respawn --watch src src/server.ts -- -a",
+    "watch:admin": "ts-node-dev --transpile-only --respawn --watch src src/server.ts -- -af",
     "watch:user": "ts-node-dev --transpile-only --respawn --watch src src/server.ts -- -u",
     "validate": "ts-node-dev --transpile-only src/utils/validateFiles.ts"
   },

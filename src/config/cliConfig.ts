@@ -10,6 +10,7 @@ export interface CLIConfig {
   adminSession: boolean;
   userSession: boolean;
   forceSession: string | null; // Add forced user session option
+  force: boolean; // Add force flag
   
   // Security flags
   disableRemoteAdmin: boolean;
@@ -61,6 +62,12 @@ export function parseCommandLineArgs(): CLIConfig {
       type: 'string',
       description: 'Start and immediately connect as a specific user (e.g. --forceSession=asdf)',
       default: null
+    })
+    .option('force', {
+      type: 'boolean',
+      description: 'Force create admin user with default password',
+      default: false,
+      alias: 'f'
     })
     
     // Security flags
@@ -172,6 +179,7 @@ export function parseCommandLineArgs(): CLIConfig {
     adminSession: argv.adminSession,
     userSession: argv.userSession,
     forceSession: argv.forceSession || null, // Add forced user session option
+    force: argv.force, // Add force flag
     disableRemoteAdmin: argv.disableRemoteAdmin,
     dataDir: argv.dataDir,
     roomsFile: argv.roomsFile || path.join(argv.dataDir, 'rooms.json'),

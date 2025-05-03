@@ -1,29 +1,28 @@
-import path from 'path';
 import fs from 'fs';
-import { systemLogger } from './utils/logger';
-import { ConnectedClient, ServerStats } from './types';
-import { UserManager } from './user/userManager';
+import path from 'path';
+import { ClientManager } from './client/clientManager';
 import { CommandHandler } from './command/commandHandler';
-import { StateMachine } from './state/stateMachine';
+import config from './config';
+import { ConsoleManager } from './console/consoleManager';
+import { LocalSessionManager } from './console/localSessionManager';
+import { UserAdminMenu } from './console/userAdminMenu';
+import { UserMonitor } from './console/userMonitor';
 import { RoomManager } from './room/roomManager';
-import { GameTimerManager } from './timer/gameTimerManager';
+import { APIServer } from './server/apiServer';
+import { ShutdownManager } from './server/shutdownManager';
 import { TelnetServer } from './server/telnetServer';
 import { WebSocketServer } from './server/webSocketServer';
-import { APIServer } from './server/apiServer';
-import { ClientManager } from './client/clientManager';
-import { readPasswordFromConsole } from './utils/consoleUtils';
-import { AdminLevel } from './command/commands/adminmanage.command';
-import { getPromptText } from './utils/promptFormatter'; // Import the getPromptText function
+import { AdminSetup } from './setup/adminSetup'; // Import AdminSetup
+import { StateMachine } from './state/stateMachine';
 import { SnakeGameState } from './states/snake-game.state';
 import { WaitingState } from './states/waiting.state';
-import { LocalSessionManager } from './console/localSessionManager';
-import { ConsoleManager } from './console/consoleManager';
-import { UserMonitor } from './console/userMonitor';
-import { UserAdminMenu } from './console/userAdminMenu';
-import { ShutdownManager } from './server/shutdownManager';
+import { GameTimerManager } from './timer/gameTimerManager';
+import { ConnectedClient, ServerStats } from './types';
+import { UserManager } from './user/userManager';
 import { isDebugMode } from './utils/debugUtils'; // Import the isDebugMode function
 import { clearSessionReferenceFile } from './utils/fileUtils'; // Import the clearSessionReferenceFile function
-import config from './config';
+import { systemLogger } from './utils/logger';
+import { getPromptText } from './utils/promptFormatter'; // Import the getPromptText function
 
 export class GameServer {
   private telnetServer: TelnetServer;
@@ -73,13 +72,13 @@ export class GameServer {
 
       // Initialize core components
       this.userManager = UserManager.getInstance();
-      
+
       // Create client manager with empty clients map first
       this.clientManager = ClientManager.getInstance(this.userManager, RoomManager.getInstance(new Map<string, ConnectedClient>()));
-      
+
       // Now that clientManager exists, get roomManager with client map from it
       this.roomManager = RoomManager.getInstance(this.clientManager.getClients());
-      
+
       this.stateMachine = new StateMachine(this.userManager, this.clientManager.getClients());
       this.commandHandler = new CommandHandler(
         this.clientManager.getClients(),
@@ -88,7 +87,7 @@ export class GameServer {
         undefined,
         this.stateMachine
       );
-      
+
       // Set up the state machine and process input function in client manager
       this.clientManager.setStateMachine(this.stateMachine);
       this.clientManager.setProcessInputFunction(this.processInput.bind(this));
@@ -98,7 +97,7 @@ export class GameServer {
 
       // Share the global clients map with SnakeGameState
       SnakeGameState.setGlobalClients(this.clientManager.getClients());
-      
+
       // Share the global clients map with WaitingState
       WaitingState.setGlobalClients(this.clientManager.getClients());
 
@@ -184,7 +183,7 @@ export class GameServer {
     } catch (error) {
       // Log the full error details to system log but not to console
       systemLogger.error('Fatal error during GameServer initialization:', error);
-      
+
       // Re-throw the error to be handled by the main function's catch block
       // This ensures we have a centralized place for user-friendly error messages
       throw error;
@@ -198,10 +197,10 @@ export class GameServer {
   private processInput(client: ConnectedClient, input: string): void {
     // Command tracking for stats
     this.serverStats.totalCommands++;
-    
+
     // Trim whitespace from beginning and end of input
     const trimmedInput = input.trim();
-    
+
     // Check for forced transitions (like transfer requests)
     if (client.stateData.forcedTransition) {
       const forcedState = client.stateData.forcedTransition;
@@ -209,7 +208,7 @@ export class GameServer {
       this.stateMachine.transitionTo(client, forcedState);
       return;
     }
-    
+
     // Different handling based on the current state
     if (client.authenticated && client.user) {
       // Process command from authenticated user in normal game states
@@ -217,7 +216,7 @@ export class GameServer {
     } else {
       // Handle authentication via state machine for non-authenticated users
       this.stateMachine.handleInput(client, trimmedInput);
-      
+
       // Check if client should be disconnected (due to too many failed attempts)
       if (client.stateData.disconnect) {
         setTimeout(() => {
@@ -249,137 +248,20 @@ export class GameServer {
           idleTimeout: 30 // Default idle timeout in minutes
         }
       };
-      
+
       try {
         fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
       } catch (error) {
         systemLogger.error(`Error creating default MUD config: ${error}`);
       }
-      
+
       return defaultConfig;
     }
   }
 
   private async checkAndCreateAdminUser(): Promise<boolean> {
-    systemLogger.info('Checking for admin user...');
-    
-    // Check if admin user exists
-    if (!this.userManager.userExists('admin')) {
-      // These messages should be shown even in silent mode
-      console.log('No admin user found. Creating admin account...');
-      console.log('Server startup will halt until admin setup is complete.');
-      
-      let adminCreated = false;
-      
-      // Keep trying until the admin is successfully created
-      while (!adminCreated) {
-        try {
-          // Use custom password input that masks the password
-          const password = await readPasswordFromConsole('Enter password for new admin user: ');
-          
-          // Validate password - show this message even in silent mode
-          if (password.length < config.MIN_PASSWORD_LENGTH) {
-            console.log(`Password must be at least ${config.MIN_PASSWORD_LENGTH} characters long. Please try again.`);
-            continue; // Skip the rest of this iteration and try again
-          }
-          
-          // Confirm password with masking
-          const confirmPassword = await readPasswordFromConsole('Confirm password: ');
-          
-          // Check if passwords match - show this message even in silent mode
-          if (password !== confirmPassword) {
-            console.log('Passwords do not match. Please try again.');
-            continue; // Skip the rest of this iteration and try again
-          }
-          
-          // Create admin user
-          const success = this.userManager.createUser('admin', password);
-          
-          if (success) {
-            console.log('Admin user created successfully!');
-            
-            // Create admin directory if it doesn't exist
-            const adminDir = path.join(config.DATA_DIR, 'admin');
-            if (!fs.existsSync(adminDir)) {
-              fs.mkdirSync(adminDir, { recursive: true });
-            }
-            
-            // Create admin.json file with admin user as super admin
-            const adminFilePath = path.join(config.DATA_DIR, 'admin.json');
-            const adminData = {
-              admins: [
-                {
-                  username: 'admin',
-                  level: AdminLevel.SUPER,
-                  addedBy: 'system',
-                  addedOn: new Date().toISOString()
-                }
-              ]
-            };
-            
-            try {
-              fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
-              console.log('Admin privileges configured.');
-              systemLogger.info('Admin privileges configured.');
-              adminCreated = true; // Mark as successfully created so we exit the loop
-            } catch (error) {
-              console.log('Error creating admin.json file:', error);
-              console.log('Failed to create admin configuration. Please try again.');
-              systemLogger.error('Error creating admin.json file:', error);
-              systemLogger.warn('Failed to create admin configuration. Please try again.');
-              // Continue the loop to try again
-            }
-          } else {
-            console.log('Error creating admin user. Please try again.');
-            systemLogger.warn('Error creating admin user. Please try again.');
-            // Continue the loop to try again
-          }
-        } catch (error) {
-          console.log('Error during admin setup:', error);
-          console.log('An error occurred during setup. Please try again.');
-          systemLogger.error('Error during admin setup:', error);
-          systemLogger.warn('An error occurred during setup. Please try again.');
-          // Continue the loop to try again
-        }
-      }
-      
-      return true; // Return true since we don't exit the loop until admin is created
-    } else {
-      systemLogger.info('Admin user already exists.');
-      
-      // Ensure admin.json exists with the admin user
-      const adminFilePath = path.join(config.DATA_DIR, 'admin.json');
-      if (!fs.existsSync(adminFilePath)) {
-        systemLogger.warn('Creating admin.json file...');
-        
-        // Create admin directory if it doesn't exist
-        const adminDir = path.join(config.DATA_DIR, 'admin');
-        if (!fs.existsSync(adminDir)) {
-          fs.mkdirSync(adminDir, { recursive: true });
-        }
-        
-        // Create admin.json with admin user as super admin
-        const adminData = {
-          admins: [
-            {
-              username: 'admin',
-              level: AdminLevel.SUPER,
-              addedBy: 'system',
-              addedOn: new Date().toISOString()
-            }
-          ]
-        };
-        
-        try {
-          fs.writeFileSync(adminFilePath, JSON.stringify(adminData, null, 2), 'utf8');
-          systemLogger.info('Admin privileges configured.');
-        } catch (error) {
-          systemLogger.error('Error creating admin.json file:', error);
-          return false;
-        }
-      }
-      return true;
-    }
+    // Use AdminSetup to handle admin creation with force flag support
+    return await AdminSetup.checkAndCreateAdminUser(this.userManager);
   }
 
   public setAdminLoginPending(isPending: boolean): void {
@@ -406,7 +288,7 @@ export class GameServer {
         systemLogger.error('Admin setup failed. Server startup aborted.');
         process.exit(1);
       }
-      
+
       systemLogger.info('Admin user verified. Starting server components...');
 
       // Clear the last-session.md file if debug mode is enabled
@@ -418,31 +300,31 @@ export class GameServer {
 
       // Start the API server first
       await this.apiServer.start();
-      
+
       // Start WebSocket server
       await this.webSocketServer.start();
-      
+
       // Start Telnet server last
       await this.telnetServer.start();
-      
+
       // Start game timer
       this.gameTimerManager.start();
-      
+
       // Initialize the ConsoleManager - this replaces the direct setupKeyListener call
       if (config.CONSOLE_MODE) {
         this.consoleManager.setupKeyListener();
       }
-      
+
       systemLogger.info('Game server started successfully!');
       systemLogger.info(`TELNET: port ${this.telnetServer.getActualPort()}, API/WS: port ${this.apiServer.getActualPort()}`);
       systemLogger.info(`Admin interface: http://localhost:${this.apiServer.getActualPort()}/admin`);
-      
+
       // Setup graceful shutdown handler
       this.setupShutdownHandler();
-      
+
       // Log welcome message with keyboard shortcuts using ConsoleManager
       this.consoleManager.logWelcomeMessage();
-      
+
       return Promise.resolve();
     } catch (error) {
       systemLogger.error('Error starting game server:', error);
@@ -459,37 +341,37 @@ export class GameServer {
 
   public shutdown(): void {
     systemLogger.info('Shutting down server...');
-    
+
     // Stop the game timer system
     this.gameTimerManager.stop();
-    
+
     // Clear the idle check interval
     clearInterval(this.idleCheckInterval);
-    
+
     try {
       // Save the data directly instead of using gameTimerManager.forceSave()
       // This avoids the error with this.roomManager.forceSave not being a function
       this.userManager.forceSave();
       this.roomManager.forceSave();
-      
+
       // Log successful save
       systemLogger.info('Game data saved successfully during shutdown');
     } catch (error) {
       systemLogger.error('Error saving data during shutdown:', error);
     }
-    
+
     // Stop server components
     this.telnetServer.stop();
     this.webSocketServer.stop();
     this.apiServer.stop();
-    
+
     // Reset singleton instances
     GameTimerManager.resetInstance();
-    
+
     // Also reset CommandRegistry instance
     const { CommandRegistry } = require('./command/commandRegistry');
     CommandRegistry.resetInstance();
-    
+
     // Exit the process
     systemLogger.info('Server shutdown complete');
     process.exit(0);
@@ -546,13 +428,13 @@ export class GameServer {
   public async startAutoAdminSession(): Promise<void> {
     // Suppress normal console output for automated sessions
     this.suppressNormalOutput();
-    
+
     // Allow the server a moment to initialize
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // Start an admin session
     this.localSessionManager.startLocalAdminSession(this.telnetServer.getActualPort());
-    
+
     // Set up auto-exit when the session ends
     this.setupAutoExit();
   }
@@ -560,13 +442,13 @@ export class GameServer {
   public async startAutoUserSession(): Promise<void> {
     // Suppress normal console output for automated sessions
     this.suppressNormalOutput();
-    
+
     // Allow the server a moment to initialize
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // Start a local client session
     this.localSessionManager.startLocalClientSession(this.telnetServer.getActualPort());
-    
+
     // Set up auto-exit when the session ends
     this.setupAutoExit();
   }
@@ -602,7 +484,7 @@ export class GameServer {
     const originalEndLocalSession = this.localSessionManager.endLocalSession.bind(this.localSessionManager);
     this.localSessionManager.endLocalSession = () => {
       originalEndLocalSession();
-      
+
       // Give time for cleanup before exit
       setTimeout(() => {
         systemLogger.info('Auto-session ended, shutting down server');
