@@ -1,20 +1,21 @@
+import { RESTRICTED_USERNAMES } from '../config';
 import { ClientState, ClientStateType, ConnectedClient } from '../types';
 import { UserManager } from '../user/userManager';
 import { colorize } from '../utils/colors';
-import { writeToClient } from '../utils/socketWriter';
-import { formatUsername, validateUsername, standardizeUsername } from '../utils/formatters';
-import { RESTRICTED_USERNAMES } from '../config';
+import { createSessionReferenceFile } from '../utils/fileUtils';
+import { formatUsername, standardizeUsername, validateUsername } from '../utils/formatters';
 import { systemLogger } from '../utils/logger';
+import { writeToClient } from '../utils/socketWriter';
 
 export class SignupState implements ClientState {
   name = ClientStateType.SIGNUP;
-  
+
   constructor(private userManager: UserManager) {}
 
   enter(client: ConnectedClient): void {
     // Initialize default state values if needed
     client.stateData.maskInput = false;
-    
+
     // Check if we already have a username (came from login state)
     if (client.stateData.username) {
       // Show the username that will be used
@@ -32,7 +33,7 @@ export class SignupState implements ClientState {
     if (!client.stateData.username) {
       // Validate the username format first
       const validation = validateUsername(input);
-      
+
       if (!validation.isValid) {
         writeToClient(client, colorize(`${validation.message}. Please try again: `, 'red'));
         return;
@@ -40,14 +41,14 @@ export class SignupState implements ClientState {
 
       // Standardize to lowercase for storage and checks
       const standardUsername = standardizeUsername(input);
-      
+
       // Check if the username is in the restricted list
       if (RESTRICTED_USERNAMES.includes(standardUsername)) {
         systemLogger.warn(`Blocked signup attempt with restricted username: ${standardUsername} from ${client.ipAddress || 'unknown IP'}`);
         writeToClient(client, colorize('This username is reserved. Please choose another: ', 'red'));
         return;
       }
-      
+
       if (this.userManager.userExists(standardUsername)) {
         writeToClient(client, colorize('Username already exists. Choose another one: ', 'red'));
       } else if (standardUsername.length < 3) {
@@ -55,7 +56,7 @@ export class SignupState implements ClientState {
       } else {
         client.stateData.username = standardUsername;
         client.stateData.maskInput = true; // Enable password masking
-        
+
         // Display the username in camelcase format
         writeToClient(client, colorize(`Username set to: ${formatUsername(standardUsername)}\r\n`, 'green'));
         writeToClient(client, colorize('Create a password: ', 'green'));
@@ -68,13 +69,15 @@ export class SignupState implements ClientState {
       } else {
         client.stateData.password = input;
         client.stateData.maskInput = false; // Disable masking after password input
-        
+
         // Create the user
         if (this.userManager.createUser(client.stateData.username, client.stateData.password)) {
           const user = this.userManager.getUser(client.stateData.username);
           if (user) {
-            // Set user but DON'T set authenticated flag yet
+            // Set the user but DON'T set authenticated flag yet
             client.user = user;
+            // Generate session reference file for new user in debug mode
+            createSessionReferenceFile(client, client.stateData.username!, false);
             client.stateData.transitionTo = ClientStateType.CONFIRMATION;
           } else {
             writeToClient(client, colorize('Error creating user. Please try again.\r\n', 'red'));
