@@ -1,4 +1,3 @@
-// Configuration file for the MUD game server
 import path from 'path';
 import os from 'os';
 import { parseCommandLineArgs } from './config/cliConfig';
@@ -42,6 +41,7 @@ export const MUD_CONFIG_FILE = cliConfig.mudConfigFile;
 export const AUTO_ADMIN_SESSION = cliConfig.adminSession;
 export const AUTO_USER_SESSION = cliConfig.userSession;
 export const FORCE_SESSION_USERNAME = cliConfig.forceSession;
+export const FORCE = cliConfig.force; // Add force flag
 
 // Direct data
 export const DIRECT_ROOMS_DATA = cliConfig.rooms;
@@ -107,6 +107,7 @@ export default {
   AUTO_ADMIN_SESSION,
   AUTO_USER_SESSION,
   FORCE_SESSION_USERNAME,
+  FORCE,
   DIRECT_ROOMS_DATA,
   DIRECT_USERS_DATA,
   DIRECT_ITEMS_DATA,
