@@ -237,7 +237,7 @@ export class UserAdminMenu {
             }
         }, 1000);
     }
-    
+
     private exitUserAdminMenu(): void {
         console.log('\n\nUser admin menu canceled.');
         
@@ -280,7 +280,7 @@ export class UserAdminMenu {
             this.refreshIntervalId = null;
         }
     }
-    
+
     private handleMenuKeyPress(key: string): void {
         // Handle Ctrl+C - cancel and return to main menu from any submenu
         if (key === '\u0003') {
@@ -306,7 +306,7 @@ export class UserAdminMenu {
                 this.displayUserListMenu();
         }
     }
-    
+
     private handleMainMenuKeyPress(key: string): void {
         const { selectedIndex, currentPage, allUsers } = this.menuState;
         const usersPerPage = 10; // Configurable?
@@ -413,7 +413,7 @@ export class UserAdminMenu {
             this.exitUserAdminMenu();
         }
     }
-    
+
     private handleEditMenuKeyPress(key: string): void {
         if (key === '\u0003' || key.toLowerCase() === 'c') {
             console.log("\nEdit cancelled.");
@@ -528,7 +528,7 @@ export class UserAdminMenu {
         this.menuState.currentPage = currentPage;
         this.displayFlagsMenu(username);
     }
-    
+
     private displayUserListMenu(): void {
         const { selectedIndex, currentPage, allUsers, userPendingDeletion } = this.menuState;
         const usersPerPage = 10; // Configurable?
@@ -1034,6 +1034,11 @@ export class UserAdminMenu {
             this.userManager.updateUser(username, updatePayload);
             console.log(`\nUser ${username} updated successfully.`);
             systemLogger.info(`Admin edited user: ${username}`);
+
+            // Update the user's play time if necessary
+            if (editData.totalPlayTime !== undefined) {
+                this.userManager.updateTotalPlayTime(username, editData.totalPlayTime);
+            }
         } catch (error) {
             console.error(`\nError updating user: ${error}`);
             systemLogger.error(`Admin edit failed for ${username}: ${error}`);

@@ -157,6 +157,9 @@ export interface User {
   };
   joinDate: Date;
   lastLogin: Date;
+  // Play time tracking fields
+  totalPlayTime?: number; // Total play time in seconds
+  lastLoginTime?: Date; // Timestamp of last login for session calculation
   currentRoomId: string; // Add this field to track user's current room
   inventory: {
     items: string[]; // Now stores item instanceIds instead of templateIds

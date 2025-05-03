@@ -1,17 +1,16 @@
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import {
-  GameItem,
-  User,
-  EquipmentSlot,
-  ItemTemplate,
-  ItemInstance,
-} from "../types";
-import { createContextLogger } from "./logger";
-import { parseAndValidateJson } from "./jsonUtils";
-import { loadAndValidateJsonFile } from "./fileUtils";
 import config from "../config";
+import {
+  EquipmentSlot,
+  GameItem,
+  ItemInstance,
+  User
+} from "../types";
+import { loadAndValidateJsonFile } from "./fileUtils";
+import { parseAndValidateJson } from "./jsonUtils";
+import { createContextLogger } from "./logger";
 
 // Create a context-specific logger for ItemManager
 const itemLogger = createContextLogger("ItemManager");
@@ -900,9 +899,7 @@ export class ItemManager {
     return attack;
   }
 
-  /**
-   * Calculate a user's defense value based on their equipment, now using instance IDs
-   */
+  // Calculate a user's defense value based on their constitution and equipped items
   public calculateDefense(user: User): number {
     // Base defense value (could be derived from constitution or other stats)
     let defense = Math.floor(user.constitution / 2);
@@ -918,6 +915,26 @@ export class ItemManager {
     }
 
     return defense;
+  }
+
+  // Method to get the current server time
+  public getCurrentServerTime(): string {
+    return new Date().toISOString();
+  }
+
+  public getEquippedItems(user: User): Map<string, GameItem> {
+    const equippedItems = new Map<string, GameItem>();
+
+    if (user.equipment) {
+      Object.entries(user.equipment).forEach(([slot, instanceId]) => {
+        const template = this.getTemplateForInstance(instanceId);
+        if (template) {
+          equippedItems.set(slot, template);
+        }
+      });
+    }
+
+    return equippedItems;
   }
 
   /**
@@ -962,20 +979,6 @@ export class ItemManager {
   /**
    * Get all items the user currently has equipped, now using instance IDs
    */
-  public getEquippedItems(user: User): Map<string, GameItem> {
-    const equippedItems = new Map<string, GameItem>();
-
-    if (user.equipment) {
-      Object.entries(user.equipment).forEach(([slot, instanceId]) => {
-        const template = this.getTemplateForInstance(instanceId);
-        if (template) {
-          equippedItems.set(slot, template);
-        }
-      });
-    }
-
-    return equippedItems;
-  }
 
   /**
    * Find instances by name for lookups
