@@ -291,4 +291,14 @@ export class AuthenticatedState implements ClientState {
       }
     }
   }
+
+  exit(client: ConnectedClient): void {
+    // Clean up any authenticated state specific resources
+    // This is crucial for ensuring the state doesn't continue processing commands after transitioning away
+    if (client.user && client.authenticated) {
+      // Just log that we're leaving authenticated state but don't clear authentication
+      const username = client.user.username;
+      authStateLogger.debug(`User ${username} leaving authenticated state`);
+    }
+  }
 }

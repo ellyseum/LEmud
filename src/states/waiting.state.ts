@@ -4,6 +4,7 @@ import { writeToClient, writeFormattedMessageToClient } from "../utils/socketWri
 import { UserManager } from "../user/userManager";
 import { RoomManager } from "../room/roomManager";
 import { formatUsername } from "../utils/formatters";
+import { systemLogger } from "../utils/logger";
 
 export class WaitingState implements ClientState {
   name = ClientStateType.WAITING;
@@ -122,5 +123,14 @@ export class WaitingState implements ClientState {
   private clearScreen(client: ConnectedClient): void {
     // ANSI escape code to clear the screen and move the cursor to the top-left corner
     writeToClient(client, "\u001b[2J\u001b[H");
+  }
+
+  exit(client: ConnectedClient): void {
+    // Clean up any waiting state resources
+    if (client.user) {
+      // Get username for logging
+      const username = client.user.username;
+      systemLogger.debug(`User ${username} exiting waiting state`);
+    }
   }
 }

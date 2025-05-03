@@ -219,6 +219,7 @@ export interface ClientState {
   name: ClientStateType;
   enter: (client: ConnectedClient) => void;
   handle: StateHandler;
+  exit: (client: ConnectedClient) => void; // Add exit method to clean up state resources
 }
 
 export interface ServerStats {

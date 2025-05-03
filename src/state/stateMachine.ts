@@ -59,16 +59,19 @@ export class StateMachine {
   }
 
   public transitionTo(client: ConnectedClient, stateName: ClientStateType): void {
-    const state = this.states.get(stateName);
-    if (!state) {
-      stateLogger.error(`State "${stateName}" not found`);
-      return;
+    // Call exit on old state if implemented
+    const oldStateName = client.state;
+    const oldState = this.states.get(oldStateName);
+    if (oldState && typeof oldState.exit === 'function') {
+      oldState.exit(client);
     }
-
-    const oldState = client.state;
+    // Transition to new state
     client.state = stateName;
-    stateLogger.info(`State transition: ${oldState} -> ${stateName}`);
-    state.enter(client);
+    stateLogger.info(`State transition: ${oldStateName} -> ${stateName}`);
+    const state = this.states.get(stateName);
+    if (state) {
+      state.enter(client);
+    }
     
     // Special case for CONNECTING state - automatically transition to LOGIN
     if (stateName === ClientStateType.CONNECTING) {

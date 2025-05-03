@@ -16,4 +16,8 @@ export class ConnectingState implements ClientState {
   handle(client: ConnectedClient, input: string): void {
     // This state automatically transitions to LOGIN in StateMachine
   }
+  
+  exit(client: ConnectedClient): void {
+    // No specific cleanup needed for connecting state
+  }
 }
