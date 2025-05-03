@@ -1,6 +1,7 @@
 {
   "tasks": {
-    "build": "npm install && npm run build"
+    "build": "npm install && npm run build",
+    "test": "ls test"
   },
   "postCreateCommand": "npm install",
   "customizations": {
