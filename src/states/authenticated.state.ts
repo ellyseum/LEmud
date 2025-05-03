@@ -204,6 +204,16 @@ export class AuthenticatedState implements ClientState {
     
     // Broadcast login notification to other players
     this.broadcastLogin(client);
+
+    // Update user's last login time and calculate total play time
+    if (client.user.lastLoginTime) {
+      const now = new Date();
+      const sessionTime = Math.floor((now.getTime() - new Date(client.user.lastLoginTime).getTime()) / 1000);
+      client.user.totalPlayTime = (client.user.totalPlayTime || 0) + sessionTime;
+      this.userManager.updateUserStats(client.user.username, { totalPlayTime: client.user.totalPlayTime });
+    }
+    client.user.lastLoginTime = new Date();
+    this.userManager.updateUserStats(client.user.username, { lastLoginTime: client.user.lastLoginTime });
   }
 
   handle(client: ConnectedClient, input: string): void {

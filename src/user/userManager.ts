@@ -120,6 +120,11 @@ export class UserManager {
       if (!user.inventory.currency) {
         user.inventory.currency = { gold: 0, silver: 0, copper: 0 };
       }
+
+      // Ensure totalPlayTime is properly initialized
+      if (user.totalPlayTime === undefined) {
+        user.totalPlayTime = 0;
+      }
       
       // Add user to collection
       this.users.push(user);
@@ -554,7 +559,8 @@ export class UserManager {
       inventory: {
         items: [],
         currency: { gold: 0, silver: 0, copper: 0 }
-      }
+      },
+      totalPlayTime: 0 // Initialize totalPlayTime to 0
     };
 
     this.users.push(newUser);
@@ -828,5 +834,20 @@ export class UserManager {
    */
   public updateUserPassword(username: string, newPassword: string): boolean {
     return this.changeUserPassword(username, newPassword);
+  }
+
+  /**
+   * Updates the total play time for a user.
+   * @param username The username of the user to update
+   * @param playTime The play time to add in milliseconds
+   * @returns True if the play time was updated, false if user not found
+   */
+  public updateTotalPlayTime(username: string, playTime: number): boolean {
+    const user = this.getUser(username);
+    if (!user) return false;
+
+    user.totalPlayTime = (user.totalPlayTime || 0) + playTime;
+    this.saveUsers();
+    return true;
   }
 }

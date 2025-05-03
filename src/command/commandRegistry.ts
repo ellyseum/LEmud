@@ -51,6 +51,8 @@ import { ResetNameCommand } from './commands/resetname.command'; // Import our n
 import { RepairCommand } from './commands/repair.command'; // Import our new Repair command
 import { BugReportCommand } from './commands/bugreport.command';
 import { ChangePasswordCommand } from './commands/changePassword.command'; // Import our new ChangePassword command
+import { PlayedCommand } from './commands/played.command'; // Import our new Played command
+import { TimeCommand } from './commands/time.command'; // Import our new Time command
 
 export class CommandRegistry {
   private commands: Map<string, Command>;
@@ -143,7 +145,9 @@ export class CommandRegistry {
       new ResetNameCommand(), // Add our new ResetName command
       new RepairCommand(), // Add our new Repair command
       new BugReportCommand(this.userManager), // Add our new Bug Report command
-      new ChangePasswordCommand(this.userManager) // Add our new ChangePassword command
+      new ChangePasswordCommand(this.userManager), // Add our new ChangePassword command
+      new PlayedCommand(this.userManager), // Add our new Played command
+      new TimeCommand() // Add our new Time command
     ];
     
     // Register all commands
