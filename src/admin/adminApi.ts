@@ -37,6 +37,36 @@ const DEFAULT_CONFIG = {
   }
 };
 
+// Define MUDConfig type matching DEFAULT_CONFIG structure
+export interface MUDConfig {
+  dataFiles: { players: string; rooms: string; items: string; npcs: string; };
+  game: { startingRoom: string; maxPlayers: number; idleTimeout: number; maxPasswordAttempts: number; };
+  advanced: { debugMode: boolean; allowRegistration: boolean; backupInterval: number; logLevel: string; };
+}
+
+/**
+ * Ensure a file or directory exists. If not, create it.
+ * @returns true if target existed, false if created
+ */
+async function ensureExists(targetPath: string, isDir: boolean, defaultContent?: string): Promise<boolean> {
+  try {
+    const stat = await fs.promises.stat(targetPath);
+    if (isDir && !stat.isDirectory()) throw new Error(`${targetPath} is not a directory`);
+    if (!isDir && !stat.isFile()) throw new Error(`${targetPath} is not a file`);
+    return true;
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      if (isDir) {
+        await fs.promises.mkdir(targetPath, { recursive: true });
+      } else {
+        await fs.promises.writeFile(targetPath, defaultContent ?? '');
+      }
+      return false;
+    }
+    throw error;
+  }
+}
+
 /**
  * Get MUD configuration - API handler
  */
@@ -59,7 +89,7 @@ export function getMUDConfig() {
  * Update MUD configuration - API handler
  */
 export function updateMUDConfig() {
-  return (req: Request, res: Response) => {
+  return async (req: Request, res: Response) => {
     try {
       const newConfig = req.body;
       
@@ -72,7 +102,7 @@ export function updateMUDConfig() {
       }
       
       // Save the configuration
-      if (saveMUDConfig(newConfig)) {
+      if (await saveMUDConfig(newConfig)) {
         res.json({
           success: true,
           message: 'Configuration updated successfully'
