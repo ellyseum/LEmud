@@ -90,4 +90,12 @@ export class SignupState implements ClientState {
       }
     }
   }
+
+  exit(client: ConnectedClient): void {
+    // Clean up any signup state resources
+    if (client.stateData.maskInput) {
+      client.stateData.maskInput = false;
+      client.connection.setMaskInput(false); // Disable masking on exit
+    }
+  }
 }

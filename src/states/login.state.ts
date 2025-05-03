@@ -20,6 +20,14 @@ export class LoginState implements ClientState {
     writeToClient(client, colorize('Enter your username (or "new" to sign up): ', 'cyan'));
   }
 
+  exit(client: ConnectedClient): void {
+    // Clean up any login state resources
+    if (client.stateData.maskInput) {
+      client.stateData.maskInput = false;
+      client.connection.setMaskInput(false); // Disable masking on exit
+    }
+  }
+
   handle(client: ConnectedClient, input: string): void {
     // Handle transfer request response
     if (client.stateData.awaitingTransferRequest) {

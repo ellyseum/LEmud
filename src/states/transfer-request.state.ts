@@ -42,4 +42,10 @@ export class TransferRequestState implements ClientState {
       this.userManager.resolveSessionTransfer(client.user.username, false);
     }
   }
+
+  exit(client: ConnectedClient): void {
+    // Clean up transfer request state
+    delete client.stateData.transferClient;
+    delete client.stateData.interruptedBy;
+  }
 }

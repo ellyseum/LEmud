@@ -582,4 +582,17 @@ export class SnakeGameState implements ClientState {
       colorize("\r\nPress X to return to the game.", "cyan") + "\r\n"
     );
   }
+
+  exit(client: ConnectedClient): void {
+    // Clean up game loop
+    if (this.gameLoopId) {
+      clearInterval(this.gameLoopId);
+      this.gameLoopId = null;
+    }
+    
+    // Clear game state
+    this.gameOver = true;
+    this.snake = [];
+    this.inputQueue = [];
+  }
 }

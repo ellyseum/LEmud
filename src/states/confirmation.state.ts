@@ -49,4 +49,8 @@ export class ConfirmationState implements ClientState {
       writeToClient(client, colorize('Invalid command. Please type "confirm" or "cancel": ', 'red'));
     }
   }
+
+  exit(client: ConnectedClient): void {
+    // No specific cleanup needed for confirmation state
+  }
 }

@@ -9,6 +9,7 @@ export interface ClientState {
   name: ClientStateType;
   enter(client: ConnectedClient): void;
   handle(client: ConnectedClient, data: string): void;
+  exit(client: ConnectedClient): void;
 }
 
 export interface ConnectedClient {

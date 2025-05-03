@@ -254,8 +254,11 @@ export class ClientManager {
       client.isTyping = true;
     }
   
-    // If the client is in the Snake game state, route all input to the state machine
-    if (client.state === ClientStateType.SNAKE_GAME) {
+    // If the client is in a special state (Snake game or Waiting), route all input to the state machine
+    if (
+      client.state === ClientStateType.SNAKE_GAME ||
+      client.state === ClientStateType.WAITING
+    ) {
       this.stateMachine.handleInput(client, data);
       return; // Prevent further processing
     }
