@@ -1,17 +1,16 @@
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import {
-  GameItem,
-  User,
-  EquipmentSlot,
-  ItemTemplate,
-  ItemInstance,
-} from "../types";
-import { createContextLogger } from "./logger";
-import { parseAndValidateJson } from "./jsonUtils";
-import { loadAndValidateJsonFile } from "./fileUtils";
 import config from "../config";
+import {
+  EquipmentSlot,
+  GameItem,
+  ItemInstance,
+  User
+} from "../types";
+import { loadAndValidateJsonFile } from "./fileUtils";
+import { parseAndValidateJson } from "./jsonUtils";
+import { createContextLogger } from "./logger";
 
 // Create a context-specific logger for ItemManager
 const itemLogger = createContextLogger("ItemManager");
@@ -900,7 +899,7 @@ export class ItemManager {
     return attack;
   }
 
-  // Method to get the user's total play time
+  // Calculate a user's defense value based on their constitution and equipped items
   public calculateDefense(user: User): number {
     // Base defense value (could be derived from constitution or other stats)
     let defense = Math.floor(user.constitution / 2);
@@ -923,9 +922,6 @@ export class ItemManager {
     return new Date().toISOString();
   }
 
-  // Method to get the total play time for a user
-
-  // Method to update the user's play time
   public getEquippedItems(user: User): Map<string, GameItem> {
     const equippedItems = new Map<string, GameItem>();
 
@@ -939,38 +935,6 @@ export class ItemManager {
     }
 
     return equippedItems;
-  }
-
-  // Method to update the total play time for a user
-  public getUserPlayTime(username: string): number | null {
-    const user = this.getUserByUsername(username);
-    if (user && user.totalPlayTime !== undefined) {
-      return user.totalPlayTime;
-    }
-    return null;
-  }
-
-  // Helper method to get user by username (assuming this method exists)
-  public updateUserPlayTime(username: string): void {
-    const user = this.getUserByUsername(username);
-    if (user) {
-      const now = new Date();
-      if (user.lastLoginTime) {
-        const sessionTime = (now.getTime() - new Date(user.lastLoginTime).getTime()) / 1000;
-        user.totalPlayTime = (user.totalPlayTime || 0) + sessionTime;
-      }
-      user.lastLoginTime = now;
-    }
-  }
-
-  // Placeholder method to retrieve a user by username
-
-  /**
-   * Calculate a user's defense value based on their equipment, now using instance IDs
-   */
-  private getUserByUsername(username: string): User | null {
-    // Implementation to fetch user by username
-    return null; // Placeholder implementation
   }
 
   /**
@@ -1015,9 +979,6 @@ export class ItemManager {
   /**
    * Get all items the user currently has equipped, now using instance IDs
    */
-  public updateTotalPlayTime(username: string): void {
-    this.updateUserPlayTime(username);
-  }
 
   /**
    * Find instances by name for lookups

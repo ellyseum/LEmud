@@ -46,6 +46,12 @@ interface PendingClearOperation {
   timestamp: number; // Used to expire old operations
 }
 
+// Interface for tracking delete operations
+interface PendingDeleteOperation {
+  reportId: string;
+  timestamp: number; // Used to expire old operations
+}
+
 export class BugReportCommand implements Command {
   name = "bugreport";
   description =
@@ -60,10 +66,15 @@ export class BugReportCommand implements Command {
   // Map to store pending clear operations by username
   private pendingClearOperations: Map<string, PendingClearOperation> =
     new Map();
+  // Map to store pending delete operations by username
+  private pendingDeleteOperations: Map<string, PendingDeleteOperation> =
+    new Map();
   // Timeout for pending reports in milliseconds (10 minutes)
   private readonly PENDING_REPORT_TIMEOUT = 10 * 60 * 1000;
   // Timeout for pending clear operations in milliseconds (2 minutes)
   private readonly PENDING_CLEAR_TIMEOUT = 2 * 60 * 1000;
+  // Timeout for pending delete operations in milliseconds (2 minutes)
+  private readonly PENDING_DELETE_TIMEOUT = 2 * 60 * 1000;
 
   constructor(userManager: UserManager) {
     this.userManager = userManager;
@@ -148,6 +159,16 @@ export class BugReportCommand implements Command {
     ] of this.pendingClearOperations.entries()) {
       if (now - clearOperation.timestamp > this.PENDING_CLEAR_TIMEOUT) {
         this.pendingClearOperations.delete(username);
+      }
+    }
+
+    // Clean up expired delete operations
+    for (const [
+      username,
+      deleteOperation,
+    ] of this.pendingDeleteOperations.entries()) {
+      if (now - deleteOperation.timestamp > this.PENDING_DELETE_TIMEOUT) {
+        this.pendingDeleteOperations.delete(username);
       }
     }
   }
@@ -247,7 +268,7 @@ export class BugReportCommand implements Command {
     if (
       !this.isAdmin(client.user.username) &&
       action &&
-      ["list", "solve", "reopen", "clear"].includes(action)
+      ["solve", "reopen", "clear"].includes(action)
     ) {
       writeToClient(
         client,
@@ -272,6 +293,13 @@ export class BugReportCommand implements Command {
         const pendingReport = this.pendingReports.get(client.user.username)!;
         this.createBugReport(client, pendingReport.message);
         this.pendingReports.delete(client.user.username);
+      } else if (this.pendingDeleteOperations.has(client.user.username)) {
+        // Handle delete confirmation
+        const pendingDelete = this.pendingDeleteOperations.get(
+          client.user.username
+        )!;
+        this.deleteBugReport(client, pendingDelete.reportId);
+        this.pendingDeleteOperations.delete(client.user.username);
       } else {
         writeToClient(
           client,
@@ -292,6 +320,16 @@ export class BugReportCommand implements Command {
         return;
       }
 
+      // Check if there's a pending delete operation to cancel
+      if (this.pendingDeleteOperations.has(client.user.username)) {
+        this.pendingDeleteOperations.delete(client.user.username);
+        writeToClient(
+          client,
+          colorize("Delete operation cancelled.\r\n", "yellow")
+        );
+        return;
+      }
+
       // Check if there's a pending clear operation to cancel
       if (this.pendingClearOperations.has(client.user.username)) {
         this.pendingClearOperations.delete(client.user.username);
@@ -302,6 +340,13 @@ export class BugReportCommand implements Command {
         return;
       }
 
+      // Check if the user is trying to cancel a specific bug report
+      const cancelId = parts[1];
+      if (cancelId) {
+        this.cancelBugReport(client, cancelId);
+        return;
+      }
+
       writeToClient(
         client,
         colorize(
@@ -309,6 +354,32 @@ export class BugReportCommand implements Command {
           "yellow"
         )
       );
+      return;
+    }
+
+    // Handle user commands for listing and deleting bugs
+    if (action === "list") {
+      const filter = parts[1]?.toLowerCase() || "all";
+      this.listUserBugReports(client, filter);
+      return;
+    }
+
+    if (action === "delete") {
+      const deleteId = parts[1];
+      if (!deleteId) {
+        writeToClient(
+          client,
+          colorize("Error: Missing bug report ID to delete.\r\n", "red")
+        );
+        writeToClient(
+          client,
+          colorize("Usage: bugreport delete <id>\r\n", "yellow")
+        );
+        return;
+      }
+
+      // Initiate the delete operation
+      this.initiateDeleteOperation(client, deleteId);
       return;
     }
 
@@ -599,6 +670,178 @@ export class BugReportCommand implements Command {
     writeToClient(client, colorize("=======================\r\n", "magenta"));
   }
 
+  private listUserBugReports(client: ConnectedClient, filter: string): void {
+    if (!client.user) return;
+
+    // Store username to use in filter callbacks
+    const username = client.user.username;
+    let filteredReports: BugReport[];
+
+    switch (filter) {
+      case "open":
+        filteredReports = this.bugReports.filter(
+          (report) => report.user === username && !report.solved
+        );
+        break;
+      case "closed":
+        filteredReports = this.bugReports.filter(
+          (report) => report.user === username && report.solved
+        );
+        break;
+      case "all":
+      default:
+        filteredReports = this.bugReports.filter(
+          (report) => report.user === username
+        );
+        break;
+    }
+
+    if (filteredReports.length === 0) {
+      writeToClient(
+        client,
+        colorize(`No ${filter} bug reports found.\r\n`, "yellow")
+      );
+      return;
+    }
+
+    // Sort by date (newest first)
+    filteredReports.sort(
+      (a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime()
+    );
+
+    writeToClient(
+      client,
+      colorize(`=== Your ${filter.toUpperCase()} Bug Reports ===\r\n`, "magenta")
+    );
+
+    filteredReports.forEach((report) => {
+      const reportDate = new Date(report.datetime).toLocaleString();
+      const statusColor = report.solved ? "green" : "red";
+      const statusText = report.solved ? "SOLVED" : "OPEN";
+
+      writeToClient(client, colorize(`ID: ${report.id}\r\n`, "cyan"));
+      writeToClient(
+        client,
+        colorize(`Status: `, "white") +
+          colorize(`${statusText}\r\n`, statusColor)
+      );
+      writeToClient(
+        client,
+        colorize(`From: ${report.user} on ${reportDate}\r\n`, "white")
+      );
+      writeToClient(client, colorize(`Report: ${report.report}\r\n`, "white"));
+
+      if (report.solved && report.solvedBy && report.solvedOn) {
+        const solvedDate = new Date(report.solvedOn).toLocaleString();
+        writeToClient(
+          client,
+          colorize(
+            `Solved by: ${report.solvedBy} on ${solvedDate}\r\n`,
+            "green"
+          )
+        );
+        if (report.solvedReason) {
+          writeToClient(
+            client,
+            colorize(`Reason: ${report.solvedReason}\r\n`, "green")
+          );
+        }
+      }
+
+      writeToClient(
+        client,
+        colorize(
+          `Logs: ${report.logs.raw || "N/A"}, ${report.logs.user || "N/A"}\r\n`,
+          "yellow"
+        )
+      );
+      writeToClient(
+        client,
+        colorize("------------------------\r\n", "magenta")
+      );
+    });
+
+    writeToClient(client, colorize("=======================\r\n", "magenta"));
+  }
+
+  private cancelBugReport(client: ConnectedClient, reportId: string): void {
+    if (!client.user) return;
+
+    const username = client.user.username;
+    const isAdmin = this.isAdmin(username);
+
+    // For regular users: Find a report that belongs to them
+    // For admins: Find any report by ID
+    const reportIndex = isAdmin
+      ? this.bugReports.findIndex((report) => report.id === reportId)
+      : this.bugReports.findIndex(
+          (report) => report.id === reportId && report.user === username
+        );
+
+    if (reportIndex === -1) {
+      writeToClient(
+        client,
+        colorize(
+          `Error: Bug report with ID "${reportId}" not found${
+            !isAdmin ? " or you are not the owner" : ""
+          }.\r\n`,
+          "red"
+        )
+      );
+      return;
+    }
+
+    const report = this.bugReports[reportIndex];
+
+    // Regular users can only cancel unsolved reports
+    if (!isAdmin && report.solved) {
+      writeToClient(
+        client,
+        colorize(
+          `Error: Bug report "${reportId}" has already been solved and cannot be canceled.\r\n`,
+          "red"
+        )
+      );
+      return;
+    }
+
+    // Remove the report
+    this.bugReports.splice(reportIndex, 1);
+    this.saveBugReports();
+
+    bugReportLogger.info(
+      `${isAdmin ? "Admin" : "User"} ${username} canceled bug report ${reportId}${
+        isAdmin && report.user !== username
+          ? ` (originally reported by ${report.user})`
+          : ""
+      }`
+    );
+
+    writeToClient(
+      client,
+      colorize(`Bug report "${reportId}" has been canceled.\r\n`, "green")
+    );
+
+    // Notify the user who submitted the report if they're online and not the one who canceled it
+    if (isAdmin && report.user !== username) {
+      const reporterClient = this.userManager.getActiveUserSession(
+        report.user
+      );
+      if (reporterClient) {
+        writeToClient(
+          reporterClient,
+          colorize(
+            `\r\nAdmin ${username} has canceled your bug report: "${report.report.substring(
+              0,
+              50
+            )}${report.report.length > 50 ? "..." : ""}"\r\n`,
+            "yellow"
+          )
+        );
+      }
+    }
+  }
+
   private solveBugReport(
     client: ConnectedClient,
     reportId: string,
@@ -739,6 +982,170 @@ export class BugReportCommand implements Command {
     }
   }
 
+  /**
+   * Initiate bug report delete operation
+   */
+  private initiateDeleteOperation(
+    client: ConnectedClient,
+    reportId: string
+  ): void {
+    if (!client.user) return;
+
+    const username = client.user.username;
+    const isAdmin = this.isAdmin(username);
+
+    // Locate the report
+    const reportIndex = this.bugReports.findIndex(
+      (report) => report.id === reportId
+    );
+
+    if (reportIndex === -1) {
+      writeToClient(
+        client,
+        colorize(
+          `Error: Bug report with ID "${reportId}" not found.\r\n`,
+          "red"
+        )
+      );
+      return;
+    }
+
+    const report = this.bugReports[reportIndex];
+
+    // Check permissions: Users can only delete their own OPEN bug reports
+    if (!isAdmin && (report.user !== username || report.solved)) {
+      writeToClient(
+        client,
+        colorize(
+          `Error: You can only delete your own open bug reports.\r\n`,
+          "red"
+        )
+      );
+      return;
+    }
+
+    // Store the pending delete operation
+    this.pendingDeleteOperations.set(client.user.username, {
+      reportId,
+      timestamp: Date.now(),
+    });
+
+    // Show confirmation message
+    writeToClient(
+      client,
+      colorize("\r\n=== Delete Bug Report Confirmation ===\r\n", "magenta")
+    );
+    writeToClient(
+      client,
+      colorize(
+        `You are about to delete the following bug report:\r\n`,
+        "yellow"
+      )
+    );
+    writeToClient(client, colorize(`ID: ${report.id}\r\n`, "cyan"));
+    writeToClient(
+      client,
+      colorize(`Report: "${report.report}"\r\n\r\n`, "white")
+    );
+    writeToClient(
+      client,
+      colorize(`To confirm and delete this report, type: `, "yellow")
+    );
+    writeToClient(client, colorize(`bugreport confirm\r\n`, "green"));
+    writeToClient(
+      client,
+      colorize(`To cancel this deletion, type: `, "yellow")
+    );
+    writeToClient(client, colorize(`bugreport cancel\r\n`, "red"));
+    writeToClient(
+      client,
+      colorize(
+        `Note: This delete operation will expire in 2 minutes if not confirmed.\r\n`,
+        "cyan"
+      )
+    );
+    writeToClient(
+      client,
+      colorize("===============================\r\n", "magenta")
+    );
+  }
+
+  /**
+   * Delete a bug report
+   */
+  private deleteBugReport(client: ConnectedClient, reportId: string): void {
+    if (!client.user) return;
+
+    const username = client.user.username;
+    const isAdmin = this.isAdmin(username);
+
+    // Find the report
+    const reportIndex = this.bugReports.findIndex(
+      (report) => report.id === reportId
+    );
+
+    if (reportIndex === -1) {
+      writeToClient(
+        client,
+        colorize(
+          `Error: Bug report with ID "${reportId}" not found.\r\n`,
+          "red"
+        )
+      );
+      return;
+    }
+
+    const report = this.bugReports[reportIndex];
+
+    // Double-check permissions
+    if (!isAdmin && (report.user !== username || report.solved)) {
+      writeToClient(
+        client,
+        colorize(
+          `Error: You can only delete your own open bug reports.\r\n`,
+          "red"
+        )
+      );
+      return;
+    }
+
+    // Remove the report
+    this.bugReports.splice(reportIndex, 1);
+    this.saveBugReports();
+
+    bugReportLogger.info(
+      `${isAdmin ? "Admin" : "User"} ${username} deleted bug report ${reportId}${
+        isAdmin && report.user !== username
+          ? ` (originally reported by ${report.user})`
+          : ""
+      }`
+    );
+
+    writeToClient(
+      client,
+      colorize(`Bug report "${reportId}" has been deleted.\r\n`, "green")
+    );
+
+    // Notify the user who submitted the report if they're online and not the one who deleted it
+    if (isAdmin && report.user !== username) {
+      const reporterClient = this.userManager.getActiveUserSession(
+        report.user
+      );
+      if (reporterClient) {
+        writeToClient(
+          reporterClient,
+          colorize(
+            `\r\nAdmin ${username} has deleted your bug report: "${report.report.substring(
+              0,
+              50
+            )}${report.report.length > 50 ? "..." : ""}"\r\n`,
+            "yellow"
+          )
+        );
+      }
+    }
+  }
+
   private showHelp(client: ConnectedClient): void {
     writeToClient(client, colorize("=== Bug Report System ===\r\n", "magenta"));
     writeToClient(client, colorize("Usage:\r\n", "yellow"));
@@ -760,6 +1167,20 @@ export class BugReportCommand implements Command {
       client,
       colorize(
         "  bugreport cancel - Cancel your pending bug report\r\n",
+        "cyan"
+      )
+    );
+    writeToClient(
+      client,
+      colorize(
+        "  bugreport list [filter] - List your bug reports (filter: open, closed, all)\r\n",
+        "cyan"
+      )
+    );
+    writeToClient(
+      client,
+      colorize(
+        "  bugreport delete <id> - Delete your own open bug report (requires confirmation)\r\n",
         "cyan"
       )
     );
@@ -819,6 +1240,13 @@ export class BugReportCommand implements Command {
     writeToClient(
       client,
       colorize(
+        "  bugreport delete <id> - Delete any bug report\r\n",
+        "cyan"
+      )
+    );
+    writeToClient(
+      client,
+      colorize(
         "  bugreport clear - Clear all bug reports (requires confirmation)\r\n",
         "cyan"
       )
@@ -839,6 +1267,13 @@ export class BugReportCommand implements Command {
       client,
       colorize(
         "  bugreport reopen dd5b7291-8976-4017-bd25-422a655d274e\r\n",
+        "white"
+      )
+    );
+    writeToClient(
+      client,
+      colorize(
+        "  bugreport delete dd5b7291-8976-4017-bd25-422a655d274e\r\n",
         "white"
       )
     );
