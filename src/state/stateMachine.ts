@@ -8,6 +8,7 @@ import { AuthenticatedState } from '../states/authenticated.state';
 import { TransferRequestState } from '../states/transfer-request.state';
 import { SnakeGameState } from '../states/snake-game.state';
 import { WaitingState } from '../states/waiting.state';
+import { ChangePasswordState } from '../states/changePassword.state';
 import { systemLogger, createContextLogger } from '../utils/logger';
 
 // Create a context-specific logger for StateMachine
@@ -29,6 +30,7 @@ export class StateMachine {
   private transferRequestState: TransferRequestState;
   private snakeGameState: SnakeGameState;
   private waitingState: WaitingState;
+  private changePasswordState: ChangePasswordState;
 
   constructor(userManager: UserManager, private clients: Map<string, ConnectedClient>) {
     this.userManager = userManager;
@@ -42,6 +44,7 @@ export class StateMachine {
     this.transferRequestState = new TransferRequestState(userManager);
     this.snakeGameState = new SnakeGameState(); // Initialize snake game state
     this.waitingState = new WaitingState(); // Initialize waiting state
+    this.changePasswordState = new ChangePasswordState(userManager); // Initialize change password state
     
     // Register states
     this.registerState(this.connectingState);
@@ -52,6 +55,7 @@ export class StateMachine {
     this.registerState(this.transferRequestState);
     this.registerState(this.snakeGameState); // Register snake game state
     this.registerState(this.waitingState); // Register waiting state
+    this.registerState(this.changePasswordState); // Register change password state
   }
 
   public registerState(state: ClientState): void {
