@@ -1,10 +1,10 @@
-import { ClientState, ClientStateType, ConnectedClient } from "../types";
-import { colorize } from "../utils/colors";
-import { writeToClient, writeFormattedMessageToClient } from "../utils/socketWriter";
-import { UserManager } from "../user/userManager";
 import { RoomManager } from "../room/roomManager";
+import { ClientState, ClientStateType, ConnectedClient } from "../types";
+import { UserManager } from "../user/userManager";
+import { colorize } from "../utils/colors";
 import { formatUsername } from "../utils/formatters";
 import { systemLogger } from "../utils/logger";
+import { writeFormattedMessageToClient, writeToClient } from "../utils/socketWriter";
 
 export class WaitingState implements ClientState {
   name = ClientStateType.WAITING;
@@ -59,12 +59,12 @@ export class WaitingState implements ClientState {
 
     // Display waiting message
     this.clearScreen(client);
-    writeToClient(client, colorize('Waiting. Press SPACE to end.\r\n', 'cyan'));
+    writeToClient(client, colorize('Waiting. Press X to end.\r\n', 'cyan'));
   }
 
   handle(client: ConnectedClient, input: string): void {
-    // Check for spacebar
-    if (input === ' ') {
+    // Check for 'X' to end waiting
+    if (input.toLowerCase() === 'x') {
       this.endWaiting(client);
       return;
     }
@@ -76,7 +76,7 @@ export class WaitingState implements ClientState {
     }
 
     // Any other input just shows the waiting message again
-    writeToClient(client, colorize('Waiting. Press SPACE to end.\r\n', 'cyan'));
+    writeToClient(client, colorize('Waiting. Press X to end.\r\n', 'cyan'));
   }
 
   private endWaiting(client: ConnectedClient): void {
