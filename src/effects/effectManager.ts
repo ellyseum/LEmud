@@ -431,6 +431,7 @@ export class EffectManager extends EventEmitter {
         // Extract damage and healing amounts
         const damageAmount = effect.payload.damagePerTick ?? effect.payload.damageAmount ?? 0;
         const healAmount = effect.payload.healPerTick ?? effect.payload.healAmount ?? 0;
+        const manaCost = effect.payload.manaCost ?? 0;
 
         if (isPlayer) {
             // Handle player effects
@@ -490,6 +491,16 @@ export class EffectManager extends EventEmitter {
                     // Notify room
                     this.notifyRoom(targetId, `${client.user.username} regains consciousness!`);
                 }
+            }
+
+            // Deduct mana cost
+            if (manaCost > 0) {
+                const oldMana = client.user.mana;
+                const newMana = Math.max(oldMana - manaCost, 0);
+                client.user.mana = newMana;
+                this.userManager.updateUserStats(targetId, { mana: newMana });
+
+                message += `\r\n\x1b[1;34mYou spend ${manaCost} mana to cast ${effect.name}.\x1b[0m `;
             }
 
             // Send message to player
