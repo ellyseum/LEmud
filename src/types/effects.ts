@@ -12,6 +12,8 @@ export enum EffectType {
   DAMAGE_OVER_TIME = 'damage_over_time',
   HEAL_OVER_TIME = 'heal_over_time',
   MOVEMENT_BLOCK = 'movement_block',
+  FIREBALL = 'fireball',
+  HEAL = 'heal',
   // Add more effect types as needed
 }
 
@@ -43,6 +45,7 @@ export interface EffectPayload {
   metadata?: {                    // Custom metadata for specialized effects
     [key: string]: any;           // Custom data associated with the effect
   };
+  manaCost?: number;              // Mana cost for spells and abilities
   // Add more payload options as needed
 }
 
@@ -86,5 +89,7 @@ export const effectStackingRules: { [key in EffectType]?: StackingBehavior } = {
   [EffectType.DAMAGE_OVER_TIME]: StackingBehavior.STACK_INTENSITY,
   [EffectType.HEAL_OVER_TIME]: StackingBehavior.STACK_INTENSITY,
   [EffectType.MOVEMENT_BLOCK]: StackingBehavior.REFRESH,
+  [EffectType.FIREBALL]: StackingBehavior.REFRESH,
+  [EffectType.HEAL]: StackingBehavior.REFRESH,
   // Default: REFRESH if not specified in this map
 };

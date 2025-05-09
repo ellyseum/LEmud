@@ -8,6 +8,8 @@ import { formatUsername } from '../utils/formatters';
 import { CombatSystem } from './combatSystem';
 import { ItemManager } from '../utils/itemManager';
 import { systemLogger, createContextLogger, createMechanicsLogger } from '../utils/logger';
+import { EffectManager } from '../effects/effectManager';
+import { EffectType, EffectPayload } from '../types/effects';
 
 // Create a context-specific logger for Combat
 const combatLogger = createMechanicsLogger('Combat');
@@ -20,6 +22,8 @@ export class Combat {
   // Add timestamp to track last activity
   lastActivityTime: number = Date.now();
   private itemManager: ItemManager;
+  private effectManager: EffectManager;
+  private spellCooldowns: Map<string, number> = new Map(); // Track spell cooldowns
 
   constructor(
     public player: ConnectedClient,
@@ -28,6 +32,7 @@ export class Combat {
     private combatSystem: CombatSystem
   ) {
     this.itemManager = ItemManager.getInstance();
+    this.effectManager = EffectManager.getInstance(userManager, roomManager);
   }
 
   addTarget(target: CombatEntity): void {
@@ -722,5 +727,97 @@ export class Combat {
   private isNpcInRoomByTemplateId(room: any, templateId: string): boolean {
     const npcs = Array.from(room.npcs.values()) as any[];
     return npcs.some(npc => npc.templateId === templateId);
+  }
+
+  /**
+   * Process spell casting for a player
+   */
+  public processSpell(player: ConnectedClient, spellType: EffectType, target: CombatEntity): void {
+    if (!player.user) return;
+
+    // Check if the spell is on cooldown
+    const cooldownKey = `${player.user.username}_${spellType}`;
+    const currentRound = this.currentRound;
+    if (this.spellCooldowns.has(cooldownKey) && this.spellCooldowns.get(cooldownKey)! > currentRound) {
+      writeFormattedMessageToClient(
+        player,
+        colorize(`You cannot cast ${spellType} yet. It's still on cooldown.\r\n`, 'yellow')
+      );
+      return;
+    }
+
+    // Check if the player has enough mana
+    const spellManaCost = this.getSpellManaCost(spellType);
+    if (player.user.mana < spellManaCost) {
+      writeFormattedMessageToClient(
+        player,
+        colorize(`You do not have enough mana to cast ${spellType}.\r\n`, 'yellow')
+      );
+      return;
+    }
+
+    // Deduct mana cost
+    player.user.mana -= spellManaCost;
+    this.userManager.updateUserStats(player.user.username, { mana: player.user.mana });
+
+    // Apply the spell effect
+    const effectPayload: EffectPayload = this.getSpellEffectPayload(spellType);
+    this.effectManager.addEffect(target.getName(), target.isUser(), {
+      type: spellType,
+      name: spellType,
+      description: `A ${spellType} spell effect.`,
+      durationTicks: 1,
+      tickInterval: 1,
+      payload: effectPayload,
+      targetId: target.getName(),
+      isPlayerEffect: target.isUser(),
+    });
+
+    // Set the cooldown for the spell
+    const cooldownDuration = 1; // 1 round cooldown
+    this.spellCooldowns.set(cooldownKey, currentRound + cooldownDuration);
+
+    // Notify the player
+    writeFormattedMessageToClient(
+      player,
+      colorize(`You cast ${spellType} on ${target.getName()}.\r\n`, 'green')
+    );
+
+    // Broadcast to others in the room
+    const username = formatUsername(player.user.username);
+    this.combatSystem.broadcastRoomCombatMessage(
+      player.user.currentRoomId!,
+      `${username} casts ${spellType} on ${target.getName()}.\r\n`,
+      'green' as ColorType,
+      player.user.username
+    );
+  }
+
+  /**
+   * Get the mana cost for a spell
+   */
+  private getSpellManaCost(spellType: EffectType): number {
+    switch (spellType) {
+      case EffectType.FIREBALL:
+        return 10;
+      case EffectType.HEAL:
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Get the effect payload for a spell
+   */
+  private getSpellEffectPayload(spellType: EffectType): EffectPayload {
+    switch (spellType) {
+      case EffectType.FIREBALL:
+        return { damageAmount: 80 };
+      case EffectType.HEAL:
+        return { healAmount: Math.floor(Math.random() * 20) + 10 };
+      default:
+        return {};
+    }
   }
 }

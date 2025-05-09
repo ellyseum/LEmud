@@ -9,7 +9,8 @@ export enum ClientStateType {
   AUTHENTICATED = 'authenticated',
   TRANSFER_REQUEST = 'transfer_request',  // New state for handling session transfers
   SNAKE_GAME = 'snake_game',  // New state for playing Snake game
-  WAITING = 'waiting'  // New state for debugging state transitions
+  WAITING = 'waiting',  // New state for debugging state transitions
+  CHANGE_PASSWORD = 'change_password'  // State for changing password
 }
 
 // Define equipment slots
@@ -80,7 +81,7 @@ export interface ItemTemplate {
   name: string;
   description: string;
   type: 'weapon' | 'armor' | 'consumable' | 'quest' | 'misc';
-  slot?: EquipmentSlot; 
+  slot?: EquipmentSlot;
   value: number;
   weight?: number;
   stats?: {
@@ -191,23 +192,23 @@ export interface ConnectedClient {
   buffer: string;
   state: ClientStateType;
   stateData: Record<string, any>;
-  
+
   // For output buffering
   isTyping: boolean;
   outputBuffer: string[];
-  
+
   // For idle disconnection and monitoring
   connectedAt: number;
   lastActivity: number;
   isBeingMonitored: boolean;
   adminMonitorSocket?: any;
   isInputBlocked?: boolean; // Add flag to track if admin blocked user input
-  
+
   // Add tempUsername property
   tempUsername?: string;
 
   cursorPos?: number; // Track cursor position within the buffer
-  
+
   // Connection type and origin information
   isConsoleClient?: boolean; // Indicates if connection is from local console
   ipAddress?: string; // IP address of the client connection

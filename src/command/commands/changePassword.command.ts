@@ -1,38 +1,39 @@
-import { ConnectedClient } from '../../types';
+import { StateMachine } from '../../state/stateMachine';
+import { ClientStateType, ConnectedClient } from '../../types';
 import { colorize } from '../../utils/colors';
+import { createContextLogger } from '../../utils/logger';
 import { writeToClient } from '../../utils/socketWriter';
 import { Command } from '../command.interface';
-import { UserManager } from '../../user/userManager';
+
+const cmdLogger = createContextLogger('ChangePasswordCommand');
 
 export class ChangePasswordCommand implements Command {
   name = 'changepassword';
-  description = 'Change your password. Usage: changepassword <oldPassword> <newPassword>';
+  description = 'Change your password. Usage: changepassword';
 
-  constructor(private userManager: UserManager) {}
+  constructor(private stateMachine: StateMachine) {}
 
   execute(client: ConnectedClient, args: string): void {
-    if (!client.user) return;
-
-    const [oldPassword, newPassword] = args.split(' ');
-
-    if (!oldPassword || !newPassword) {
-      writeToClient(client, colorize('Usage: changepassword <oldPassword> <newPassword>\r\n', 'yellow'));
+    cmdLogger.debug(`execute called. current state=${client.state}`);
+    if (!client.user) {
+      writeToClient(client, colorize('You must be logged in to change your password.\r\n', 'red'));
       return;
     }
 
-    const username = client.user.username;
+    // Store current state to return to
+    client.stateData.previousState = client.state;
+    cmdLogger.debug(`previousState stored as ${client.stateData.previousState}`);
 
-    if (!this.userManager.authenticateUser(username, oldPassword)) {
-      writeToClient(client, colorize('Old password is incorrect.\r\n', 'red'));
-      return;
-    }
+    // Notify player that they are entering the password change state
+    writeToClient(client, colorize('Entering password change mode...\r\n', 'green'));
 
-    const success = this.userManager.changeUserPassword(username, newPassword);
+        // Set the transition flag
+        client.stateData.transitionTo = ClientStateType.CHANGE_PASSWORD;
 
-    if (success) {
-      writeToClient(client, colorize('Password changed successfully.\r\n', 'green'));
-    } else {
-      writeToClient(client, colorize('Failed to change password.\r\n', 'red'));
-    }
+        // Explicitly invoke the state machine to process the transition
+        this.stateMachine.handleInput(client, '');
+
+    // // Directly transition to ChangePasswordState
+    // this.stateMachine.transitionTo(client, ClientStateType.CHANGE_PASSWORD);
   }
 }
